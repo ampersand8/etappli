@@ -1,5 +1,6 @@
 package dev.simon.camperexperience.ui.tripdetail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,6 +66,8 @@ fun TripDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val trip = state.trip
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showExpenseSheet by remember { mutableStateOf(false) }
+    var editingExpense by remember { mutableStateOf<Expense?>(null) }
 
     Scaffold(
         topBar = {
@@ -151,7 +154,19 @@ fun TripDetailScreen(
             }
 
             item {
-                Text("Expenses", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Expenses", style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = {
+                        editingExpense = null
+                        showExpenseSheet = true
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add expense")
+                    }
+                }
             }
             if (state.expenses.isEmpty()) {
                 item {
@@ -166,10 +181,27 @@ fun TripDetailScreen(
                 ExpenseRow(
                     expense = expense,
                     currency = state.settings.currency,
+                    onClick = {
+                        editingExpense = expense
+                        showExpenseSheet = true
+                    },
                     onDelete = { viewModel.deleteExpense(expense.id) },
                 )
             }
         }
+    }
+
+    if (showExpenseSheet && trip != null) {
+        ExpenseEditSheet(
+            initial = editingExpense,
+            stops = state.stops,
+            settings = state.settings,
+            onSave = { expense ->
+                viewModel.upsertExpense(expense)
+                showExpenseSheet = false
+            },
+            onDismiss = { showExpenseSheet = false },
+        )
     }
 
     if (showDeleteDialog && trip != null) {
@@ -258,9 +290,14 @@ private fun StopCard(stop: Stop, currency: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ExpenseRow(expense: Expense, currency: String, onDelete: () -> Unit) {
+private fun ExpenseRow(
+    expense: Expense,
+    currency: String,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {

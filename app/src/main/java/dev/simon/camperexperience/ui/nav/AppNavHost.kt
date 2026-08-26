@@ -5,6 +5,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.simon.camperexperience.ui.tripdetail.TripDetailScreen
+import dev.simon.camperexperience.ui.tripedit.StopEditScreen
+import dev.simon.camperexperience.ui.tripedit.TripEditScreen
 import dev.simon.camperexperience.ui.triplist.TripListScreen
 
 @Composable
@@ -28,6 +30,20 @@ fun AppNavHost() {
                 onEditStop = { tripId, stopId -> navController.navigate(StopEditRoute(tripId, stopId)) },
             )
         }
-        // TripEditRoute, StopEditRoute: M2. AllTripsMapRoute: M3. SettingsRoute: M5.
+        composable<TripEditRoute> {
+            TripEditScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { tripId, isNew ->
+                    navController.popBackStack()
+                    if (isNew) navController.navigate(TripDetailRoute(tripId))
+                },
+            )
+        }
+        composable<StopEditRoute> {
+            StopEditScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        // AllTripsMapRoute: M3. SettingsRoute: M5.
     }
 }
