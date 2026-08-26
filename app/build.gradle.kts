@@ -16,11 +16,14 @@ if (firebaseConfigured) {
 }
 
 // Web client ID for Google Sign-In (Firebase console -> Authentication -> Google).
+// Read from local.properties or, failing that, a Gradle property (gradle.properties).
 val webClientId: String = run {
     val props = Properties()
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { stream -> props.load(stream) }
-    props.getProperty("webClientId", "")
+    props.getProperty("webClientId")
+        ?: (project.findProperty("webClientId") as String?)
+        ?: ""
 }
 
 android {

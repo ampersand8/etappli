@@ -23,7 +23,8 @@ Google Sign-In + Firestore sync automatically.
 1. **Build → Authentication → Get started → Sign-in method → Google → Enable**.
 2. Under the provider settings, copy the **Web client ID**
    (ends in `.apps.googleusercontent.com`).
-3. Add it to `local.properties` (also gitignored):
+3. Add it to `local.properties` (gitignored) or `gradle.properties` (committed —
+   fine too, the ID ships inside the APK anyway and is not a secret):
    ```properties
    webClientId=1234567890-xxxxxxxx.apps.googleusercontent.com
    ```

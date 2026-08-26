@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
@@ -55,6 +57,10 @@ class AuthRepository(
             } else {
                 "Unexpected credential type"
             }
+        } catch (e: GetCredentialCancellationException) {
+            null // user dismissed the picker; not an error worth showing
+        } catch (e: NoCredentialException) {
+            "No Google account on this device — add one in system settings, then try again."
         } catch (e: Exception) {
             e.message ?: "Sign-in failed"
         }
