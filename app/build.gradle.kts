@@ -24,11 +24,11 @@ val webClientId: String = run {
 }
 
 android {
-    namespace = "dev.simon.camperexperience"
+    namespace = "com.nuelto.camperexperience"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.simon.camperexperience"
+        applicationId = "com.nuelto.camperexperience"
         minSdk = 28
         targetSdk = 36
         versionCode = 1
