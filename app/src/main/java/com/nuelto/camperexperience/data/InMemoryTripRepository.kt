@@ -42,6 +42,8 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
 
     override fun allStops(): Flow<List<Stop>> = stopsFlow
 
+    override fun allExpenses(): Flow<List<Expense>> = expensesFlow
+
     override suspend fun upsertTrip(trip: Trip): String {
         val withId = if (trip.id.isBlank()) trip.copy(id = UUID.randomUUID().toString()) else trip
         tripsFlow.update { list -> list.filterNot { it.id == withId.id } + withId }

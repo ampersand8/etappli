@@ -71,7 +71,10 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   (`campingCostTotal`); the CAMPING expense type is only for extra site fees. Breakdown
   merges both into the CAMPING category. The fuel estimator (`domain/FuelEstimator.kt`)
   prefills distance as haversine leg-sum × `roadDistanceFactor` from settings; estimator-
-  created expenses carry `isEstimate = true`.
+  created expenses carry `isEstimate = true`. Trips with **no** recorded FUEL expense get
+  an automatic fuel estimate (`FuelEstimator.autoTripFuelCost`, same distance formula)
+  that is computed at display time, never stored: TripDetail and TripList add it to the
+  shown total with a `≈` prefix (the denormalized `Trip.totalCost` stays actuals-only).
 - **Navigation** (`ui/nav/`): type-safe kotlinx-serialization routes. The location picker
   returns its result through the **previous** back-stack entry's `SavedStateHandle` under
   `PICKED_LOCATION_KEY` (a `DoubleArray`); `AppNavHost` observes it and feeds

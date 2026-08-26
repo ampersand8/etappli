@@ -14,6 +14,9 @@ interface TripRepository {
     /** Every stop across all trips, for the all-trips map. */
     fun allStops(): Flow<List<Stop>>
 
+    /** Every expense across all trips, for per-trip fuel estimates on the trip list. */
+    fun allExpenses(): Flow<List<Expense>>
+
     /** Returns the trip id (generated when trip.id is blank). */
     suspend fun upsertTrip(trip: Trip): String
     suspend fun deleteTrip(tripId: String)
