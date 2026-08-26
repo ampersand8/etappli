@@ -99,23 +99,19 @@ fun StopEditScreen(
                 onValueChange = viewModel::setCampingCost,
             )
 
-            Text("Location", style = MaterialTheme.typography.titleMedium)
-            // GPS + map picker buttons are provided by the nav layer from M3 on.
-            locationSection?.invoke()
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DecimalField(
-                    label = "Latitude",
-                    value = state.latText,
-                    onValueChange = viewModel::setLatText,
-                    modifier = Modifier.weight(1f),
-                )
-                DecimalField(
-                    label = "Longitude",
-                    value = state.lonText,
-                    onValueChange = viewModel::setLonText,
-                    modifier = Modifier.weight(1f),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Location", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    state.locationLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // GPS + map picker buttons are provided by the nav layer from M3 on.
+            locationSection?.invoke()
 
             OutlinedTextField(
                 value = state.notes,

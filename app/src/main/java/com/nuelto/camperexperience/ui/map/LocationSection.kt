@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,12 +31,16 @@ import kotlinx.coroutines.launch
 
 /**
  * "Use current position" (one-shot GPS, permission requested lazily) and
- * "Pick on map" buttons for the stop editor.
+ * "Pick on map" buttons for the stop editor. With [autoLocate] the GPS fix is
+ * kicked off immediately (new stops default to the current location);
+ * [onAutoLocateHandled] fires once so a recomposition never re-triggers it.
  */
 @Composable
 fun LocationSection(
     onLocationChange: (LatLng) -> Unit,
     onPickOnMap: () -> Unit,
+    autoLocate: Boolean = false,
+    onAutoLocateHandled: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -64,20 +69,29 @@ fun LocationSection(
         }
     }
 
+    fun locate() {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            fetchLocation()
+        } else {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    LaunchedEffect(autoLocate) {
+        if (autoLocate) {
+            onAutoLocateHandled()
+            locate()
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = {
-                    val granted = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (granted) {
-                        fetchLocation()
-                    } else {
-                        permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                    }
-                },
+                onClick = ::locate,
                 modifier = Modifier.weight(1f),
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = null)

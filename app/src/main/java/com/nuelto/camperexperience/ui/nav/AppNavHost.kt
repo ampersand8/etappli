@@ -63,6 +63,7 @@ fun AppNavHost() {
                     backStackEntry.savedStateHandle[PICKED_LOCATION_KEY] = null
                 }
             }
+            val stopEditState by viewModel.uiState.collectAsStateWithLifecycle()
             StopEditScreen(
                 onBack = { navController.popBackStack() },
                 viewModel = viewModel,
@@ -75,6 +76,8 @@ fun AppNavHost() {
                                 LocationPickerRoute(location?.latitude, location?.longitude),
                             )
                         },
+                        autoLocate = stopEditState.autoLocatePending,
+                        onAutoLocateHandled = viewModel::autoLocateHandled,
                     )
                 },
             )
