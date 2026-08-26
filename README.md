@@ -1,0 +1,40 @@
+# CamperExperience
+
+Personal Android app for tracking camper trips: where you went, how many nights you
+stayed at each stop, and what the trip cost (camping + fuel + road taxes) — with all
+trips visible on a map.
+
+## Features
+
+- **Trips with multiple stops** — each stop has its own location, arrival date,
+  nights, and camping cost; fuel/road-tax/other expenses live on the trip.
+- **Cost breakdown** per trip (camping / fuel / road tax / other) and total,
+  shown in the trip list and on the trip detail screen. Default currency CHF,
+  changeable in Settings.
+- **Fuel estimator** — prefills trip distance from the stops (straight line × road
+  factor, both configurable) and computes distance × consumption × price; manual
+  fill-ups are just regular expenses.
+- **Maps** (OpenStreetMap via MapLibre + OpenFreeMap, no API key) — all-trips
+  overview with per-trip colors and route lines, per-trip map on the detail screen,
+  tap a marker for trip/stop info.
+- **Locations** via one-shot GPS fix ("I'm here"), map picker with crosshair, or
+  manual lat/lng.
+- **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).
+  Until Firebase is configured the app runs in local demo mode — see
+  [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
+
+## Stack
+
+Kotlin · Jetpack Compose (Material 3) · MVVM + repository, hand-rolled DI ·
+Compose Navigation (type-safe routes) · MapLibre Compose · Firebase Auth/Firestore.
+
+## Build & run
+
+```bash
+./gradlew :app:installDebug   # build + install on connected device/emulator
+./gradlew test                # domain unit tests (costs, fuel estimate, haversine)
+```
+
+Requires JDK 17+ and an Android SDK with platform 37 (`local.properties` →
+`sdk.dir`). Use an emulator image with Play services (needed for sign-in and
+fused location); mock GPS via the emulator's extended controls.

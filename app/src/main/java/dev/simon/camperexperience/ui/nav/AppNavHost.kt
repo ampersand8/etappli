@@ -13,6 +13,7 @@ import dev.simon.camperexperience.data.model.LatLng
 import dev.simon.camperexperience.ui.map.AllTripsMapScreen
 import dev.simon.camperexperience.ui.map.LocationPickerScreen
 import dev.simon.camperexperience.ui.map.LocationSection
+import dev.simon.camperexperience.ui.settings.SettingsScreen
 import dev.simon.camperexperience.ui.tripdetail.TripDetailScreen
 import dev.simon.camperexperience.ui.tripedit.StopEditScreen
 import dev.simon.camperexperience.ui.tripedit.StopEditViewModel
@@ -100,7 +101,9 @@ fun AppNavHost() {
                 onCancel = { navController.popBackStack() },
             )
         }
-        // SettingsRoute: M5.
+        composable<SettingsRoute> {
+            SettingsScreen(onBack = { navController.popBackStack() })
+        }
     }
 }
 
