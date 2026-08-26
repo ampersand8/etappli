@@ -14,9 +14,13 @@ import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.domain.CostCalculator
 import java.time.LocalDate
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
@@ -136,27 +140,18 @@ class FirestoreTripRepository(
         trips(uid).document(tripId).collection("expenses").orderBy("date").asSnapshotFlow()
             .map { docs -> docs.map { it.toExpense(tripId) } }
 
-    override fun allStops(): Flow<List<Stop>> = callbackFlow {
-        // Collection-group query over this user's stops only (path filter via rules +
-        // the parent path in each doc reference).
-        val registration = db.collectionGroup("stops")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                } else if (snapshot != null) {
-                    val ownPrefix = "users/$uid/"
-                    trySend(
-                        snapshot.documents
-                            .filter { it.reference.path.startsWith(ownPrefix) }
-                            .map { doc ->
-                                val tripId = doc.reference.parent.parent?.id ?: ""
-                                doc.toStop(tripId)
-                            },
-                    )
-                }
+    // A collection-group query on "stops" would be rejected by the security rules
+    // (they are path-scoped, and rules don't filter queries — the query itself must
+    // be provably allowed), so combine the per-trip stops listeners instead.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun allStops(): Flow<List<Stop>> =
+        trips().flatMapLatest { trips ->
+            if (trips.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(trips.map { trip -> stops(trip.id) }) { perTrip -> perTrip.toList().flatten() }
             }
-        awaitClose { registration.remove() }
-    }
+        }
 
     // --- writes ------------------------------------------------------------------
 
