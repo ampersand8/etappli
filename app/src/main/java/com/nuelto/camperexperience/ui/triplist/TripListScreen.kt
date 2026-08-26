@@ -85,6 +85,7 @@ fun TripListScreen(
                 items(state.trips, key = { it.id }) { trip ->
                     TripCard(
                         trip = trip,
+                        fuelEstimate = state.fuelEstimates[trip.id],
                         currency = state.settings.currency,
                         onClick = { onTripClick(trip.id) },
                     )
@@ -95,7 +96,7 @@ fun TripListScreen(
 }
 
 @Composable
-private fun TripCard(trip: Trip, currency: String, onClick: () -> Unit) {
+private fun TripCard(trip: Trip, fuelEstimate: Double?, currency: String, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(
@@ -109,7 +110,12 @@ private fun TripCard(trip: Trip, currency: String, onClick: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    formatCurrency(trip.totalCost, currency),
+                    if (fuelEstimate != null) {
+                        // "≈": includes the automatic fuel estimate from driving distance.
+                        "≈ ${formatCurrency(trip.totalCost + fuelEstimate, currency)}"
+                    } else {
+                        formatCurrency(trip.totalCost, currency)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )

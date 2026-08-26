@@ -153,6 +153,17 @@ class FirestoreTripRepository(
             }
         }
 
+    // Same path-scoped-rules constraint as allStops(): no collection-group query.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun allExpenses(): Flow<List<Expense>> =
+        trips().flatMapLatest { trips ->
+            if (trips.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(trips.map { trip -> expenses(trip.id) }) { perTrip -> perTrip.toList().flatten() }
+            }
+        }
+
     // --- writes ------------------------------------------------------------------
 
     override suspend fun upsertTrip(trip: Trip): String {

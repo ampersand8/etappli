@@ -14,6 +14,7 @@ import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.CostCalculator
+import com.nuelto.camperexperience.domain.FuelEstimator
 import com.nuelto.camperexperience.ui.nav.TripDetailRoute
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,8 @@ data class TripDetailUiState(
     val stops: List<Stop> = emptyList(),
     val expenses: List<Expense> = emptyList(),
     val breakdown: Map<ExpenseType, Double> = emptyMap(),
+    // Automatic fuel estimate from driving distance; null once real fuel is logged.
+    val fuelEstimate: Double? = null,
     val settings: UserSettings = UserSettings(),
     val loading: Boolean = true,
 )
@@ -50,6 +53,7 @@ class TripDetailViewModel(
                 stops = stops,
                 expenses = expenses,
                 breakdown = CostCalculator.breakdown(stops, expenses),
+                fuelEstimate = FuelEstimator.autoTripFuelCost(stops, expenses, settings),
                 settings = settings,
                 loading = false,
             )

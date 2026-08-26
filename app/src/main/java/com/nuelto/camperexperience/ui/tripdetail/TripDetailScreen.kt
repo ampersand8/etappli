@@ -160,6 +160,7 @@ fun TripDetailScreen(
                     total = trip.totalCost,
                     nights = trip.nights,
                     breakdown = state.breakdown,
+                    fuelEstimate = state.fuelEstimate,
                     currency = state.settings.currency,
                 )
             }
@@ -258,6 +259,7 @@ fun CostBreakdownCard(
     total: Double,
     nights: Int,
     breakdown: Map<ExpenseType, Double>,
+    fuelEstimate: Double?,
     currency: String,
 ) {
     Card(Modifier.fillMaxWidth()) {
@@ -269,7 +271,11 @@ fun CostBreakdownCard(
             ) {
                 Text("Total", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    formatCurrency(total, currency),
+                    if (fuelEstimate != null) {
+                        "≈ ${formatCurrency(total + fuelEstimate, currency)}"
+                    } else {
+                        formatCurrency(total, currency)
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -280,19 +286,36 @@ fun CostBreakdownCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (breakdown.isNotEmpty()) {
+            if (breakdown.isNotEmpty() || fuelEstimate != null) {
                 HorizontalDivider()
-                breakdown.forEach { (type, amount) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(type.displayName, style = MaterialTheme.typography.bodyMedium)
-                        Text(formatCurrency(amount, currency), style = MaterialTheme.typography.bodyMedium)
-                    }
+                // A fuel estimate only exists when there is no FUEL entry in the
+                // breakdown, so this keeps the category order stable.
+                breakdown[ExpenseType.CAMPING]?.let { BreakdownRow(ExpenseType.CAMPING.displayName, it, currency) }
+                fuelEstimate?.let { BreakdownRow("${ExpenseType.FUEL.displayName} (estimate)", it, currency) }
+                for (type in listOf(ExpenseType.FUEL, ExpenseType.ROAD_TAX, ExpenseType.OTHER)) {
+                    breakdown[type]?.let { BreakdownRow(type.displayName, it, currency) }
+                }
+                if (fuelEstimate != null) {
+                    Text(
+                        "Fuel is estimated by driving distance between stops — log a fuel expense to replace it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BreakdownRow(label: String, amount: Double, currency: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(formatCurrency(amount, currency), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
