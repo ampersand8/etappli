@@ -66,6 +66,15 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.play.services)
+
+    // The default android-sdk artifact renders via Vulkan, which draws a blank map on
+    // emulators (gfxstream); swap in the OpenGL renderer variant.
+    implementation(libs.maplibre.compose) {
+        exclude(group = "org.maplibre.gl", module = "android-sdk")
+    }
+    implementation(libs.maplibre.android.opengl)
+    implementation(libs.play.services.location)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

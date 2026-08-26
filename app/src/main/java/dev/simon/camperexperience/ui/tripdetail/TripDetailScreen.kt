@@ -2,12 +2,18 @@ package dev.simon.camperexperience.ui.tripdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
+import dev.simon.camperexperience.ui.map.TripMap
+import dev.simon.camperexperience.ui.map.TripMapData
+import dev.simon.camperexperience.ui.map.tripColor
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -61,6 +67,7 @@ fun TripDetailScreen(
     onEditTrip: (String) -> Unit,
     onAddStop: (String) -> Unit,
     onEditStop: (String, String) -> Unit,
+    onOpenTripMap: (String) -> Unit,
     viewModel: TripDetailViewModel = viewModel(factory = TripDetailViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,6 +126,30 @@ fun TripDetailScreen(
                             trip.notes,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (state.stops.any { it.location != null }) {
+                item {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(MaterialTheme.shapes.medium),
+                    ) {
+                        TripMap(
+                            data = listOf(
+                                TripMapData(trip, state.stops, tripColor(trip.id.hashCode())),
+                            ),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // Transparent overlay: tap anywhere on the mini map to go fullscreen.
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .clickable { onOpenTripMap(trip.id) },
                         )
                     }
                 }

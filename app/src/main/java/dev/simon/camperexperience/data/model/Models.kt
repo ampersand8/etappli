@@ -49,7 +49,7 @@ data class Expense(
 )
 
 data class UserSettings(
-    val currency: String = "EUR",
+    val currency: String = "CHF",
     val fuelConsumptionL100km: Double = 10.0,
     val fuelPricePerLiter: Double = 1.80,
     // Multiplier on straight-line (haversine) distance to approximate road distance.

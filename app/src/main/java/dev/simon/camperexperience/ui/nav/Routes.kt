@@ -15,7 +15,10 @@ data class TripEditRoute(val tripId: String? = null)
 data class StopEditRoute(val tripId: String, val stopId: String? = null)
 
 @Serializable
-object AllTripsMapRoute
+data class AllTripsMapRoute(val tripId: String? = null)
+
+@Serializable
+data class LocationPickerRoute(val lat: Double? = null, val lon: Double? = null)
 
 @Serializable
 object SettingsRoute

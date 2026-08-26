@@ -1,11 +1,21 @@
 package dev.simon.camperexperience.ui.nav
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import dev.simon.camperexperience.data.model.LatLng
+import dev.simon.camperexperience.ui.map.AllTripsMapScreen
+import dev.simon.camperexperience.ui.map.LocationPickerScreen
+import dev.simon.camperexperience.ui.map.LocationSection
 import dev.simon.camperexperience.ui.tripdetail.TripDetailScreen
 import dev.simon.camperexperience.ui.tripedit.StopEditScreen
+import dev.simon.camperexperience.ui.tripedit.StopEditViewModel
 import dev.simon.camperexperience.ui.tripedit.TripEditScreen
 import dev.simon.camperexperience.ui.triplist.TripListScreen
 
@@ -18,7 +28,7 @@ fun AppNavHost() {
             TripListScreen(
                 onTripClick = { tripId -> navController.navigate(TripDetailRoute(tripId)) },
                 onAddTrip = { navController.navigate(TripEditRoute()) },
-                onOpenMap = { navController.navigate(AllTripsMapRoute) },
+                onOpenMap = { navController.navigate(AllTripsMapRoute()) },
                 onOpenSettings = { navController.navigate(SettingsRoute) },
             )
         }
@@ -28,6 +38,7 @@ fun AppNavHost() {
                 onEditTrip = { tripId -> navController.navigate(TripEditRoute(tripId)) },
                 onAddStop = { tripId -> navController.navigate(StopEditRoute(tripId)) },
                 onEditStop = { tripId, stopId -> navController.navigate(StopEditRoute(tripId, stopId)) },
+                onOpenTripMap = { tripId -> navController.navigate(AllTripsMapRoute(tripId)) },
             )
         }
         composable<TripEditRoute> {
@@ -39,11 +50,62 @@ fun AppNavHost() {
                 },
             )
         }
-        composable<StopEditRoute> {
+        composable<StopEditRoute> { backStackEntry ->
+            val viewModel: StopEditViewModel = viewModel(factory = StopEditViewModel.Factory)
+            // Result from the location picker arrives via this entry's SavedStateHandle.
+            val picked by backStackEntry.savedStateHandle
+                .getStateFlow<DoubleArray?>(PICKED_LOCATION_KEY, null)
+                .collectAsStateWithLifecycle()
+            LaunchedEffect(picked) {
+                picked?.let { (lat, lon) ->
+                    viewModel.setLocation(LatLng(lat, lon))
+                    backStackEntry.savedStateHandle[PICKED_LOCATION_KEY] = null
+                }
+            }
             StopEditScreen(
                 onBack = { navController.popBackStack() },
+                viewModel = viewModel,
+                locationSection = {
+                    LocationSection(
+                        onLocationChange = viewModel::setLocation,
+                        onPickOnMap = {
+                            val location = viewModel.uiState.value.location
+                            navController.navigate(
+                                LocationPickerRoute(location?.latitude, location?.longitude),
+                            )
+                        },
+                    )
+                },
             )
         }
-        // AllTripsMapRoute: M3. SettingsRoute: M5.
+        composable<AllTripsMapRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<AllTripsMapRoute>()
+            AllTripsMapScreen(
+                tripId = route.tripId,
+                onBack = { navController.popBackStack() },
+                onOpenTrip = { tripId -> navController.navigate(TripDetailRoute(tripId)) },
+            )
+        }
+        composable<LocationPickerRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<LocationPickerRoute>()
+            LocationPickerScreen(
+                initial = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null,
+                onPicked = { location ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set(
+                        PICKED_LOCATION_KEY,
+                        doubleArrayOf(location.latitude, location.longitude),
+                    )
+                    navController.popBackStack()
+                },
+                onCancel = { navController.popBackStack() },
+            )
+        }
+        // SettingsRoute: M5.
     }
 }
+
+private const val PICKED_LOCATION_KEY = "picked_location"
+
+private operator fun DoubleArray.component1() = this[0]
+
+private operator fun DoubleArray.component2() = this[1]

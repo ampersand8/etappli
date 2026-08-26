@@ -72,10 +72,17 @@ class StopEditViewModel(
     fun setNotes(value: String) = _uiState.update { it.copy(notes = value) }
 
     fun setLocation(location: LatLng?) = _uiState.update {
+        // ~1 m precision is plenty for a campsite; keeps the fields readable.
+        val rounded = location?.let {
+            LatLng(
+                Math.round(location.latitude * 100_000.0) / 100_000.0,
+                Math.round(location.longitude * 100_000.0) / 100_000.0,
+            )
+        }
         it.copy(
-            location = location,
-            latText = location?.latitude?.toString() ?: "",
-            lonText = location?.longitude?.toString() ?: "",
+            location = rounded,
+            latText = rounded?.latitude?.toString() ?: "",
+            lonText = rounded?.longitude?.toString() ?: "",
         )
     }
 
