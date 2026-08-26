@@ -2,6 +2,7 @@ package com.nuelto.camperexperience.ui.tripedit
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
@@ -9,6 +10,7 @@ import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.location.PlaceNameResolver
 import com.nuelto.camperexperience.ui.components.parseDecimal
 import com.nuelto.camperexperience.ui.nav.StopEditRoute
 import java.time.LocalDate
@@ -35,11 +37,16 @@ data class StopEditUiState(
 class StopEditViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
+    private val placeNameResolver: PlaceNameResolver? = null,
 ) : ViewModel() {
 
     private val route: StopEditRoute = savedStateHandle.toRoute<StopEditRoute>()
     val tripId: String get() = route.tripId
     private var existing: Stop? = null
+
+    // Last name we auto-filled from reverse geocoding; anything else was typed by the
+    // user and must never be overwritten.
+    private var autoFilledName: String? = null
 
     private val _uiState = MutableStateFlow(StopEditUiState())
     val uiState: StateFlow<StopEditUiState> = _uiState
@@ -71,7 +78,7 @@ class StopEditViewModel(
     fun setCampingCost(value: String) = _uiState.update { it.copy(campingCost = value) }
     fun setNotes(value: String) = _uiState.update { it.copy(notes = value) }
 
-    fun setLocation(location: LatLng?) = _uiState.update {
+    fun setLocation(location: LatLng?) {
         // ~1 m precision is plenty for a campsite; keeps the fields readable.
         val rounded = location?.let {
             LatLng(
@@ -79,11 +86,29 @@ class StopEditViewModel(
                 Math.round(location.longitude * 100_000.0) / 100_000.0,
             )
         }
-        it.copy(
-            location = rounded,
-            latText = rounded?.latitude?.toString() ?: "",
-            lonText = rounded?.longitude?.toString() ?: "",
-        )
+        _uiState.update {
+            it.copy(
+                location = rounded,
+                latText = rounded?.latitude?.toString() ?: "",
+                lonText = rounded?.longitude?.toString() ?: "",
+            )
+        }
+        rounded?.let(::autoFillNameFrom)
+    }
+
+    private fun autoFillNameFrom(location: LatLng) {
+        val resolver = placeNameResolver ?: return
+        viewModelScope.launch {
+            val place = resolver.placeName(location) ?: return@launch
+            _uiState.update { state ->
+                if (state.name.isBlank() || state.name == autoFilledName) {
+                    autoFilledName = place
+                    state.copy(name = place)
+                } else {
+                    state
+                }
+            }
+        }
     }
 
     fun setLatText(value: String) = _uiState.update { it.copy(latText = value).withParsedLocation() }
@@ -132,7 +157,11 @@ class StopEditViewModel(
 
     companion object {
         val Factory = containerViewModelFactory { container ->
-            StopEditViewModel(createSavedStateHandle(), container.tripRepository)
+            StopEditViewModel(
+                createSavedStateHandle(),
+                container.tripRepository,
+                this[APPLICATION_KEY]?.let(::PlaceNameResolver),
+            )
         }
     }
 }
