@@ -38,3 +38,29 @@ Compose Navigation (type-safe routes) · MapLibre Compose · Firebase Auth/Fires
 Requires JDK 17+ and an Android SDK with platform 37 (`local.properties` →
 `sdk.dir`). Use an emulator image with Play services (needed for sign-in and
 fused location); mock GPS via the emulator's extended controls.
+
+### Installing on a physical phone
+
+One-time phone setup:
+
+1. Enable Developer Options: Settings → About phone → tap **Build number** 7 times.
+2. Settings → System → Developer options → enable **USB debugging**.
+3. Connect the phone via USB. On the phone, accept the **Allow USB debugging?**
+   dialog (tick "Always allow from this computer" to skip it next time).
+
+Then, from the project root:
+
+```bash
+~/Android/Sdk/platform-tools/adb devices   # phone should show as "device", not "unauthorized"
+./gradlew :app:installDebug                # build + install the debug APK
+```
+
+The app appears in the launcher as **CamperExperience**. Re-running
+`installDebug` updates it in place (data is kept). Notes:
+
+- This is the **debug** build. Without `app/google-services.json` it runs in
+  local demo mode; with it, Google Sign-In works on a real phone out of the box
+  (real phones have Play services).
+- If the USB cable only charges, it may be a power-only cable — use a data cable.
+- Alternative, cable-free: Developer options → **Wireless debugging** → pair via
+  `adb pair <ip>:<port>` once, then `adb connect <ip>:<port>` on the same Wi-Fi.
