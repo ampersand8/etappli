@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -87,12 +88,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    // The default android-sdk artifact renders via Vulkan, which draws a blank map on
-    // emulators (gfxstream); swap in the OpenGL renderer variant.
-    implementation(libs.maplibre.compose) {
-        exclude(group = "org.maplibre.gl", module = "android-sdk")
-    }
-    implementation(libs.maplibre.android.opengl)
+    implementation(libs.maplibre.compose)
+    // OpenGL runtime — the Vulkan one draws a blank map on emulators (gfxstream).
+    runtimeOnly(libs.maplibre.compose.runtime)
     implementation(libs.play.services.location)
 
     implementation(platform(libs.firebase.bom))
