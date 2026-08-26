@@ -26,12 +26,17 @@ data class StopEditUiState(
     val nights: Int = 1,
     val campingCost: String = "",
     val location: LatLng? = null,
-    val latText: String = "",
-    val lonText: String = "",
+    val locationName: String? = null,
     val notes: String = "",
     val isNew: Boolean = true,
+    val autoLocatePending: Boolean = false,
 ) {
     val canSave: Boolean get() = name.isNotBlank()
+
+    val locationLabel: String
+        get() = locationName
+            ?: location?.let { "${it.latitude}, ${it.longitude}" }
+            ?: "Not set"
 }
 
 class StopEditViewModel(
@@ -52,6 +57,10 @@ class StopEditViewModel(
     val uiState: StateFlow<StopEditUiState> = _uiState
 
     init {
+        if (route.stopId == null) {
+            // New stop: the location section should immediately try a GPS fix.
+            _uiState.update { it.copy(autoLocatePending = true) }
+        }
         viewModelScope.launch {
             if (route.stopId != null) {
                 existing = tripRepository.stops(route.tripId).first().find { it.id == route.stopId }
@@ -63,14 +72,15 @@ class StopEditViewModel(
                     nights = stop.nights,
                     campingCost = if (stop.campingCostTotal == 0.0) "" else stop.campingCostTotal.toString(),
                     location = stop.location,
-                    latText = stop.location?.latitude?.toString() ?: "",
-                    lonText = stop.location?.longitude?.toString() ?: "",
                     notes = stop.notes,
                     isNew = false,
                 )
+                stop.location?.let { resolvePlaceName(it, autoFillName = false) }
             }
         }
     }
+
+    fun autoLocateHandled() = _uiState.update { it.copy(autoLocatePending = false) }
 
     fun setName(value: String) = _uiState.update { it.copy(name = value) }
     fun setArrivalDate(value: LocalDate) = _uiState.update { it.copy(arrivalDate = value) }
@@ -79,50 +89,33 @@ class StopEditViewModel(
     fun setNotes(value: String) = _uiState.update { it.copy(notes = value) }
 
     fun setLocation(location: LatLng?) {
-        // ~1 m precision is plenty for a campsite; keeps the fields readable.
+        // ~1 m precision is plenty for a campsite; keeps the label readable.
         val rounded = location?.let {
             LatLng(
                 Math.round(location.latitude * 100_000.0) / 100_000.0,
                 Math.round(location.longitude * 100_000.0) / 100_000.0,
             )
         }
-        _uiState.update {
-            it.copy(
-                location = rounded,
-                latText = rounded?.latitude?.toString() ?: "",
-                lonText = rounded?.longitude?.toString() ?: "",
-            )
-        }
-        rounded?.let(::autoFillNameFrom)
+        _uiState.update { it.copy(location = rounded, locationName = null) }
+        rounded?.let { resolvePlaceName(it, autoFillName = true) }
     }
 
-    private fun autoFillNameFrom(location: LatLng) {
+    private fun resolvePlaceName(location: LatLng, autoFillName: Boolean) {
         val resolver = placeNameResolver ?: return
         viewModelScope.launch {
             val place = resolver.placeName(location) ?: return@launch
             _uiState.update { state ->
-                if (state.name.isBlank() || state.name == autoFilledName) {
+                // Ignore a late result for a location that has since changed.
+                if (state.location != location) return@update state
+                val name = if (autoFillName && (state.name.isBlank() || state.name == autoFilledName)) {
                     autoFilledName = place
-                    state.copy(name = place)
+                    place
                 } else {
-                    state
+                    state.name
                 }
+                state.copy(locationName = place, name = name)
             }
         }
-    }
-
-    fun setLatText(value: String) = _uiState.update { it.copy(latText = value).withParsedLocation() }
-    fun setLonText(value: String) = _uiState.update { it.copy(lonText = value).withParsedLocation() }
-
-    private fun StopEditUiState.withParsedLocation(): StopEditUiState {
-        val lat = parseDecimal(latText)
-        val lon = parseDecimal(lonText)
-        val loc = if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
-            LatLng(lat, lon)
-        } else {
-            null
-        }
-        return copy(location = loc)
     }
 
     fun save(onSaved: () -> Unit) {
