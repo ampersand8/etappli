@@ -9,6 +9,10 @@ per-stop nights/camping costs, trip-level expenses (fuel, road tax, other), a fu
 estimator, and MapLibre/OpenStreetMap views of all trips. Kotlin + Jetpack Compose,
 single `:app` module. Default currency is CHF (user preference).
 
+**Keep code and docs short and concise.** This matters a lot: minimal prose, no
+boilerplate, no restating what the code already says. Prefer editing existing docs over
+adding new ones.
+
 ## Commands
 
 ```bash
@@ -19,7 +23,8 @@ single `:app` module. Default currency is CHF (user preference).
 ```
 
 Emulator workflow (AVD `Pixel_9a` exists locally; needs Play services image for
-sign-in/fused location):
+sign-in/fused location/reverse geocoding — `location/PlaceNameResolver.kt` uses the
+platform `Geocoder` and silently returns null without Play services or network):
 
 ```bash
 ~/Android/Sdk/emulator/emulator -avd Pixel_9a -no-snapshot-save &
