@@ -1,9 +1,25 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+// Firebase is optional at build time: the app runs in local-only mode until
+// google-services.json (from the Firebase console) is placed next to this file.
+val firebaseConfigured = file("google-services.json").exists()
+if (firebaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
+// Web client ID for Google Sign-In (Firebase console -> Authentication -> Google).
+val webClientId: String = run {
+    val props = Properties()
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { stream -> props.load(stream) }
+    props.getProperty("webClientId", "")
 }
 
 android {
@@ -36,7 +52,10 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+
+    defaultConfig.buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
 
     packaging {
         resources {
@@ -75,6 +94,13 @@ dependencies {
     }
     implementation(libs.maplibre.android.opengl)
     implementation(libs.play.services.location)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    implementation(libs.googleid)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
