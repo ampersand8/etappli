@@ -46,7 +46,7 @@ import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.ui.formatCurrency
-import com.nuelto.camperexperience.ui.formatDateRange
+import com.nuelto.camperexperience.ui.formatTripDates
 import com.nuelto.camperexperience.ui.theme.statusColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -201,7 +201,7 @@ private fun TripCard(trip: Trip, totalText: String, onClick: () -> Unit) {
                 )
             }
             Text(
-                formatDateRange(trip.startDate, trip.endDate),
+                formatTripDates(trip),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

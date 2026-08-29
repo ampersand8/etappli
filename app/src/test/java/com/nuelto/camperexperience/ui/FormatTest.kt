@@ -1,5 +1,7 @@
 package com.nuelto.camperexperience.ui
 
+import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import java.time.LocalDate
 import java.util.Locale
 import org.junit.After
@@ -53,5 +55,31 @@ class FormatTest {
     fun `open ended range says ongoing`() {
         val start = LocalDate.of(2026, 9, 12)
         assertEquals("${formatDate(start)} – ongoing", formatDateRange(start, null))
+    }
+
+    @Test
+    fun `an open-ended plan reads from its start, not ongoing`() {
+        val start = LocalDate.of(2027, 6, 10)
+        val plan = Trip(startDate = start, status = TripStatus.PLANNED)
+        assertEquals("from ${formatDate(start)}", formatTripDates(plan))
+    }
+
+    @Test
+    fun `active and done trips keep the date range`() {
+        val start = LocalDate.of(2026, 9, 12)
+        val end = LocalDate.of(2026, 9, 21)
+        assertEquals(
+            "${formatDate(start)} – ongoing",
+            formatTripDates(Trip(startDate = start, status = TripStatus.ACTIVE)),
+        )
+        assertEquals(
+            "${formatDate(start)} – ${formatDate(end)}",
+            formatTripDates(Trip(startDate = start, endDate = end, status = TripStatus.DONE)),
+        )
+        // A plan with a chosen end date shows the range too.
+        assertEquals(
+            "${formatDate(start)} – ${formatDate(end)}",
+            formatTripDates(Trip(startDate = start, endDate = end, status = TripStatus.PLANNED)),
+        )
     }
 }

@@ -29,6 +29,8 @@ fun StatusBadge(status: TripStatus, modifier: Modifier = Modifier) {
         Text(
             status.displayName,
             style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
