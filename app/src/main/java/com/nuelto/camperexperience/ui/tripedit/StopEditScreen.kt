@@ -1,5 +1,6 @@
 package com.nuelto.camperexperience.ui.tripedit
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,8 +30,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.domain.TripEstimator
 import com.nuelto.camperexperience.ui.components.DateField
 import com.nuelto.camperexperience.ui.components.DecimalField
+import com.nuelto.camperexperience.ui.formatCurrency
+
+val StopKind.displayName: String
+    get() = when (this) {
+        StopKind.CAMPSITE -> "Campsite"
+        StopKind.STELLPLATZ -> "Stellplatz"
+        StopKind.FREE_CAMP -> "Free camp"
+        StopKind.VISIT -> "Visit"
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,10 +82,22 @@ fun StopEditScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StopKind.entries.forEach { kind ->
+                    FilterChip(
+                        selected = state.kind == kind,
+                        onClick = { viewModel.setKind(kind) },
+                        label = { Text(kind.displayName) },
+                    )
+                }
+            }
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::setName,
-                label = { Text("Campsite / place") },
+                label = { Text(if (state.isVisit) "Place" else "Campsite / place") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -80,24 +106,27 @@ fun StopEditScreen(
                 date = state.arrivalDate,
                 onDateChange = viewModel::setArrivalDate,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("Nights", style = MaterialTheme.typography.bodyLarge)
-                IconButton(onClick = { viewModel.setNights(state.nights - 1) }) {
-                    Icon(Icons.Default.Remove, contentDescription = "Fewer nights")
+            if (!state.isVisit) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Nights", style = MaterialTheme.typography.bodyLarge)
+                    IconButton(onClick = { viewModel.setNights(state.nights - 1) }) {
+                        Icon(Icons.Default.Remove, contentDescription = "Fewer nights")
+                    }
+                    Text("${state.nights}", style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = { viewModel.setNights(state.nights + 1) }) {
+                        Icon(Icons.Default.Add, contentDescription = "More nights")
+                    }
                 }
-                Text("${state.nights}", style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = { viewModel.setNights(state.nights + 1) }) {
-                    Icon(Icons.Default.Add, contentDescription = "More nights")
-                }
+                DecimalField(
+                    label = "Camping cost (total for stay)",
+                    value = state.campingCost,
+                    onValueChange = viewModel::setCampingCost,
+                    supportingText = costPlaceholder(state),
+                )
             }
-            DecimalField(
-                label = "Camping cost (total for stay)",
-                value = state.campingCost,
-                onValueChange = viewModel::setCampingCost,
-            )
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -129,4 +158,13 @@ fun StopEditScreen(
             }
         }
     }
+}
+
+/** Blank price on a non-done trip → the estimate the default rate would produce. */
+private fun costPlaceholder(state: StopEditUiState): String? {
+    if (state.campingCost.isNotBlank()) return null
+    if (state.tripStatus == TripStatus.DONE || state.tripStatus == null) return null
+    val rate = TripEstimator.nightlyRate(state.kind, state.settings)
+    if (rate <= 0.0) return null
+    return "≈ ${formatCurrency(rate, state.settings.currency)}/night if left blank"
 }

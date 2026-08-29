@@ -87,12 +87,14 @@ fun DecimalField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     suffix: String? = null,
+    supportingText: String? = null,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         suffix = suffix?.let { { Text(it) } },
+        supportingText = supportingText?.let { { Text(it) } },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         modifier = modifier.fillMaxWidth(),

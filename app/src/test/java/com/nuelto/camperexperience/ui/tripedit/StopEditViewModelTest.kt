@@ -3,9 +3,14 @@ package com.nuelto.camperexperience.ui.tripedit
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.FakePlaceNameResolver
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
@@ -26,17 +31,20 @@ class StopEditViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val tripRepository = InMemoryTripRepository(seed = false)
+    private val settingsRepository = InMemorySettingsRepository()
     private val resolver = FakePlaceNameResolver(ApplicationProvider.getApplicationContext())
 
     private fun newStopViewModel() = StopEditViewModel(
         SavedStateHandle(mapOf("tripId" to "t1")),
         tripRepository,
+        settingsRepository,
         resolver,
     )
 
     private fun editViewModel(stopId: String) = StopEditViewModel(
         SavedStateHandle(mapOf("tripId" to "t1", "stopId" to stopId)),
         tripRepository,
+        settingsRepository,
         resolver,
     )
 
@@ -212,9 +220,121 @@ class StopEditViewModelTest {
 
     @Test
     fun `works without a place name resolver`() {
-        val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository)
+        val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository, settingsRepository)
         vm.setLocation(LatLng(46.0, 7.0))
         assertNull(vm.uiState.value.locationName)
         assertEquals("46.0, 7.0", vm.uiState.value.locationLabel)
+    }
+
+    @Test
+    fun `on a planned tour there is no auto GPS and arrival chains from the last stop`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s0", tripId = "t1", arrivalDate = LocalDate.of(2027, 6, 10), nights = 2, orderIndex = 0),
+        )
+        val vm = newStopViewModel()
+        assertFalse(vm.uiState.value.autoLocatePending)
+        assertEquals(TripStatus.PLANNED, vm.uiState.value.tripStatus)
+        assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate)
+    }
+
+    @Test
+    fun `a planned tour without stops prefills the trip start`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        assertEquals(LocalDate.of(2027, 6, 10), newStopViewModel().uiState.value.arrivalDate)
+    }
+
+    @Test
+    fun `the visit kind zeroes nights and cost and restores a night when switched back`() {
+        val vm = newStopViewModel()
+        vm.setNights(3)
+        vm.setCampingCost("42")
+        vm.setKind(StopKind.VISIT)
+        assertEquals(0, vm.uiState.value.nights)
+        assertEquals("", vm.uiState.value.campingCost)
+        assertTrue(vm.uiState.value.isVisit)
+        vm.setKind(StopKind.STELLPLATZ)
+        assertEquals(1, vm.uiState.value.nights)
+    }
+
+    @Test
+    fun `a visit saves with zero nights and a known zero cost`() = runTest {
+        val vm = newStopViewModel()
+        vm.setKind(StopKind.VISIT)
+        vm.setName("Aareschlucht")
+        vm.save {}
+        val stop = tripRepository.stops("t1").first().single()
+        assertEquals(StopKind.VISIT, stop.kind)
+        assertEquals(0, stop.nights)
+        assertEquals(0.0, stop.campingCostTotal, 1e-9)
+        assertTrue(stop.costKnown)
+    }
+
+    @Test
+    fun `a blank price on a campsite saves as not yet known, a typed one as known`() = runTest {
+        val vm = newStopViewModel()
+        vm.setName("Camping Lido")
+        vm.save {}
+        assertFalse(tripRepository.stops("t1").first().single().costKnown)
+
+        val vm2 = newStopViewModel()
+        vm2.setName("Camping Delta")
+        vm2.setCampingCost("62")
+        vm2.save {}
+        assertTrue(tripRepository.stops("t1").first().single { it.name == "Camping Delta" }.costKnown)
+    }
+
+    @Test
+    fun `a free camp with a blank price is known to cost nothing`() = runTest {
+        val vm = newStopViewModel()
+        vm.setKind(StopKind.FREE_CAMP)
+        vm.setName("Waldrand")
+        vm.save {}
+        val stop = tripRepository.stops("t1").first().single()
+        assertTrue(stop.costKnown)
+        assertEquals(0.0, stop.campingCostTotal, 1e-9)
+    }
+
+    @Test
+    fun `a legacy stop recorded as known zero stays known after an edit`() = runTest {
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "Camp", campingCostTotal = 0.0, costKnown = true),
+        )
+        val vm = editViewModel("s1")
+        vm.setName("Renamed")
+        vm.save {}
+        assertTrue(tripRepository.stops("t1").first().single().costKnown)
+    }
+
+    @Test
+    fun `mid-trip with check-ins a new stop slots in after the last done stop`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Trip", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(Stop(id = "done", tripId = "t1", name = "Done", orderIndex = 0, state = StopState.DONE))
+        tripRepository.upsertStop(Stop(id = "up", tripId = "t1", name = "Upcoming", orderIndex = 1))
+        val vm = newStopViewModel()
+        vm.setName("Spontan")
+        vm.save {}
+        assertEquals(
+            listOf("Done", "Spontan", "Upcoming"),
+            tripRepository.stops("t1").first().map { it.name },
+        )
+    }
+
+    @Test
+    fun `an active trip without check-ins keeps appending`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Trip", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(Stop(id = "a", tripId = "t1", name = "A", orderIndex = 0))
+        val vm = newStopViewModel()
+        vm.setName("B")
+        vm.save {}
+        assertEquals(listOf("A", "B"), tripRepository.stops("t1").first().map { it.name })
     }
 }
