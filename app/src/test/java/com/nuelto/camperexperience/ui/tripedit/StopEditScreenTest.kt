@@ -10,10 +10,15 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
+import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -35,7 +40,7 @@ class StopEditScreenTest {
 
     private fun setContent(stopId: String? = null, withLocationSection: Boolean = false) {
         val args = if (stopId == null) mapOf("tripId" to "t1") else mapOf("tripId" to "t1", "stopId" to stopId)
-        val viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, null)
+        val viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, InMemorySettingsRepository(), null)
         compose.setContent {
             if (withLocationSection) {
                 StopEditScreen(
@@ -100,5 +105,31 @@ class StopEditScreenTest {
         setContent()
         compose.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(listOf("back"), events)
+    }
+
+    @Test
+    fun `the visit chip hides nights and cost and saves a waypoint`() {
+        setContent()
+        compose.onNodeWithText("Visit").performClick()
+        compose.onNodeWithText("Nights").assertDoesNotExist()
+        compose.onNodeWithText("Camping cost (total for stay)").assertDoesNotExist()
+        compose.onNodeWithText("Place").performTextInput("Aareschlucht")
+        compose.onNodeWithText("Save").performClick()
+        runBlocking {
+            val stop = tripRepository.stops("t1").first().single()
+            assertEquals(StopKind.VISIT, stop.kind)
+            assertEquals(0, stop.nights)
+        }
+    }
+
+    @Test
+    fun `a planned trip shows the default-rate placeholder on a blank price`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+            )
+        }
+        setContent()
+        compose.onNodeWithText("≈ CHF45.00/night if left blank").assertIsDisplayed()
     }
 }
