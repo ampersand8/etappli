@@ -27,6 +27,14 @@ val webClientId: String = run {
         ?: ""
 }
 
+// Semver: appVersionBase (gradle.properties) is major.minor, patch = git commit count.
+// Shown in Settings via BuildConfig.VERSION_NAME. Falls back to patch 0 without git
+// (e.g. a shallow clone counts fewer commits; CI checks out full history).
+val commitCount: Int = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 0 }.get()
+
 android {
     namespace = "com.nuelto.camperexperience"
     compileSdk = 37
@@ -35,8 +43,8 @@ android {
         applicationId = "com.nuelto.camperexperience"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = maxOf(commitCount, 1)
+        versionName = "${providers.gradleProperty("appVersionBase").getOrElse("0.1")}.$commitCount"
         vectorDrawables { useSupportLibrary = true }
     }
 

@@ -25,6 +25,13 @@ adding new ones.
 ```
 
 CI (`.github/workflows/ci.yml`) runs tests + both gates + assembleDebug on every PR.
+On pushes to main it also uploads `app/build/screenshots/` (main screens light+dark,
+written by `ScreenshotsTest` during the normal test run) as a versioned artifact.
+
+**Versioning**: `versionName` = `appVersionBase` (gradle.properties, major.minor) +
+git commit count as patch; shown at the bottom of Settings. Bump `appVersionBase`
+for milestones; the patch advances by itself. CI checks out full history so the
+count is right.
 
 Emulator workflow (AVD `Pixel_9a` exists locally; needs Play services image for
 sign-in/fused location/reverse geocoding — `location/PlaceNameResolver.kt` uses the

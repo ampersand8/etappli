@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.testutil.FakeAuthRepository
 import com.nuelto.camperexperience.testutil.TestCamperApp
@@ -85,6 +86,12 @@ class SettingsScreenTest {
         setContent(auth)
         compose.onNodeWithText("Sign out").performClick()
         assertEquals(1, auth.signOutCalls)
+    }
+
+    @Test
+    fun `shows the app version`() {
+        setContent()
+        compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
     }
 
     @Test
