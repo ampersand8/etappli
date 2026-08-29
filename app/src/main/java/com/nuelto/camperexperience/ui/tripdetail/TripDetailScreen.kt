@@ -16,15 +16,21 @@ import com.nuelto.camperexperience.ui.map.TripMapData
 import com.nuelto.camperexperience.ui.map.tripColor
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +81,9 @@ fun TripDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showExpenseSheet by remember { mutableStateOf(false) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
+    var fabMenuExpanded by remember { mutableStateOf(false) }
+
+    BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
 
     Scaffold(
         topBar = {
@@ -99,11 +108,37 @@ fun TripDetailScreen(
         },
         floatingActionButton = {
             if (trip != null) {
-                ExtendedFloatingActionButton(
-                    onClick = { onAddStop(trip.id) },
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Stop") },
-                )
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AnimatedVisibility(fabMenuExpanded) {
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    fabMenuExpanded = false
+                                    onAddStop(trip.id)
+                                },
+                                icon = { Icon(Icons.Default.Place, contentDescription = null) },
+                                text = { Text("Stop") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            )
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    fabMenuExpanded = false
+                                    editingExpense = null
+                                    showExpenseSheet = true
+                                },
+                                icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
+                                text = { Text("Expense") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            )
+                        }
+                    }
+                    FloatingActionButton(onClick = { fabMenuExpanded = !fabMenuExpanded }) {
+                        Icon(
+                            if (fabMenuExpanded) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = if (fabMenuExpanded) "Close add menu" else "Add",
+                        )
+                    }
+                }
             }
         },
     ) { padding ->
@@ -111,7 +146,7 @@ fun TripDetailScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
@@ -186,19 +221,7 @@ fun TripDetailScreen(
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Expenses", style = MaterialTheme.typography.titleMedium)
-                    IconButton(onClick = {
-                        editingExpense = null
-                        showExpenseSheet = true
-                    }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add expense")
-                    }
-                }
+                Text("Expenses", style = MaterialTheme.typography.titleMedium)
             }
             if (state.expenses.isEmpty()) {
                 item {
