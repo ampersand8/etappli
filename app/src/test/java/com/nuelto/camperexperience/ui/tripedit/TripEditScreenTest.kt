@@ -12,6 +12,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -32,8 +33,12 @@ class TripEditScreenTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val events = mutableListOf<String>()
 
-    private fun setContent(tripId: String? = null) {
-        val handle = if (tripId == null) SavedStateHandle() else SavedStateHandle(mapOf("tripId" to tripId))
+    private fun setContent(tripId: String? = null, planned: Boolean = false) {
+        val handle = when {
+            tripId != null -> SavedStateHandle(mapOf("tripId" to tripId))
+            planned -> SavedStateHandle(mapOf("planned" to true))
+            else -> SavedStateHandle()
+        }
         val viewModel = TripEditViewModel(handle, tripRepository)
         compose.setContent {
             TripEditScreen(
@@ -56,6 +61,18 @@ class TripEditScreenTest {
             val trip = tripRepository.trips().first().single()
             assertEquals("Jura", trip.name)
             assertEquals(listOf("saved:${trip.id}:true"), events)
+        }
+    }
+
+    @Test
+    fun `plan mode titles the form and saves a planned tour`() {
+        setContent(planned = true)
+        compose.onNodeWithText("Plan a tour").assertIsDisplayed()
+        compose.onNodeWithText("Planned start").assertIsDisplayed()
+        compose.onNodeWithText("Trip name").performTextInput("Ticino")
+        compose.onNodeWithText("Save").performClick()
+        runBlocking {
+            assertEquals(TripStatus.PLANNED, tripRepository.trips().first().single().status)
         }
     }
 

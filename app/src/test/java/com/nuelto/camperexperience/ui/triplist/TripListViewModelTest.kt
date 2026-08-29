@@ -8,6 +8,7 @@ import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
@@ -28,35 +29,78 @@ class TripListViewModelTest {
 
     private fun viewModel() = TripListViewModel(tripRepository, settingsRepository)
 
-    @Test
-    fun `initial state is loading with no trips`() {
-        val state = viewModel().uiState.value
-        assertTrue(state.loading)
-        assertTrue(state.trips.isEmpty())
+    private suspend fun addDoneTrip(id: String, start: LocalDate = LocalDate.of(2026, 7, 1)) {
+        tripRepository.upsertTrip(
+            Trip(id = id, name = id, startDate = start, endDate = start.plusDays(5), status = TripStatus.DONE),
+        )
     }
 
     @Test
-    fun `emits trips settings and fuel estimates`() = runTest {
-        tripRepository.upsertTrip(Trip(id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1)))
-        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(47.0, 7.0), orderIndex = 0))
-        tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", location = LatLng(47.5, 7.5), orderIndex = 1))
-        settingsRepository.update(UserSettings(currency = "EUR"))
+    fun `initial state is loading and empty`() {
+        val state = viewModel().uiState.value
+        assertTrue(state.loading)
+        assertTrue(state.isEmpty)
+    }
+
+    @Test
+    fun `trips are sectioned by status with planned sorted soonest-first`() = runTest {
+        addDoneTrip("done")
+        tripRepository.upsertTrip(
+            Trip(id = "active", name = "Now", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertTrip(
+            Trip(id = "later", name = "Later", startDate = LocalDate.of(2027, 8, 1), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertTrip(
+            Trip(id = "soon", name = "Soon", startDate = LocalDate.of(2027, 6, 1), status = TripStatus.PLANNED),
+        )
 
         viewModel().uiState.test {
             val state = awaitItem()
             assertFalse(state.loading)
-            assertEquals(listOf("Jura"), state.trips.map { it.name })
-            assertEquals("EUR", state.settings.currency)
-            assertTrue(state.fuelEstimates.getValue("t1") > 0.0)
+            assertFalse(state.isEmpty)
+            assertEquals(listOf("active"), state.active.map { it.id })
+            assertEquals(listOf("soon", "later"), state.planned.map { it.id })
+            assertEquals(listOf("done"), state.done.map { it.id })
         }
     }
 
     @Test
-    fun `trips with recorded fuel get no estimate`() = runTest {
-        tripRepository.upsertTrip(Trip(id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1)))
-        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(47.0, 7.0), orderIndex = 0))
-        tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", location = LatLng(47.5, 7.5), orderIndex = 1))
-        tripRepository.upsertExpense(Expense(id = "e1", tripId = "t1", type = ExpenseType.FUEL, amount = 50.0))
+    fun `planned and active trips get a live estimate, done trips do not`() = runTest {
+        addDoneTrip("done")
+        tripRepository.upsertTrip(
+            Trip(id = "plan", name = "Plan", startDate = LocalDate.of(2027, 6, 1), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "plan", nights = 2, costKnown = false))
+        settingsRepository.update(UserSettings(campsitePerNight = 45.0))
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertEquals(setOf("plan"), state.estimates.keys)
+            assertEquals(90.0, state.estimates.getValue("plan").total, 1e-9)
+            assertTrue(state.estimates.getValue("plan").hasEstimates)
+        }
+    }
+
+    @Test
+    fun `done trips without logged fuel keep the auto fuel estimate`() = runTest {
+        addDoneTrip("done")
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "done", location = LatLng(47.0, 7.0), orderIndex = 0))
+        tripRepository.upsertStop(Stop(id = "s2", tripId = "done", location = LatLng(47.5, 7.5), orderIndex = 1))
+
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertTrue(state.fuelEstimates.getValue("done") > 0.0)
+            assertTrue(state.estimates.isEmpty())
+        }
+    }
+
+    @Test
+    fun `done trips with recorded fuel get no estimate`() = runTest {
+        addDoneTrip("done")
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "done", location = LatLng(47.0, 7.0), orderIndex = 0))
+        tripRepository.upsertStop(Stop(id = "s2", tripId = "done", location = LatLng(47.5, 7.5), orderIndex = 1))
+        tripRepository.upsertExpense(Expense(id = "e1", tripId = "done", type = ExpenseType.FUEL, amount = 50.0))
 
         viewModel().uiState.test {
             assertTrue(awaitItem().fuelEstimates.isEmpty())
@@ -65,9 +109,10 @@ class TripListViewModelTest {
 
     @Test
     fun `estimates only use the trips own stops and expenses`() = runTest {
-        // t1 has a route; t2 has fuel logged. Cross-contamination would flip both.
-        tripRepository.upsertTrip(Trip(id = "t1", name = "A", startDate = LocalDate.of(2026, 7, 1)))
-        tripRepository.upsertTrip(Trip(id = "t2", name = "B", startDate = LocalDate.of(2026, 8, 1)))
+        addDoneTrip("t2", start = LocalDate.of(2026, 8, 1))
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "A", startDate = LocalDate.of(2026, 7, 1), endDate = LocalDate.of(2026, 7, 6), status = TripStatus.DONE),
+        )
         tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(47.0, 7.0), orderIndex = 0))
         tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", location = LatLng(47.5, 7.5), orderIndex = 1))
         tripRepository.upsertStop(Stop(id = "s3", tripId = "t2", location = LatLng(46.0, 6.0), orderIndex = 0))
@@ -80,12 +125,15 @@ class TripListViewModelTest {
     }
 
     @Test
-    fun `state updates when a trip is added`() = runTest {
+    fun `settings flow through and state updates when a trip is added`() = runTest {
+        settingsRepository.update(UserSettings(currency = "EUR"))
         val vm = viewModel()
         vm.uiState.test {
-            assertTrue(awaitItem().trips.isEmpty())
+            val empty = awaitItem()
+            assertTrue(empty.isEmpty)
+            assertEquals("EUR", empty.settings.currency)
             tripRepository.upsertTrip(Trip(id = "t1", name = "New", startDate = LocalDate.of(2026, 7, 1)))
-            assertEquals(listOf("New"), awaitItem().trips.map { it.name })
+            assertEquals(listOf("New"), awaitItem().active.map { it.name })
         }
     }
 }

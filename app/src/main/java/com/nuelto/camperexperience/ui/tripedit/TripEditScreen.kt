@@ -39,7 +39,16 @@ fun TripEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.isNew) "New trip" else "Edit trip") },
+                title = {
+                    Text(
+                        when {
+                            state.isNew && state.isPlan -> "Plan a tour"
+                            state.isNew -> "New trip"
+                            state.isPlan -> "Edit plan"
+                            else -> "Edit trip"
+                        },
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel")
@@ -64,7 +73,7 @@ fun TripEditScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             DateField(
-                label = "Start date",
+                label = if (state.isPlan) "Planned start" else "Start date",
                 date = state.startDate,
                 onDateChange = viewModel::setStartDate,
             )
