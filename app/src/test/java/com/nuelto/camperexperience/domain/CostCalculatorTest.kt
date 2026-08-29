@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.domain
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -71,5 +72,29 @@ class CostCalculatorTest {
     fun `empty trip totals zero`() {
         assertEquals(0.0, CostCalculator.tripTotal(emptyList(), emptyList()), 1e-9)
         assertEquals(0, CostCalculator.tripNights(emptyList()))
+    }
+
+    @Test
+    fun `skipped stops count toward nothing`() {
+        val withSkipped = stops + Stop(
+            id = "s3",
+            campingCostTotal = 55.0,
+            nights = 2,
+            state = StopState.SKIPPED,
+        )
+        assertEquals(CostCalculator.tripTotal(stops, expenses), CostCalculator.tripTotal(withSkipped, expenses), 1e-9)
+        assertEquals(7, CostCalculator.tripNights(withSkipped))
+        assertEquals(
+            84.0 + 128.0 + 10.0,
+            CostCalculator.breakdown(withSkipped, expenses).getValue(ExpenseType.CAMPING),
+            1e-9,
+        )
+    }
+
+    @Test
+    fun `done stops still count`() {
+        val done = listOf(Stop(id = "s1", campingCostTotal = 30.0, nights = 1, state = StopState.DONE))
+        assertEquals(30.0, CostCalculator.tripTotal(done, emptyList()), 1e-9)
+        assertEquals(1, CostCalculator.tripNights(done))
     }
 }

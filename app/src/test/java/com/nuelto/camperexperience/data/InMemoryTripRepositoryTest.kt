@@ -4,7 +4,10 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -111,6 +114,17 @@ class InMemoryTripRepositoryTest {
     }
 
     @Test
+    fun `skipped stops are excluded from totals`() = runTest {
+        val id = addTrip()
+        repo.upsertStop(Stop(id = "kept", tripId = id, nights = 2, campingCostTotal = 50.0))
+        repo.upsertStop(
+            Stop(id = "skipped", tripId = id, nights = 3, campingCostTotal = 90.0, state = StopState.SKIPPED),
+        )
+        assertEquals(50.0, repo.trip(id).first()!!.totalCost, 1e-9)
+        assertEquals(2, repo.trip(id).first()!!.nights)
+    }
+
+    @Test
     fun `totals of other trips are untouched`() = runTest {
         val a = addTrip(id = "a")
         val b = addTrip(id = "b")
@@ -148,13 +162,23 @@ class InMemoryTripRepositoryTest {
     fun `seeded repository has consistent demo data`() = runTest {
         val seeded = InMemoryTripRepository(seed = true)
         val trips = seeded.trips().first()
-        assertEquals(2, trips.size)
-        // Schwarzwald (2026) starts after Provence (2025) -> sorted first.
-        assertEquals("Schwarzwald", trips[0].name)
-        assertEquals("Provence", trips[1].name)
+        assertEquals(3, trips.size)
+        // Sorted by start date descending: Jura (2027, planned), Schwarzwald, Provence.
+        assertEquals("Jura–Ticino Runde", trips[0].name)
+        assertEquals("Schwarzwald", trips[1].name)
+        assertEquals("Provence", trips[2].name)
+        assertEquals(TripStatus.PLANNED, trips[0].status)
+        assertEquals(TripStatus.DONE, trips[1].status)
+        assertEquals(TripStatus.DONE, trips[2].status)
         // Exact seeded totals: dropping seeded stops or expenses must be caught.
-        assertEquals(84.0 + 128.0 + 30.0 + 145.30 + 98.60 + 61.40, trips[1].totalCost, 1e-9)
-        assertEquals(9, trips[1].nights)
+        assertEquals(84.0 + 128.0 + 30.0 + 145.30 + 98.60 + 61.40, trips[2].totalCost, 1e-9)
+        assertEquals(9, trips[2].nights)
+        // Planned trip: recorded numbers only (entered price + vignette estimate).
+        assertEquals(186.0 + 40.0, trips[0].totalCost, 1e-9)
+        assertEquals(6, trips[0].nights)
+        val juraStops = seeded.stops(trips[0].id).first()
+        assertEquals(listOf(StopKind.CAMPSITE, StopKind.VISIT, StopKind.STELLPLATZ, StopKind.CAMPSITE), juraStops.map { it.kind })
+        assertEquals(listOf(false, true, false, true), juraStops.map { it.costKnown })
         for (trip in trips) {
             val stops = seeded.stops(trip.id).first()
             val expenses = seeded.expenses(trip.id).first()
