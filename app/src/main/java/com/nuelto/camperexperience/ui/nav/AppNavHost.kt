@@ -28,7 +28,7 @@ fun AppNavHost() {
         composable<TripListRoute> {
             TripListScreen(
                 onTripClick = { tripId -> navController.navigate(TripDetailRoute(tripId)) },
-                onAddTrip = { navController.navigate(TripEditRoute()) },
+                onAddTrip = { planned -> navController.navigate(TripEditRoute(planned = planned)) },
                 onOpenMap = { navController.navigate(AllTripsMapRoute()) },
                 onOpenSettings = { navController.navigate(SettingsRoute) },
             )

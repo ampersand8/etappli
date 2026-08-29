@@ -9,7 +9,7 @@ object TripListRoute
 data class TripDetailRoute(val tripId: String)
 
 @Serializable
-data class TripEditRoute(val tripId: String? = null)
+data class TripEditRoute(val tripId: String? = null, val planned: Boolean = false)
 
 @Serializable
 data class StopEditRoute(val tripId: String, val stopId: String? = null)

@@ -8,6 +8,7 @@ import androidx.navigation.toRoute
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.ui.nav.TripEditRoute
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,7 @@ data class TripEditUiState(
     val endDate: LocalDate? = null,
     val notes: String = "",
     val isNew: Boolean = true,
+    val isPlan: Boolean = false,
     val loaded: Boolean = false,
 ) {
     val canSave: Boolean get() = name.isNotBlank()
@@ -32,7 +34,8 @@ class TripEditViewModel(
     private val tripRepository: TripRepository,
 ) : ViewModel() {
 
-    private val tripId: String? = savedStateHandle.toRoute<TripEditRoute>().tripId
+    private val route: TripEditRoute = savedStateHandle.toRoute<TripEditRoute>()
+    private val tripId: String? = route.tripId
     private var existing: Trip? = null
 
     private val _uiState = MutableStateFlow(TripEditUiState())
@@ -46,7 +49,7 @@ class TripEditViewModel(
             val trip = existing
             _uiState.update {
                 if (trip == null) {
-                    it.copy(loaded = true)
+                    it.copy(isPlan = route.planned, loaded = true)
                 } else {
                     TripEditUiState(
                         name = trip.name,
@@ -54,6 +57,7 @@ class TripEditViewModel(
                         endDate = trip.endDate,
                         notes = trip.notes,
                         isNew = false,
+                        isPlan = trip.status == TripStatus.PLANNED,
                         loaded = true,
                     )
                 }
@@ -71,12 +75,21 @@ class TripEditViewModel(
         if (!state.canSave) return
         viewModelScope.launch {
             val base = existing ?: Trip()
+            val endDate = state.endDate
+            val status = when {
+                state.isNew && state.isPlan -> TripStatus.PLANNED
+                // Logging/editing a trip that already ended finishes it right away.
+                base.status != TripStatus.PLANNED && endDate != null && endDate.isBefore(LocalDate.now()) ->
+                    TripStatus.DONE
+                else -> base.status
+            }
             val savedId = tripRepository.upsertTrip(
                 base.copy(
                     name = state.name.trim(),
                     startDate = state.startDate,
-                    endDate = state.endDate,
+                    endDate = endDate,
                     notes = state.notes.trim(),
+                    status = status,
                 ),
             )
             onSaved(savedId, state.isNew)

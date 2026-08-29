@@ -14,6 +14,7 @@ import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -40,7 +41,7 @@ class TripListScreenTest {
         compose.setContent {
             TripListScreen(
                 onTripClick = { clicks += "trip:$it" },
-                onAddTrip = { clicks += "add" },
+                onAddTrip = { planned -> clicks += if (planned) "plan" else "log" },
                 onOpenMap = { clicks += "map" },
                 onOpenSettings = { clicks += "settings" },
                 viewModel = viewModel,
@@ -51,7 +52,7 @@ class TripListScreenTest {
     @Test
     fun `empty state prompts for the first trip`() {
         setContent()
-        compose.onNodeWithText("No trips yet.\nTap + to log your first one.").assertIsDisplayed()
+        compose.onNodeWithText("No trips yet.\nTap + to plan a tour or log a trip.").assertIsDisplayed()
     }
 
     @Test
@@ -68,8 +69,13 @@ class TripListScreenTest {
     }
 
     @Test
-    fun `trips without logged fuel show an approximate total`() = runBlocking<Unit> {
-        tripRepository.upsertTrip(Trip(id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1)))
+    fun `done trips without logged fuel show an approximate total`() = runBlocking<Unit> {
+        tripRepository.upsertTrip(
+            Trip(
+                id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1),
+                endDate = LocalDate.of(2026, 7, 6), status = TripStatus.DONE,
+            ),
+        )
         tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(47.0, 7.0), orderIndex = 0))
         tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", location = LatLng(47.5, 7.5), orderIndex = 1))
         setContent()
@@ -77,12 +83,45 @@ class TripListScreenTest {
     }
 
     @Test
-    fun `top bar and fab fire navigation callbacks`() {
+    fun `trips are sectioned by status`() = runBlocking<Unit> {
+        tripRepository.upsertTrip(
+            Trip(id = "active", name = "Unterwegs", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertTrip(
+            Trip(id = "plan", name = "Jura-Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertTrip(
+            Trip(
+                id = "done", name = "Provence", startDate = LocalDate.of(2025, 9, 12),
+                endDate = LocalDate.of(2025, 9, 21), status = TripStatus.DONE,
+            ),
+        )
+        setContent()
+        compose.onNodeWithText("On the road").assertIsDisplayed()
+        compose.onNodeWithText("Planned tours").assertIsDisplayed()
+        compose.onNodeWithText("Done").assertIsDisplayed()
+    }
+
+    @Test
+    fun `planned cards show the live default-rate estimate`() = runBlocking<Unit> {
+        tripRepository.upsertTrip(
+            Trip(id = "plan", name = "Jura-Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "plan", nights = 2, costKnown = false))
+        setContent()
+        compose.onNodeWithText("≈ CHF90.00").assertIsDisplayed()
+    }
+
+    @Test
+    fun `top bar and fab menu fire navigation callbacks`() {
         setContent()
         compose.onNodeWithContentDescription("All trips map").performClick()
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithContentDescription("New trip").performClick()
-        assertEquals(listOf("map", "settings", "add"), clicks)
+        compose.onNodeWithText("Log a trip", useUnmergedTree = true).performClick()
+        compose.onNodeWithContentDescription("New trip").performClick()
+        compose.onNodeWithText("Plan a tour", useUnmergedTree = true).performClick()
+        assertEquals(listOf("map", "settings", "log", "plan"), clicks)
     }
 
     @Test

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -106,5 +107,48 @@ class TripEditViewModelTest {
         val state = editViewModel("gone").uiState.value
         assertTrue(state.isNew)
         assertTrue(state.loaded)
+    }
+
+    @Test
+    fun `a plan route creates a planned tour`() = runTest {
+        val vm = TripEditViewModel(SavedStateHandle(mapOf("planned" to true)), tripRepository)
+        assertTrue(vm.uiState.value.isPlan)
+        vm.setName("Ticino")
+        vm.save { _, _ -> }
+        assertEquals(TripStatus.PLANNED, tripRepository.trips().first().single().status)
+    }
+
+    @Test
+    fun `a new trip with a past end date is saved as done`() = runTest {
+        val vm = newTripViewModel()
+        assertFalse(vm.uiState.value.isPlan)
+        vm.setName("Last month")
+        vm.setStartDate(LocalDate.now().minusDays(20))
+        vm.setEndDate(LocalDate.now().minusDays(10))
+        vm.save { _, _ -> }
+        assertEquals(TripStatus.DONE, tripRepository.trips().first().single().status)
+    }
+
+    @Test
+    fun `an open-ended trip stays active`() = runTest {
+        val vm = newTripViewModel()
+        vm.setName("Ongoing")
+        vm.save { _, _ -> }
+        assertEquals(TripStatus.ACTIVE, tripRepository.trips().first().single().status)
+    }
+
+    @Test
+    fun `editing a planned tour keeps it planned even with past dates`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(
+                id = "p1", name = "Plan", startDate = LocalDate.now().minusDays(30),
+                endDate = LocalDate.now().minusDays(20), status = TripStatus.PLANNED,
+            ),
+        )
+        val vm = editViewModel("p1")
+        assertTrue(vm.uiState.value.isPlan)
+        vm.setName("Plan B")
+        vm.save { _, _ -> }
+        assertEquals(TripStatus.PLANNED, tripRepository.trip("p1").first()!!.status)
     }
 }

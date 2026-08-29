@@ -66,11 +66,23 @@ class AppNavHostTest {
     fun `new trip is created and opened`() {
         setContent()
         compose.onNodeWithContentDescription("New trip").performClick()
+        compose.onNodeWithText("Log a trip", useUnmergedTree = true).performClick()
         compose.onNodeWithText("Trip name").performTextInput("Ticino")
         compose.onNodeWithText("Save").performClick()
         // Saved -> pops the editor and navigates into the new trip.
         compose.onNodeWithText("Ticino").assertIsDisplayed()
         compose.onNodeWithText("No stops yet — add where you camped.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a tour is planned from the fab menu`() {
+        setContent()
+        compose.onNodeWithContentDescription("New trip").performClick()
+        compose.onNodeWithText("Plan a tour", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Planned start").assertIsDisplayed()
+        compose.onNodeWithText("Trip name").performTextInput("Ticino-Tour")
+        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Ticino-Tour").assertIsDisplayed()
     }
 
     @Test
