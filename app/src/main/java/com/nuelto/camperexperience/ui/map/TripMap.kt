@@ -1,9 +1,12 @@
 package com.nuelto.camperexperience.ui.map
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.nuelto.camperexperience.data.model.Stop
@@ -30,6 +33,12 @@ import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 
 const val MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+
+/**
+ * Test seam: MapLibre needs a native GL surface that doesn't exist under Robolectric,
+ * so UI tests provide `false` to swap the map for an empty placeholder.
+ */
+val LocalMapEnabled = staticCompositionLocalOf { true }
 
 /** Distinct marker/route color per trip, cycling through a fixed palette. */
 val tripColorPalette = listOf(
@@ -62,12 +71,18 @@ private fun Stop.position(): Position? =
 fun TripMap(
     data: List<TripMapData>,
     modifier: Modifier = Modifier,
-    cameraState: CameraState = rememberCameraState(
-        firstPosition = CameraPosition(target = Position(longitude = 8.2, latitude = 46.8), zoom = 6.0),
-    ),
+    cameraState: CameraState? = null,
     fitToStops: Boolean = true,
     onStopClick: ((tripId: String, stopId: String) -> Unit)? = null,
 ) {
+    if (!LocalMapEnabled.current) {
+        Box(modifier.testTag("map-placeholder"))
+        return
+    }
+    @Suppress("NAME_SHADOWING")
+    val cameraState = cameraState ?: rememberCameraState(
+        firstPosition = CameraPosition(target = Position(longitude = 8.2, latitude = 46.8), zoom = 6.0),
+    )
     val allPositions = data.flatMap { it.stops.sortedBy { s -> s.orderIndex }.mapNotNull { s -> s.position() } }
 
     if (fitToStops) {
