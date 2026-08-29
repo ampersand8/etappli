@@ -100,6 +100,17 @@ class InMemoryTripRepositoryTest {
     }
 
     @Test
+    fun `upserting a trip recomputes totals from its stops and expenses`() = runTest {
+        val id = addTrip()
+        repo.upsertStop(Stop(id = "s1", tripId = id, nights = 2, campingCostTotal = 50.0))
+        // A fresh Trip object with stale zero totals must come back recomputed.
+        repo.upsertTrip(Trip(id = id, name = "Renamed", startDate = LocalDate.of(2026, 6, 1)))
+        val trip = repo.trip(id).first()!!
+        assertEquals(50.0, trip.totalCost, 1e-9)
+        assertEquals(2, trip.nights)
+    }
+
+    @Test
     fun `totals of other trips are untouched`() = runTest {
         val a = addTrip(id = "a")
         val b = addTrip(id = "b")
@@ -141,10 +152,14 @@ class InMemoryTripRepositoryTest {
         // Schwarzwald (2026) starts after Provence (2025) -> sorted first.
         assertEquals("Schwarzwald", trips[0].name)
         assertEquals("Provence", trips[1].name)
+        // Exact seeded totals: dropping seeded stops or expenses must be caught.
+        assertEquals(84.0 + 128.0 + 30.0 + 145.30 + 98.60 + 61.40, trips[1].totalCost, 1e-9)
+        assertEquals(9, trips[1].nights)
         for (trip in trips) {
             val stops = seeded.stops(trip.id).first()
             val expenses = seeded.expenses(trip.id).first()
             assertTrue(stops.isNotEmpty())
+            assertTrue(expenses.isNotEmpty())
             assertEquals(stops.sumOf { it.nights }, trip.nights)
             assertEquals(
                 stops.sumOf { it.campingCostTotal } + expenses.sumOf { it.amount },

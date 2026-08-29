@@ -157,15 +157,20 @@ tasks.register<JavaExec>("pitest") {
     classpath = pitest
     mainClass.set("org.pitest.mutationtest.commandline.MutationCoverageReport")
     val cpFile = layout.buildDirectory.file("pitest/classpath.txt")
+    // The unit-test classpath carries app code as a jar; pitest only mutates class
+    // directories, so the raw kotlin output dir is added as the mutable code path.
+    val mainClassesDir = layout.buildDirectory.dir("tmp/kotlin-classes/debug")
     doFirst {
         val testClasspath = tasks.named<Test>("testDebugUnitTest").get().classpath
         cpFile.get().asFile.apply {
             parentFile.mkdirs()
-            writeText(testClasspath.filter { it.exists() }.joinToString("\n") { it.absolutePath })
+            val entries = listOf(mainClassesDir.get().asFile) + testClasspath.filter { it.exists() }
+            writeText(entries.joinToString("\n") { it.absolutePath })
         }
     }
     args(
         "--classPathFile", cpFile.get().asFile.absolutePath,
+        "--mutableCodePaths", mainClassesDir.get().asFile.absolutePath,
         "--targetClasses",
         listOf(
             "com.nuelto.camperexperience.domain.*",
@@ -174,7 +179,9 @@ tasks.register<JavaExec>("pitest") {
             "com.nuelto.camperexperience.ui.triplist.TripListViewModel",
             "com.nuelto.camperexperience.ui.settings.SettingsViewModel",
         ).joinToString(","),
-        "--excludedClasses", "*\$Companion",
+        // $$inlined$: synthetic coroutine/flow machinery; avoidCallsTo: compiler null-check noise.
+        "--excludedClasses", "*\$Companion,*Test,*Test\$*,*\$\$inlined\$*",
+        "--avoidCallsTo", "kotlin.jvm.internal,kotlin.ResultKt",
         "--targetTests",
         listOf(
             "com.nuelto.camperexperience.domain.*",

@@ -42,7 +42,6 @@ import com.nuelto.camperexperience.ui.components.DecimalField
 import com.nuelto.camperexperience.ui.components.parseDecimal
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -52,7 +51,7 @@ class SettingsViewModel(
 ) : ViewModel() {
 
     val settings: StateFlow<UserSettings?> =
-        settingsRepository.settings().map { it }
+        settingsRepository.settings()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun update(settings: UserSettings) {
