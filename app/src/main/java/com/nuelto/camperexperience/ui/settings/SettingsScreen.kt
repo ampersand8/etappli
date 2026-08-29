@@ -132,6 +132,25 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            Text("Camping estimate defaults", style = MaterialTheme.typography.titleMedium)
+            NumberSetting(
+                label = "Campsite",
+                suffix = "per night",
+                value = current.campsitePerNight,
+                onCommit = { viewModel.update(current.copy(campsitePerNight = it)) },
+            )
+            NumberSetting(
+                label = "Stellplatz",
+                suffix = "per night",
+                value = current.stellplatzPerNight,
+                onCommit = { viewModel.update(current.copy(stellplatzPerNight = it)) },
+            )
+            Text(
+                "Used for planned stops without a price. Free camps and visits estimate at zero.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             if (viewModel.authRepository != null) {
                 HorizontalDivider()
                 OutlinedButton(
