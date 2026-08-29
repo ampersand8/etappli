@@ -44,6 +44,30 @@ class CostCalculatorTest {
     }
 
     @Test
+    fun `zero-cost categories are omitted, not listed as zero`() {
+        assertEquals(emptyMap<ExpenseType, Double>(), CostCalculator.breakdown(emptyList(), emptyList()))
+        val freeStop = Stop(id = "s1", campingCostTotal = 0.0)
+        assertEquals(
+            setOf(ExpenseType.FUEL),
+            CostCalculator.breakdown(listOf(freeStop), listOf(Expense(id = "e", type = ExpenseType.FUEL, amount = 5.0))).keys,
+        )
+    }
+
+    @Test
+    fun `breakdown lists categories in fixed order`() {
+        val all = listOf(
+            Expense(id = "o", type = ExpenseType.OTHER, amount = 1.0),
+            Expense(id = "r", type = ExpenseType.ROAD_TAX, amount = 2.0),
+            Expense(id = "f", type = ExpenseType.FUEL, amount = 3.0),
+            Expense(id = "c", type = ExpenseType.CAMPING, amount = 4.0),
+        )
+        assertEquals(
+            listOf(ExpenseType.CAMPING, ExpenseType.FUEL, ExpenseType.ROAD_TAX, ExpenseType.OTHER),
+            CostCalculator.breakdown(emptyList(), all).keys.toList(),
+        )
+    }
+
+    @Test
     fun `empty trip totals zero`() {
         assertEquals(0.0, CostCalculator.tripTotal(emptyList(), emptyList()), 1e-9)
         assertEquals(0, CostCalculator.tripNights(emptyList()))

@@ -60,6 +60,9 @@ class FuelEstimatorTest {
         )
         val fuel = Expense(id = "e1", type = ExpenseType.FUEL, amount = 80.0)
         assertNull(FuelEstimator.autoTripFuelCost(stops, listOf(fuel), UserSettings()))
+        // Fuel logged after other expense types must suppress the estimate too.
+        val tax = Expense(id = "e2", type = ExpenseType.ROAD_TAX, amount = 10.0)
+        assertNull(FuelEstimator.autoTripFuelCost(stops, listOf(tax, fuel), UserSettings()))
     }
 
     @Test
@@ -78,6 +81,20 @@ class FuelEstimatorTest {
         val stops = listOf(Stop(id = "a", location = LatLng(47.0, 8.0), orderIndex = 0))
         assertNull(FuelEstimator.autoTripFuelCost(stops, emptyList(), UserSettings()))
         assertNull(FuelEstimator.autoTripFuelCost(emptyList(), emptyList(), UserSettings()))
+    }
+
+    @Test
+    fun `stops are routed by order index, not list order`() {
+        val a = Stop(id = "a", location = LatLng(47.0, 8.0), orderIndex = 0)
+        val b = Stop(id = "b", location = LatLng(47.0, 9.0), orderIndex = 1)
+        val c = Stop(id = "c", location = LatLng(48.0, 8.0), orderIndex = 2)
+        val ordered = GeoUtils.routeLengthKm(listOf(a.location!!, b.location!!, c.location!!))
+        // Shuffled input must still be routed a -> b -> c.
+        assertEquals(
+            ordered * 1.25,
+            FuelEstimator.defaultTripDistanceKm(listOf(c, a, b), UserSettings(roadDistanceFactor = 1.25)),
+            1e-9,
+        )
     }
 
     @Test

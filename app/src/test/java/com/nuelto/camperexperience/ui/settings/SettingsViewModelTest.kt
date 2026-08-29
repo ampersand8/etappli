@@ -40,7 +40,9 @@ class SettingsViewModelTest {
     @Test
     fun `sign out delegates to the auth repository`() {
         val auth = FakeAuthRepository()
-        SettingsViewModel(settingsRepository, auth).signOut()
+        val vm = SettingsViewModel(settingsRepository, auth)
+        assertEquals(auth, vm.authRepository)
+        vm.signOut()
         assertEquals(1, auth.signOutCalls)
     }
 
