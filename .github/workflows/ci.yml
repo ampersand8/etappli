@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: the version's patch number is the commit count
 
       - uses: actions/setup-java@v4
         with:
@@ -26,6 +28,19 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug
+
+      - name: Compute version
+        if: github.event_name == 'push'
+        id: version
+        run: echo "v=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2).$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload screenshots (written by ScreenshotsTest)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-v${{ steps.version.outputs.v }}
+          path: app/build/screenshots
+          retention-days: 90
 
       - name: Upload reports
         if: always()

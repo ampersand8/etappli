@@ -34,6 +34,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.AuthRepository
 import com.nuelto.camperexperience.data.SettingsRepository
@@ -140,6 +141,13 @@ fun SettingsScreen(
                     Text("Sign out")
                 }
             }
+
+            HorizontalDivider()
+            Text(
+                "Version ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
