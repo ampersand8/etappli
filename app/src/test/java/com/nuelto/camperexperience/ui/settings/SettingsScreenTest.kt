@@ -44,6 +44,19 @@ class SettingsScreenTest {
         compose.onNodeWithText("10.0").assertIsDisplayed() // consumption
         compose.onNodeWithText("1.8").assertIsDisplayed() // fuel price
         compose.onNodeWithText("1.25").assertIsDisplayed() // road factor
+        compose.onNodeWithText("45.0").assertIsDisplayed() // campsite per night
+        compose.onNodeWithText("15.0").assertIsDisplayed() // stellplatz per night
+    }
+
+    @Test
+    fun `camping rate edits are committed while typing`() {
+        setContent()
+        compose.onNodeWithText("45.0").performTextReplacement("50")
+        compose.onNodeWithText("15.0").performTextReplacement("18")
+        runBlocking {
+            assertEquals(50.0, settingsRepository.settings().first().campsitePerNight, 1e-9)
+            assertEquals(18.0, settingsRepository.settings().first().stellplatzPerNight, 1e-9)
+        }
     }
 
     @Test
