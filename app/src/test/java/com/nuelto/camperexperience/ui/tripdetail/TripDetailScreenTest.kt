@@ -1,13 +1,17 @@
 package com.nuelto.camperexperience.ui.tripdetail
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,7 +21,10 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import com.nuelto.camperexperience.ui.map.LocalMapEnabled
 import java.time.LocalDate
@@ -45,7 +52,7 @@ class TripDetailScreenTest {
         tripRepository.upsertTrip(
             Trip(
                 id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1),
-                endDate = LocalDate.of(2026, 7, 4), notes = "Rainy but great",
+                endDate = LocalDate.of(2026, 7, 4), notes = "Rainy but great", status = TripStatus.DONE,
             ),
         )
         tripRepository.upsertStop(
@@ -70,6 +77,48 @@ class TripDetailScreenTest {
         }
     }
 
+    private fun seedPlan() = runBlocking {
+        tripRepository.upsertTrip(
+            Trip(id = "p1", name = "Ticino-Tour", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "s1", tripId = "p1", name = "Camping Lido", nights = 2, orderIndex = 0,
+                costKnown = false, location = LatLng(47.05, 8.31), arrivalDate = LocalDate.of(2027, 6, 10),
+            ),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "s2", tripId = "p1", name = "Camping Delta", nights = 3, campingCostTotal = 186.0,
+                orderIndex = 1, location = LatLng(46.16, 8.79), arrivalDate = LocalDate.of(2027, 6, 12),
+            ),
+        )
+    }
+
+    private fun seedActive() = runBlocking {
+        tripRepository.upsertTrip(
+            Trip(id = "a1", name = "Unterwegs", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "done", tripId = "a1", name = "Camp Done", nights = 2, campingCostTotal = 96.0,
+                orderIndex = 0, state = StopState.DONE, arrivalDate = LocalDate.of(2026, 8, 20),
+            ),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "cur", tripId = "a1", name = "Camp Current", nights = 3, orderIndex = 1,
+                costKnown = false, location = LatLng(46.16, 8.79), arrivalDate = LocalDate.of(2026, 8, 22),
+            ),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "up", tripId = "a1", name = "Camp Later", nights = 1, orderIndex = 2,
+                costKnown = false, arrivalDate = LocalDate.of(2026, 8, 25),
+            ),
+        )
+    }
+
     private fun setContent(tripId: String = "t1") {
         val viewModel = TripDetailViewModel(
             SavedStateHandle(mapOf("tripId" to tripId)),
@@ -84,6 +133,7 @@ class TripDetailScreenTest {
                     onAddStop = { events += "addStop:$it" },
                     onEditStop = { tripId2, stopId -> events += "editStop:$tripId2:$stopId" },
                     onOpenTripMap = { events += "map:$it" },
+                    onOpenTrip = { events += "open:$it" },
                     viewModel = viewModel,
                 )
             }
@@ -105,12 +155,16 @@ class TripDetailScreenTest {
         compose.onNodeWithText("Road tax").assertIsDisplayed()
         // The OTHER expense has no label -> falls back to type name; "(estimate)" tag shown.
         compose.onNodeWithText("  (estimate)").assertIsDisplayed()
+        // Done chip in the top bar.
+        compose.onNodeWithText("Done").assertIsDisplayed()
     }
 
     @Test
     fun `empty trip prompts for stops and expenses`() {
         runBlocking {
-            tripRepository.upsertTrip(Trip(id = "t1", name = "Empty", startDate = LocalDate.of(2026, 7, 1)))
+            tripRepository.upsertTrip(
+                Trip(id = "t1", name = "Empty", startDate = LocalDate.of(2026, 7, 1), status = TripStatus.DONE),
+            )
         }
         setContent()
         compose.onNodeWithText("No stops yet — add where you camped.").assertIsDisplayed()
@@ -250,5 +304,247 @@ class TripDetailScreenTest {
             val saved = tripRepository.expenses("t1").first().single { it.amount == 42.5 }
             assertEquals("t1", saved.tripId)
         }
+    }
+
+    // --- planned tours ---------------------------------------------------------------
+
+    @Test
+    fun `a planned tour shows the estimate card with the camping split`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNodeWithText("Estimated total").assertIsDisplayed()
+        // Known 186 + estimated 2×45, plus fuel from the route.
+        compose.onNodeWithText("CHF186.00 + ≈ CHF90.00").assertIsDisplayed()
+        compose.onNodeWithText("Planned").assertIsDisplayed()
+    }
+
+    @Test
+    fun `an unpriced planned stop shows its default-rate price`() {
+        seedPlan()
+        setContent("p1")
+        // 2 nights × CHF 45 default: once in the camping split, once on the stop row.
+        compose.onAllNodes(hasText("≈ CHF90.00", substring = true)).assertCountEquals(2)
+    }
+
+    @Test
+    fun `a plan with only default-rate stops shows a single estimated camping value`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(id = "p2", name = "Rough idea", startDate = LocalDate.of(2027, 7, 1), status = TripStatus.PLANNED),
+            )
+            tripRepository.upsertStop(Stop(id = "x1", tripId = "p2", name = "Somewhere", nights = 2, costKnown = false))
+        }
+        setContent("p2")
+        // Total row, camping row, and bottom bar all read the same estimated 2×45.
+        compose.onAllNodes(hasText("≈ CHF90.00")).assertCountEquals(3)
+    }
+
+    @Test
+    fun `a fully priced plan shows known camping and other rows without the approx sign`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(id = "p3", name = "Priced", startDate = LocalDate.of(2027, 7, 1), status = TripStatus.PLANNED),
+            )
+            tripRepository.upsertStop(
+                Stop(id = "x1", tripId = "p3", name = "Booked", nights = 2, campingCostTotal = 100.0),
+            )
+            tripRepository.upsertExpense(
+                Expense(id = "o1", tripId = "p3", type = ExpenseType.OTHER, amount = 12.0, label = "Museum"),
+            )
+        }
+        setContent("p3")
+        compose.onNodeWithText("CHF100.00").assertIsDisplayed() // known camping, no ≈
+        compose.onNodeWithText("Other").assertIsDisplayed()
+        compose.onAllNodes(hasText("CHF12.00")).assertCountEquals(2) // other row + expense list
+        compose.onAllNodes(hasText("CHF112.00")).assertCountEquals(2) // total row + bottom bar
+    }
+
+    @Test
+    fun `a vignette chip adds the road tax estimate`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNode(hasText("+ CH annual vignette", substring = true)).performClick()
+        runBlocking {
+            val expense = tripRepository.expenses("p1").first().single()
+            assertEquals(ExpenseType.ROAD_TAX, expense.type)
+            assertTrue(expense.isEstimate)
+        }
+    }
+
+    @Test
+    fun `planned stops reorder with the arrows`() {
+        seedPlan()
+        setContent("p1")
+        compose.onAllNodesWithContentDescription("Move down")[0].performClick()
+        runBlocking {
+            assertEquals(listOf("s2", "s1"), tripRepository.stops("p1").first().map { it.id })
+        }
+    }
+
+    @Test
+    fun `start tour keeps the plan and opens the new trip`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNodeWithText("Start tour").performClick()
+        compose.onNodeWithText("Keep plan as template").assertIsDisplayed()
+        compose.onNodeWithText("Start").performClick()
+        assertEquals(1, events.size)
+        assertTrue(events[0].startsWith("open:"))
+        assertTrue(events[0] != "open:p1")
+        runBlocking {
+            assertEquals(TripStatus.PLANNED, tripRepository.trip("p1").first()!!.status)
+            assertEquals(2, tripRepository.trips().first().size)
+        }
+    }
+
+    // --- active trips ----------------------------------------------------------------
+
+    @Test
+    fun `an active trip leads with tonight's stop`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("TONIGHT").assertIsDisplayed()
+        compose.onNodeWithText("Camp Current").assertIsDisplayed()
+        compose.onNodeWithText("Projected total").assertIsDisplayed()
+        compose.onNodeWithText("On the road").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the stepper extends the stay`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithContentDescription("One night more").performClick()
+        runBlocking {
+            assertEquals(4, tripRepository.stops("a1").first().single { it.id == "cur" }.nights)
+        }
+    }
+
+    @Test
+    fun `arrived opens the price prompt and saves the real price`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("✓ Arrived").performClick()
+        compose.onNodeWithText("Arrived at Camp Current").assertIsDisplayed()
+        compose.onNodeWithText("Price for the stay").performTextInput("120")
+        compose.onNodeWithText("Save price").performClick()
+        runBlocking {
+            val stop = tripRepository.stops("a1").first().single { it.id == "cur" }
+            assertEquals(StopState.DONE, stop.state)
+            assertEquals(120.0, stop.campingCostTotal, 1e-9)
+            assertTrue(stop.costKnown)
+        }
+    }
+
+    @Test
+    fun `arrived price prompt can be postponed`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("✓ Arrived").performClick()
+        compose.onNodeWithText("Later").performClick()
+        compose.onNodeWithText("Arrived at Camp Current").assertDoesNotExist()
+        runBlocking {
+            val stop = tripRepository.stops("a1").first().single { it.id == "cur" }
+            assertEquals(StopState.DONE, stop.state)
+            assertTrue(!stop.costKnown)
+        }
+    }
+
+    @Test
+    fun `the arrival prompt drops the estimate hint once the price is known`() {
+        runBlocking {
+            seedActive()
+            val cur = tripRepository.stops("a1").first().single { it.id == "cur" }
+            tripRepository.upsertStop(cur.copy(costKnown = true, campingCostTotal = 90.0))
+        }
+        setContent("a1")
+        compose.onNodeWithText("✓ Arrived").performClick()
+        compose.onNodeWithText("Arrived at Camp Current").assertIsDisplayed()
+        compose.onAllNodes(hasText("≈ CHF90.00 estimated")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `navigate hands the current stop to the maps app`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("Navigate").performClick()
+        // Fires a geo: intent — nothing to assert on the in-memory side; must not crash.
+        compose.onNodeWithText("TONIGHT").assertIsDisplayed()
+    }
+
+    @Test
+    fun `skipping an upcoming stop keeps it greyed with undo`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasContentDescription("Skip stop"))
+        compose.onNodeWithContentDescription("Skip stop").performClick()
+        runBlocking {
+            assertEquals(StopState.SKIPPED, tripRepository.stops("a1").first().single { it.id == "up" }.state)
+        }
+        compose.onNodeWithText("Skipped Camp Later").assertIsDisplayed()
+        compose.onNodeWithText("Undo").performClick()
+        runBlocking {
+            assertEquals(StopState.PLANNED, tripRepository.stops("a1").first().single { it.id == "up" }.state)
+        }
+    }
+
+    @Test
+    fun `a skipped stop can be restored from its row`() {
+        runBlocking {
+            seedActive()
+            val up = tripRepository.stops("a1").first().single { it.id == "up" }
+            tripRepository.upsertStop(up.copy(state = StopState.SKIPPED))
+        }
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasContentDescription("Restore stop"))
+        compose.onNodeWithText("skipped").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Restore stop").performClick()
+        runBlocking {
+            assertEquals(StopState.PLANNED, tripRepository.stops("a1").first().single { it.id == "up" }.state)
+        }
+    }
+
+    @Test
+    fun `skipping tonight's stop moves on to the next`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("Skip").performClick()
+        runBlocking {
+            assertEquals(StopState.SKIPPED, tripRepository.stops("a1").first().single { it.id == "cur" }.state)
+        }
+        compose.onNodeWithText("Camp Later").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a current visit reads next instead of tonight`() {
+        runBlocking {
+            seedActive()
+            val cur = tripRepository.stops("a1").first().single { it.id == "cur" }
+            tripRepository.upsertStop(cur.copy(kind = StopKind.VISIT, nights = 0))
+        }
+        setContent("a1")
+        compose.onNodeWithText("NEXT").assertIsDisplayed()
+        compose.onNodeWithContentDescription("One night more").assertDoesNotExist()
+    }
+
+    @Test
+    fun `finish trip stamps the trip done`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithText("Finish trip").performClick()
+        runBlocking {
+            assertEquals(TripStatus.DONE, tripRepository.trip("a1").first()!!.status)
+        }
+    }
+
+    // --- done trips ------------------------------------------------------------------
+
+    @Test
+    fun `plan again copies a done trip into a new plan`() {
+        seed()
+        setContent()
+        compose.onNodeWithContentDescription("Plan again").performClick()
+        assertEquals(1, events.size)
+        assertTrue(events[0].startsWith("open:"))
+        runBlocking { assertEquals(2, tripRepository.trips().first().size) }
     }
 }

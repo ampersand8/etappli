@@ -9,70 +9,55 @@ import org.junit.Test
 
 class DateCascadeTest {
 
-    private val start = LocalDate.of(2027, 6, 10)
+    private val base = LocalDate.of(2027, 6, 10)
 
     private fun stop(
         id: String,
         order: Int,
-        nights: Int,
         arrival: LocalDate,
         state: StopState = StopState.PLANNED,
-    ) = Stop(id = id, orderIndex = order, nights = nights, arrivalDate = arrival, state = state)
+    ) = Stop(id = id, orderIndex = order, arrivalDate = arrival, state = state)
 
     @Test
-    fun `planned stops chain from the trip start`() {
+    fun `planned stops after the pivot shift by the delta`() {
         val stops = listOf(
-            stop("a", 0, 2, start),
-            stop("b", 1, 0, LocalDate.of(2027, 1, 1)),
-            stop("c", 2, 3, LocalDate.of(2027, 1, 1)),
+            stop("before", 0, base),
+            stop("pivot", 1, base.plusDays(2)),
+            stop("after1", 2, base.plusDays(3)),
+            stop("after2", 3, base.plusDays(6)), // deliberate gap — must survive
         )
-        val changed = DateCascade.apply(start, stops)
-        // a already correct; b lands after a's 2 nights; c right after the 0-night visit.
-        assertEquals(listOf("b", "c"), changed.map { it.id })
-        assertEquals(start.plusDays(2), changed[0].arrivalDate)
-        assertEquals(start.plusDays(2), changed[1].arrivalDate)
+        val changed = DateCascade.shift(stops, afterOrderIndex = 1, days = 2)
+        assertEquals(listOf("after1", "after2"), changed.map { it.id })
+        assertEquals(base.plusDays(5), changed[0].arrivalDate)
+        assertEquals(base.plusDays(8), changed[1].arrivalDate)
     }
 
     @Test
-    fun `done stops re-anchor the chain and are never rewritten`() {
-        val actualArrival = start.plusDays(5) // arrived later than planned
-        val stops = listOf(
-            stop("done", 0, 2, actualArrival, StopState.DONE),
-            stop("next", 1, 1, start.plusDays(2)),
-        )
-        val changed = DateCascade.apply(start, stops)
-        assertEquals(listOf("next"), changed.map { it.id })
-        assertEquals(actualArrival.plusDays(2), changed.single().arrivalDate)
+    fun `negative deltas pull the schedule forward`() {
+        val stops = listOf(stop("a", 0, base), stop("b", 1, base.plusDays(4)))
+        val changed = DateCascade.shift(stops, afterOrderIndex = 0, days = -1)
+        assertEquals(base.plusDays(3), changed.single().arrivalDate)
     }
 
     @Test
-    fun `skipped stops keep their date and contribute no nights`() {
+    fun `done and skipped stops are never rewritten`() {
         val stops = listOf(
-            stop("a", 0, 2, start),
-            stop("skipped", 1, 4, start.plusDays(2), StopState.SKIPPED),
-            stop("c", 2, 1, LocalDate.of(2027, 1, 1)),
+            stop("pivot", 0, base),
+            stop("done", 1, base.plusDays(1), StopState.DONE),
+            stop("skipped", 2, base.plusDays(2), StopState.SKIPPED),
+            stop("planned", 3, base.plusDays(3)),
         )
-        val changed = DateCascade.apply(start, stops)
-        assertEquals(listOf("c"), changed.map { it.id })
-        assertEquals(start.plusDays(2), changed.single().arrivalDate)
+        assertEquals(listOf("planned"), DateCascade.shift(stops, 0, 1).map { it.id })
     }
 
     @Test
-    fun `stops are cascaded in order index order, not list order`() {
-        val stops = listOf(
-            stop("second", 1, 1, LocalDate.of(2027, 1, 1)),
-            stop("first", 0, 2, start),
-        )
-        val changed = DateCascade.apply(start, stops)
-        assertEquals(start.plusDays(2), changed.single { it.id == "second" }.arrivalDate)
+    fun `a zero delta changes nothing`() {
+        assertTrue(DateCascade.shift(listOf(stop("a", 1, base)), 0, 0).isEmpty())
     }
 
     @Test
-    fun `nothing changes when dates already line up`() {
-        val stops = listOf(
-            stop("a", 0, 2, start),
-            stop("b", 1, 1, start.plusDays(2)),
-        )
-        assertTrue(DateCascade.apply(start, stops).isEmpty())
+    fun `stops at or before the pivot index are untouched`() {
+        val stops = listOf(stop("at", 1, base), stop("before", 0, base))
+        assertTrue(DateCascade.shift(stops, afterOrderIndex = 1, days = 3).isEmpty())
     }
 }

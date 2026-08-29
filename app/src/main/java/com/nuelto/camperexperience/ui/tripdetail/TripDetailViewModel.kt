@@ -11,14 +11,25 @@ import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.CostCalculator
+import com.nuelto.camperexperience.domain.CountryGuess
+import com.nuelto.camperexperience.domain.DateCascade
+import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.FuelEstimator
+import com.nuelto.camperexperience.domain.TripEstimator
+import com.nuelto.camperexperience.domain.TripStarter
+import com.nuelto.camperexperience.domain.VignetteTable
 import com.nuelto.camperexperience.ui.nav.TripDetailRoute
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -29,6 +40,11 @@ data class TripDetailUiState(
     val breakdown: Map<ExpenseType, Double> = emptyMap(),
     // Automatic fuel estimate from driving distance; null once real fuel is logged.
     val fuelEstimate: Double? = null,
+    // Live ≈ estimate — only for PLANNED/ACTIVE trips (DONE shows actuals).
+    val estimate: EstimateBreakdown? = null,
+    // First upcoming stop of an ACTIVE trip: tonight's destination.
+    val currentStopId: String? = null,
+    val vignetteSuggestions: List<VignetteTable.Choice> = emptyList(),
     val settings: UserSettings = UserSettings(),
     val loading: Boolean = true,
 )
@@ -36,7 +52,7 @@ data class TripDetailUiState(
 class TripDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle.toRoute<TripDetailRoute>().tripId
@@ -48,16 +64,34 @@ class TripDetailViewModel(
             tripRepository.expenses(tripId),
             settingsRepository.settings(),
         ) { trip, stops, expenses, settings ->
+            val planning = trip != null && trip.status != TripStatus.DONE
             TripDetailUiState(
                 trip = trip,
                 stops = stops,
                 expenses = expenses,
                 breakdown = CostCalculator.breakdown(stops, expenses),
                 fuelEstimate = FuelEstimator.autoTripFuelCost(stops, expenses, settings),
+                estimate = if (planning) TripEstimator.estimate(stops, expenses, settings) else null,
+                currentStopId = if (trip?.status == TripStatus.ACTIVE) {
+                    stops.sortedBy { it.orderIndex }.firstOrNull { it.state == StopState.PLANNED }?.id
+                } else {
+                    null
+                },
+                vignetteSuggestions = if (planning) vignetteSuggestions(stops, expenses) else emptyList(),
                 settings = settings,
                 loading = false,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripDetailUiState())
+
+    /** Cheapest vignette per detected country that has no ROAD_TAX line yet. */
+    private fun vignetteSuggestions(stops: List<Stop>, expenses: List<Expense>): List<VignetteTable.Choice> =
+        CountryGuess.vignetteCountries(stops)
+            .filter { code ->
+                expenses.none { it.type == ExpenseType.ROAD_TAX && it.label.startsWith(code) }
+            }
+            .mapNotNull { code -> VignetteTable.cheapestCovering(code, CountryGuess.daysIn(code, stops)) }
+
+    private fun stop(stopId: String): Stop? = uiState.value.stops.find { it.id == stopId }
 
     fun deleteStop(stopId: String) {
         viewModelScope.launch { tripRepository.deleteStop(tripId, stopId) }
@@ -75,6 +109,100 @@ class TripDetailViewModel(
         viewModelScope.launch {
             tripRepository.deleteTrip(tripId)
             onDeleted()
+        }
+    }
+
+    /** ±1 night on a stop; the downstream planned schedule shifts along. */
+    fun changeNights(stopId: String, delta: Int) {
+        val stop = stop(stopId) ?: return
+        val nights = (stop.nights + delta).coerceIn(0, 365)
+        if (nights == stop.nights) return
+        viewModelScope.launch {
+            tripRepository.upsertStop(stop.copy(nights = nights))
+            shiftAfter(stop.orderIndex, (nights - stop.nights).toLong())
+        }
+    }
+
+    /** Check-in: stamps today as the actual arrival; a late arrival shifts what follows. */
+    fun arrived(stopId: String) {
+        val stop = stop(stopId) ?: return
+        val today = LocalDate.now()
+        viewModelScope.launch {
+            tripRepository.upsertStop(stop.copy(state = StopState.DONE, arrivalDate = today))
+            shiftAfter(stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today))
+        }
+    }
+
+    /** Typing the real price at check-in is the whole plan→actual reconciliation. */
+    fun setStopPrice(stopId: String, price: Double) {
+        val stop = stop(stopId) ?: return
+        viewModelScope.launch {
+            tripRepository.upsertStop(stop.copy(campingCostTotal = price, costKnown = true))
+        }
+    }
+
+    fun skip(stopId: String) = setState(stopId, StopState.SKIPPED)
+
+    fun restore(stopId: String) = setState(stopId, StopState.PLANNED)
+
+    private fun setState(stopId: String, state: StopState) {
+        val stop = stop(stopId) ?: return
+        viewModelScope.launch { tripRepository.upsertStop(stop.copy(state = state)) }
+    }
+
+    private suspend fun shiftAfter(orderIndex: Int, days: Long) {
+        val stops = tripRepository.stops(tripId).first()
+        DateCascade.shift(stops, orderIndex, days).forEach { tripRepository.upsertStop(it) }
+    }
+
+    /** Swaps the stop with its neighbor; done stops are locked in place. */
+    fun moveStop(stopId: String, delta: Int) {
+        val ordered = uiState.value.stops.sortedBy { it.orderIndex }
+        val from = ordered.indexOfFirst { it.id == stopId }
+        val to = from + delta
+        if (from < 0 || to < 0 || to > ordered.lastIndex) return
+        if (ordered[from].state == StopState.DONE || ordered[to].state == StopState.DONE) return
+        val ids = ordered.map { it.id }.toMutableList()
+        ids[from] = ids[to].also { ids[to] = ids[from] }
+        viewModelScope.launch { tripRepository.reorderStops(tripId, ids) }
+    }
+
+    fun addVignette(choice: VignetteTable.Choice) {
+        val state = uiState.value
+        viewModelScope.launch {
+            tripRepository.upsertExpense(
+                Expense(
+                    tripId = tripId,
+                    type = ExpenseType.ROAD_TAX,
+                    amount = VignetteTable.convert(choice.total, choice.vignette.currency, state.settings.currency),
+                    date = state.trip?.startDate ?: LocalDate.now(),
+                    label = "${choice.label} (${VignetteTable.YEAR})",
+                    isEstimate = true,
+                ),
+            )
+        }
+    }
+
+    /** Start the tour; lands on the (possibly new) ACTIVE trip via [onStarted]. */
+    fun startTour(startDate: LocalDate, keepPlanAsTemplate: Boolean, onStarted: (String) -> Unit) {
+        viewModelScope.launch {
+            val id = TripStarter.start(
+                tripRepository, tripId, startDate, keepPlanAsTemplate, uiState.value.settings,
+            )
+            onStarted(id)
+        }
+    }
+
+    fun finishTrip() {
+        val trip = uiState.value.trip ?: return
+        viewModelScope.launch {
+            tripRepository.upsertTrip(trip.copy(status = TripStatus.DONE, endDate = LocalDate.now()))
+        }
+    }
+
+    fun planAgain(onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            onCreated(TripStarter.planAgain(tripRepository, tripId, LocalDate.now()))
         }
     }
 

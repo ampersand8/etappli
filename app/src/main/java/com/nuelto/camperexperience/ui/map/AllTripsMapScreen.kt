@@ -34,6 +34,8 @@ import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
@@ -60,10 +62,16 @@ class AllTripsMapViewModel(
         ) { trips, stops, settings ->
             AllTripsMapUiState(
                 data = trips.map { trip ->
+                    val tripStops = stops.filter { it.tripId == trip.id }
                     TripMapData(
                         trip = trip,
-                        stops = stops.filter { it.tripId == trip.id },
-                        color = tripColor(trip.id.hashCode()),
+                        stops = tripStops,
+                        currentStopId = if (trip.status == TripStatus.ACTIVE) {
+                            tripStops.sortedBy { it.orderIndex }
+                                .firstOrNull { it.state == StopState.PLANNED }?.id
+                        } else {
+                            null
+                        },
                     )
                 },
                 settings = settings,

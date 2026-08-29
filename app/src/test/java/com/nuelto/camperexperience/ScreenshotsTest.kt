@@ -66,7 +66,7 @@ class ScreenshotsTest {
     @Test
     fun tripList() = shoot("trip-list") {
         TripListScreen(
-            onTripClick = {}, onAddTrip = {}, onOpenMap = {}, onOpenSettings = {},
+            onTripClick = {}, onAddTrip = { _ -> }, onOpenMap = {}, onOpenSettings = {},
             viewModel = TripListViewModel(tripRepository, settingsRepository),
         )
     }
@@ -75,9 +75,22 @@ class ScreenshotsTest {
     fun tripDetail() = shoot("trip-detail") {
         TripDetailScreen(
             onBack = {}, onEditTrip = {}, onAddStop = {}, onEditStop = { _, _ -> },
-            onOpenTripMap = {},
+            onOpenTripMap = {}, onOpenTrip = {},
             viewModel = TripDetailViewModel(
                 SavedStateHandle(mapOf("tripId" to "demo-provence")),
+                tripRepository,
+                settingsRepository,
+            ),
+        )
+    }
+
+    @Test
+    fun plannedTour() = shoot("planned-tour") {
+        TripDetailScreen(
+            onBack = {}, onEditTrip = {}, onAddStop = {}, onEditStop = { _, _ -> },
+            onOpenTripMap = {}, onOpenTrip = {},
+            viewModel = TripDetailViewModel(
+                SavedStateHandle(mapOf("tripId" to "demo-jura")),
                 tripRepository,
                 settingsRepository,
             ),
