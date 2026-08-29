@@ -71,7 +71,9 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   `stops/{stopId}`, `expenses/{expenseId}`. Reads are snapshot-listener `callbackFlow`s;
   writes are fire-and-forget so they queue offline (never `await()` a write — it would
   block until server ack). Models use `LocalDate`, stored as epoch-day Longs; mapping is
-  manual (no Firestore reflection) in `FirestoreTripRepository`.
+  manual (no Firestore reflection) in `FirestoreTripRepository`. Security rules are
+  path-scoped, so collection-group queries are rejected — cross-trip reads
+  (`allStops()`/`allExpenses()`) combine per-trip listeners instead.
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
   from `Source.CACHE` (which includes pending writes, so it works offline). Any new
@@ -100,11 +102,25 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
 UI tests run on the JVM: Robolectric + Compose test APIs (`robolectric.properties`
 pins sdk/graphics/screen). `TestCamperApp` forces the in-memory container regardless
 of a local google-services.json; `LocalMapEnabled provides false` swaps MapLibre for
-a placeholder (`ui/map/TripMap.kt`). Fakes live in `testutil/`. The coverage gate is
-100% of non-excluded lines (`coverageExcludes` in app/build.gradle.kts lists the
-device-only code) — new code needs tests or, if genuinely untestable on the JVM, an
-exclusion entry. pitest mutates domain/data/format/plain-JVM ViewModels only
-(Robolectric tests don't survive pitest minions); keep its 80% threshold green.
+a placeholder (`ui/map/TripMap.kt`). Fakes live in `testutil/`.
+
+- **Screen tests**: `createComposeRule` + `@RunWith(AndroidJUnit4::class)` +
+  `@Config(application = TestCamperApp::class)`; construct the ViewModel directly with
+  `InMemoryTripRepository(seed = false)` etc. and pass it into the screen composable.
+- **ViewModel tests**: plain JUnit with `MainDispatcherRule` (testutil) and Turbine
+  for flow assertions. Async races (late geocode result, slow sign-in) use the gated
+  fakes: `FakeAuthRepository.gate`, `FakePlaceNameResolver.gates`.
+- **Coverage gate** is 100% of non-excluded lines — new code needs tests or, if
+  genuinely untestable on the JVM (device/backend-only), an entry in
+  `coverageExcludes` in app/build.gradle.kts.
+- **pitest targets are explicit lists**: a new JVM-pure ViewModel or domain/data class
+  worth mutating must be added to `--targetClasses`/`--targetTests` in
+  app/build.gradle.kts; never add Robolectric-dependent classes (minions crash).
+  Keep the 80% threshold green.
+
+Multi-file change recipes live in `.claude/skills/`: **new-screen** (route + screen +
+ViewModel + tests), **add-model-field** (model + Firestore mapping + UI + tests),
+**app-review** (pre-commit invariant checklist).
 
 ## Verification expectations
 
