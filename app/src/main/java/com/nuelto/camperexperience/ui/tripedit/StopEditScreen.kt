@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.camperexperience.ui.components.DateField
 import com.nuelto.camperexperience.ui.components.DecimalField
 
@@ -36,7 +35,8 @@ import com.nuelto.camperexperience.ui.components.DecimalField
 @Composable
 fun StopEditScreen(
     onBack: () -> Unit,
-    viewModel: StopEditViewModel = viewModel(factory = StopEditViewModel.Factory),
+    // No factory default: the nav layer owns the instance to feed it picker results.
+    viewModel: StopEditViewModel,
     locationSection: (@Composable () -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()

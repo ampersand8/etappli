@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.kover)
+    jacoco
 }
 
 // Firebase is optional at build time: the app runs in local-only mode until
@@ -41,6 +41,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -84,25 +87,59 @@ kotlin {
 // Coverage gate: 100% line coverage on everything that can run on the JVM. Excluded:
 // code needing a real device/backend (MapLibre GL surface, Play services location,
 // Firebase/Firestore, Credential Manager) — that's covered by the emulator workflow.
-kover {
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+// Without this, coverage of classes loaded through Robolectric's classloader is dropped.
+tasks.withType<Test>().configureEach {
+    configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+val coverageExcludes = listOf(
+    "com/nuelto/camperexperience/BuildConfig*",
+    "com/nuelto/camperexperience/FirebaseBackendKt*",
+    "com/nuelto/camperexperience/data/FirebaseAuthRepository*",
+    "com/nuelto/camperexperience/data/Firestore*",
+    "com/nuelto/camperexperience/location/**",
+    "com/nuelto/camperexperience/ui/map/**",
+)
+
+val coverageClassDirs = layout.buildDirectory.dir("tmp/kotlin-classes/debug").map { dir ->
+    fileTree(dir) { exclude(coverageExcludes) }
+}
+val coverageExecData =
+    layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+
+val coverageReport = tasks.register<JacocoReport>("coverageReport") {
+    group = "verification"
+    description = "JaCoCo coverage report for debug unit tests."
+    dependsOn("testDebugUnitTest")
+    classDirectories.setFrom(coverageClassDirs)
+    sourceDirectories.setFrom(files("src/main/java"))
+    executionData.setFrom(coverageExecData)
     reports {
-        filters {
-            excludes {
-                classes(
-                    "com.nuelto.camperexperience.BuildConfig",
-                    "com.nuelto.camperexperience.FirebaseBackendKt",
-                    "com.nuelto.camperexperience.data.FirebaseAuthRepository*",
-                    "com.nuelto.camperexperience.data.Firestore*",
-                    "com.nuelto.camperexperience.location.*",
-                    "com.nuelto.camperexperience.ui.map.*",
-                )
-            }
-        }
-        variant("debug") {
-            verify {
-                rule("line coverage") {
-                    minBound(100, kotlinx.kover.gradle.plugin.dsl.CoverageUnit.LINE)
-                }
+        xml.required = true
+        html.required = true
+    }
+}
+
+tasks.register<JacocoCoverageVerification>("coverageVerify") {
+    group = "verification"
+    description = "Fails unless line coverage is 100% (excluded: device-only code)."
+    dependsOn("testDebugUnitTest", coverageReport)
+    classDirectories.setFrom(coverageClassDirs)
+    sourceDirectories.setFrom(files("src/main/java"))
+    executionData.setFrom(coverageExecData)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "1.00".toBigDecimal()
             }
         }
     }

@@ -212,7 +212,7 @@ class StopEditViewModelTest {
 
     @Test
     fun `works without a place name resolver`() {
-        val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository, null)
+        val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository)
         vm.setLocation(LatLng(46.0, 7.0))
         assertNull(vm.uiState.value.locationName)
         assertEquals("46.0, 7.0", vm.uiState.value.locationLabel)
