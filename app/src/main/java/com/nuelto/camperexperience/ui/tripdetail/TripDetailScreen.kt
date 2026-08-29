@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +85,7 @@ import com.nuelto.camperexperience.ui.components.StatusBadge
 import com.nuelto.camperexperience.ui.components.parseDecimal
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
-import com.nuelto.camperexperience.ui.formatDateRange
+import com.nuelto.camperexperience.ui.formatTripDates
 import com.nuelto.camperexperience.ui.map.TripMap
 import com.nuelto.camperexperience.ui.map.TripMapData
 import com.nuelto.camperexperience.ui.theme.ActiveGreen
@@ -143,7 +144,12 @@ fun TripDetailScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(trip?.name ?: "")
+                        Text(
+                            trip?.name ?: "",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
                         if (trip != null) StatusBadge(trip.status)
                     }
                 },
@@ -229,7 +235,7 @@ fun TripDetailScreen(
             item {
                 Column {
                     Text(
-                        formatDateRange(trip.startDate, trip.endDate),
+                        formatTripDates(trip),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

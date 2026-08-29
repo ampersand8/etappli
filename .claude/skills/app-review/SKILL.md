@@ -21,7 +21,8 @@ Review the current diff (`git diff` / `git diff HEAD`) against these invariants.
 - Decimal input accepts comma or dot: use `parseDecimal`/`DecimalField` from `ui/components/Fields.kt`, not `toDouble()`.
 - New ViewModels follow the companion `Factory = containerViewModelFactory { … }` pattern; dependencies come from `AppContainer` only.
 - New screens/routes: `@Serializable` route in `ui/nav/Routes.kt` + `composable<Route>` in `AppNavHost`. Results back to a previous screen go through the previous back-stack entry's `SavedStateHandle` (see `PICKED_LOCATION_KEY`).
-- Map work stays inside `ui/map/TripMap.kt`; trip colors via `tripColor(trip.id.hashCode())` for cross-screen stability.
+- Map work stays inside `ui/map/TripMap.kt`; colors follow the lifecycle language
+  (blue = planned, green = active/current, grey = done — `ui/theme/StatusColors.kt`).
 
 ## Build-gate blind spots
 
