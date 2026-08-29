@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppRoot(container: AppContainer) {
+internal fun AppRoot(container: AppContainer) {
     val authRepository = container.authRepository
     if (authRepository == null) {
         // Local-only mode: Firebase not configured in this build.
