@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.ui.triplist
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -10,6 +11,7 @@ import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
+import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
 import java.time.LocalDate
@@ -63,6 +65,15 @@ class TripListScreenTest {
         compose.onNodeWithText("Provence").assertIsDisplayed()
         compose.onNodeWithText("3 nights").assertIsDisplayed()
         compose.onNodeWithText("CHF100.00").assertIsDisplayed()
+    }
+
+    @Test
+    fun `trips without logged fuel show an approximate total`() = runBlocking<Unit> {
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1)))
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(47.0, 7.0), orderIndex = 0))
+        tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", location = LatLng(47.5, 7.5), orderIndex = 1))
+        setContent()
+        compose.onNode(hasText("≈", substring = true)).assertIsDisplayed()
     }
 
     @Test

@@ -37,15 +37,15 @@ class StopEditScreenTest {
         val args = if (stopId == null) mapOf("tripId" to "t1") else mapOf("tripId" to "t1", "stopId" to stopId)
         val viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, null)
         compose.setContent {
-            StopEditScreen(
-                onBack = { events += "back" },
-                viewModel = viewModel,
-                locationSection = if (withLocationSection) {
-                    { Text("Location section slot") }
-                } else {
-                    null
-                },
-            )
+            if (withLocationSection) {
+                StopEditScreen(
+                    onBack = { events += "back" },
+                    viewModel = viewModel,
+                    locationSection = { Text("Location section slot") },
+                )
+            } else {
+                StopEditScreen(onBack = { events += "back" }, viewModel = viewModel)
+            }
         }
     }
 
