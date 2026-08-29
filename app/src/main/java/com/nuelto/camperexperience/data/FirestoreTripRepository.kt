@@ -11,7 +11,11 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.data.model.legacyTripStatus
 import com.nuelto.camperexperience.domain.CostCalculator
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,18 +54,26 @@ class FirestoreTripRepository(
         "notes" to notes,
         "totalCost" to totalCost,
         "nights" to nights,
+        "status" to status.name,
+        "plannedCost" to plannedCost,
+        "plannedNights" to plannedNights,
     )
 
     private fun DocumentSnapshot.toTrip(): Trip? {
         if (!exists()) return null
+        val endDate = getLong("endDate")?.let { LocalDate.ofEpochDay(it) }
         return Trip(
             id = id,
             name = getString("name") ?: "",
             startDate = LocalDate.ofEpochDay(getLong("startDate") ?: 0L),
-            endDate = getLong("endDate")?.let { LocalDate.ofEpochDay(it) },
+            endDate = endDate,
             notes = getString("notes") ?: "",
             totalCost = getDouble("totalCost") ?: 0.0,
             nights = (getLong("nights") ?: 0L).toInt(),
+            status = getString("status")?.let { runCatching { TripStatus.valueOf(it) }.getOrNull() }
+                ?: legacyTripStatus(endDate),
+            plannedCost = getDouble("plannedCost"),
+            plannedNights = getLong("plannedNights")?.toInt(),
         )
     }
 
@@ -73,6 +85,9 @@ class FirestoreTripRepository(
         "campingCostTotal" to campingCostTotal,
         "orderIndex" to orderIndex,
         "notes" to notes,
+        "kind" to kind.name,
+        "state" to state.name,
+        "costKnown" to costKnown,
     )
 
     private fun DocumentSnapshot.toStop(tripId: String): Stop = Stop(
@@ -85,6 +100,11 @@ class FirestoreTripRepository(
         campingCostTotal = getDouble("campingCostTotal") ?: 0.0,
         orderIndex = (getLong("orderIndex") ?: 0L).toInt(),
         notes = getString("notes") ?: "",
+        kind = getString("kind")?.let { runCatching { StopKind.valueOf(it) }.getOrNull() }
+            ?: StopKind.CAMPSITE,
+        state = getString("state")?.let { runCatching { StopState.valueOf(it) }.getOrNull() }
+            ?: StopState.PLANNED,
+        costKnown = getBoolean("costKnown") ?: true,
     )
 
     private fun Expense.toMap() = mapOf(

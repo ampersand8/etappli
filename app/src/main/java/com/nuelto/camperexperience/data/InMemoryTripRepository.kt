@@ -4,7 +4,9 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.domain.CostCalculator
 import java.time.LocalDate
 import java.util.UUID
@@ -103,14 +105,23 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
             startDate = LocalDate.of(2025, 9, 12),
             endDate = LocalDate.of(2025, 9, 21),
             notes = "Lavender was long gone, gorges were empty. Perfect.",
+            status = TripStatus.DONE,
         )
         val blackForest = Trip(
             id = "demo-blackforest",
             name = "Schwarzwald",
             startDate = LocalDate.of(2026, 5, 14),
             endDate = LocalDate.of(2026, 5, 18),
+            status = TripStatus.DONE,
         )
-        tripsFlow.value = listOf(provence, blackForest)
+        val jura = Trip(
+            id = "demo-jura",
+            name = "Jura–Ticino Runde",
+            startDate = LocalDate.of(2027, 6, 10),
+            notes = "Über den Gotthard, zurück am Lago Maggiore entlang.",
+            status = TripStatus.PLANNED,
+        )
+        tripsFlow.value = listOf(provence, blackForest, jura)
         stopsFlow.value = listOf(
             Stop(
                 id = "demo-p1", tripId = provence.id, name = "Camping de la Durance",
@@ -137,6 +148,26 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 location = LatLng(47.8990, 8.1580), arrivalDate = LocalDate.of(2026, 5, 16),
                 nights = 2, campingCostTotal = 64.0, orderIndex = 1,
             ),
+            Stop(
+                id = "demo-j1", tripId = jura.id, name = "Camping Lido Luzern",
+                location = LatLng(47.0410, 8.3370), arrivalDate = LocalDate.of(2027, 6, 10),
+                nights = 2, orderIndex = 0, costKnown = false,
+            ),
+            Stop(
+                id = "demo-j2", tripId = jura.id, name = "Aareschlucht",
+                location = LatLng(46.7226, 8.2231), arrivalDate = LocalDate.of(2027, 6, 12),
+                nights = 0, orderIndex = 1, kind = StopKind.VISIT,
+            ),
+            Stop(
+                id = "demo-j3", tripId = jura.id, name = "Stellplatz Airolo",
+                location = LatLng(46.5285, 8.6120), arrivalDate = LocalDate.of(2027, 6, 12),
+                nights = 1, orderIndex = 2, kind = StopKind.STELLPLATZ, costKnown = false,
+            ),
+            Stop(
+                id = "demo-j4", tripId = jura.id, name = "Camping Delta Locarno",
+                location = LatLng(46.1591, 8.7853), arrivalDate = LocalDate.of(2027, 6, 13),
+                nights = 3, campingCostTotal = 186.0, orderIndex = 3,
+            ),
         )
         expensesFlow.value = listOf(
             Expense(
@@ -159,8 +190,13 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 id = "demo-e5", tripId = blackForest.id, type = ExpenseType.OTHER, amount = 24.0,
                 date = LocalDate.of(2026, 5, 16), label = "Seilbahn",
             ),
+            Expense(
+                id = "demo-e6", tripId = jura.id, type = ExpenseType.ROAD_TAX, amount = 40.0,
+                date = LocalDate.of(2027, 6, 10), label = "CH Vignette", isEstimate = true,
+            ),
         )
         recomputeTotals(provence.id)
         recomputeTotals(blackForest.id)
+        recomputeTotals(jura.id)
     }
 }

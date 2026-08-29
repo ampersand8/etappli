@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.domain
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.UserSettings
 
 object FuelEstimator {
@@ -25,10 +26,13 @@ object FuelEstimator {
 
     /**
      * Default distance to prefill the estimator with: straight-line legs between the
-     * trip's stops (in order), scaled by the road-distance factor. Always user-editable.
+     * trip's stops (in order, skipped ones excluded), scaled by the road-distance
+     * factor. Always user-editable.
      */
     fun defaultTripDistanceKm(stops: List<Stop>, settings: UserSettings): Double {
-        val points = stops.sortedBy { it.orderIndex }.mapNotNull { it.location }
+        val points = stops.sortedBy { it.orderIndex }
+            .filterNot { it.state == StopState.SKIPPED }
+            .mapNotNull { it.location }
         return GeoUtils.routeLengthKm(points) * settings.roadDistanceFactor
     }
 }

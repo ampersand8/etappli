@@ -4,6 +4,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.UserSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -104,5 +105,20 @@ class FuelEstimatorTest {
             Stop(id = "b", location = null, orderIndex = 1),
         )
         assertEquals(0.0, FuelEstimator.defaultTripDistanceKm(stops, UserSettings()), 1e-9)
+    }
+
+    @Test
+    fun `skipped stops do not contribute route distance`() {
+        val stops = listOf(
+            Stop(id = "a", location = LatLng(47.0, 8.0), orderIndex = 0),
+            Stop(id = "detour", location = LatLng(50.0, 12.0), orderIndex = 1, state = StopState.SKIPPED),
+            Stop(id = "b", location = LatLng(48.0, 8.0), orderIndex = 2),
+        )
+        val direct = GeoUtils.haversineKm(LatLng(47.0, 8.0), LatLng(48.0, 8.0))
+        assertEquals(
+            direct * 1.25,
+            FuelEstimator.defaultTripDistanceKm(stops, UserSettings(roadDistanceFactor = 1.25)),
+            1e-9,
+        )
     }
 }
