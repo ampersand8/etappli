@@ -215,6 +215,14 @@ class FirestoreTripRepository(
         recomputeTotals(tripId)
     }
 
+    override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
+        val col = trips(uid).document(tripId).collection("stops")
+        orderedStopIds.forEachIndexed { index, stopId ->
+            col.document(stopId).update("orderIndex", index)
+        }
+        recomputeTotals(tripId)
+    }
+
     override suspend fun upsertExpense(expense: Expense) {
         val col = trips(uid).document(expense.tripId).collection("expenses")
         val doc = if (expense.id.isBlank()) col.document() else col.document(expense.id)

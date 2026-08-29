@@ -70,6 +70,16 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         recomputeTotals(tripId)
     }
 
+    override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
+        stopsFlow.update { list ->
+            list.map { stop ->
+                val index = orderedStopIds.indexOf(stop.id)
+                if (stop.tripId == tripId && index >= 0) stop.copy(orderIndex = index) else stop
+            }
+        }
+        recomputeTotals(tripId)
+    }
+
     override suspend fun upsertExpense(expense: Expense) {
         val withId = if (expense.id.isBlank()) expense.copy(id = UUID.randomUUID().toString()) else expense
         expensesFlow.update { list -> list.filterNot { it.id == withId.id } + withId }

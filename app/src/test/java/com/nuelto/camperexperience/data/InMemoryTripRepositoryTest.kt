@@ -114,6 +114,29 @@ class InMemoryTripRepositoryTest {
     }
 
     @Test
+    fun `reorder rewrites order indexes to match the given id order`() = runTest {
+        val id = addTrip()
+        repo.upsertStop(Stop(id = "a", tripId = id, name = "A", orderIndex = 0))
+        repo.upsertStop(Stop(id = "b", tripId = id, name = "B", orderIndex = 1))
+        repo.upsertStop(Stop(id = "c", tripId = id, name = "C", orderIndex = 2))
+        repo.reorderStops(id, listOf("c", "a", "b"))
+        assertEquals(listOf("C", "A", "B"), repo.stops(id).first().map { it.name })
+        assertEquals(listOf(0, 1, 2), repo.stops(id).first().map { it.orderIndex })
+    }
+
+    @Test
+    fun `reorder leaves unlisted stops and other trips untouched`() = runTest {
+        val id = addTrip()
+        val other = addTrip(id = "other")
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 5))
+        repo.upsertStop(Stop(id = "x", tripId = other, orderIndex = 7))
+        repo.reorderStops(id, listOf("a"))
+        assertEquals(5, repo.stops(id).first().single { it.id == "b" }.orderIndex)
+        assertEquals(7, repo.stops(other).first().single().orderIndex)
+    }
+
+    @Test
     fun `skipped stops are excluded from totals`() = runTest {
         val id = addTrip()
         repo.upsertStop(Stop(id = "kept", tripId = id, nights = 2, campingCostTotal = 50.0))
