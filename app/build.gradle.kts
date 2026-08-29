@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kover)
 }
 
 // Firebase is optional at build time: the app runs in local-only mode until
@@ -66,12 +67,92 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true // Robolectric
+        }
+    }
 }
 
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
     }
+}
+
+// Coverage gate: 100% line coverage on everything that can run on the JVM. Excluded:
+// code needing a real device/backend (MapLibre GL surface, Play services location,
+// Firebase/Firestore, Credential Manager) — that's covered by the emulator workflow.
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "com.nuelto.camperexperience.BuildConfig",
+                    "com.nuelto.camperexperience.FirebaseBackendKt",
+                    "com.nuelto.camperexperience.data.FirebaseAuthRepository*",
+                    "com.nuelto.camperexperience.data.Firestore*",
+                    "com.nuelto.camperexperience.location.*",
+                    "com.nuelto.camperexperience.ui.map.*",
+                )
+            }
+        }
+        variant("debug") {
+            verify {
+                rule("line coverage") {
+                    minBound(100, kotlinx.kover.gradle.plugin.dsl.CoverageUnit.LINE)
+                }
+            }
+        }
+    }
+}
+
+// Mutation testing (PIT) over the JVM-pure logic: domain, in-memory data layer,
+// formatting, and the ViewModels that don't need Robolectric. Compose UI is out of
+// scope for PIT (Robolectric classloaders don't survive pitest's minions).
+val pitest: Configuration by configurations.creating
+
+tasks.register<JavaExec>("pitest") {
+    group = "verification"
+    description = "PIT mutation testing over the JVM-pure logic (threshold 80%)."
+    dependsOn("testDebugUnitTest")
+    classpath = pitest
+    mainClass.set("org.pitest.mutationtest.commandline.MutationCoverageReport")
+    val cpFile = layout.buildDirectory.file("pitest/classpath.txt")
+    doFirst {
+        val testClasspath = tasks.named<Test>("testDebugUnitTest").get().classpath
+        cpFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(testClasspath.filter { it.exists() }.joinToString("\n") { it.absolutePath })
+        }
+    }
+    args(
+        "--classPathFile", cpFile.get().asFile.absolutePath,
+        "--targetClasses",
+        listOf(
+            "com.nuelto.camperexperience.domain.*",
+            "com.nuelto.camperexperience.data.InMemory*",
+            "com.nuelto.camperexperience.ui.FormatKt",
+            "com.nuelto.camperexperience.ui.triplist.TripListViewModel",
+            "com.nuelto.camperexperience.ui.settings.SettingsViewModel",
+        ).joinToString(","),
+        "--excludedClasses", "*\$Companion",
+        "--targetTests",
+        listOf(
+            "com.nuelto.camperexperience.domain.*",
+            "com.nuelto.camperexperience.data.*",
+            "com.nuelto.camperexperience.ui.FormatTest",
+            "com.nuelto.camperexperience.ui.triplist.TripListViewModelTest",
+            "com.nuelto.camperexperience.ui.settings.SettingsViewModelTest",
+        ).joinToString(","),
+        "--sourceDirs", "src/main/java",
+        "--reportDir", layout.buildDirectory.dir("reports/pitest").get().asFile.absolutePath,
+        "--timestampedReports", "false",
+        "--outputFormats", "HTML,XML",
+        "--mutationThreshold", "80",
+        "--threads", "4",
+    )
 }
 
 dependencies {
@@ -106,4 +187,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+
+    pitest(libs.pitest.command.line)
 }

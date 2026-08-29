@@ -16,6 +16,10 @@ playServicesLocation = "21.4.0"
 maplibreCompose = "0.15.0"
 junit = "4.13.2"
 turbine = "1.1.0"
+robolectric = "4.15.1"
+androidxTestExtJunit = "1.3.0"
+kover = "0.9.1"
+pitest = "1.19.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -49,6 +53,11 @@ maplibre-compose-runtime = { group = "org.maplibre.compose", name = "maplibre-co
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+pitest-command-line = { group = "org.pitest", name = "pitest-command-line", version.ref = "pitest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -56,3 +65,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

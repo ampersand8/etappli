@@ -9,31 +9,38 @@ import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-class AuthRepository(
+data class AuthUser(val uid: String)
+
+interface AuthRepository {
+    val authState: Flow<AuthUser?>
+    val currentUser: AuthUser?
+
+    /** Returns null on success, or a user-displayable error message. */
+    suspend fun signInWithGoogle(activityContext: Context): String?
+    fun signOut()
+}
+
+/** Google Sign-In via Credential Manager, backed by Firebase Auth. */
+class FirebaseAuthRepository(
     private val auth: FirebaseAuth,
     private val webClientId: String,
-) {
+) : AuthRepository {
 
-    val authState: Flow<FirebaseUser?> = callbackFlow {
-        val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser) }
+    override val authState: Flow<AuthUser?> = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.let { u -> AuthUser(u.uid) }) }
         auth.addAuthStateListener(listener)
         awaitClose { auth.removeAuthStateListener(listener) }
     }
 
-    val currentUser: FirebaseUser? get() = auth.currentUser
+    override val currentUser: AuthUser? get() = auth.currentUser?.let { AuthUser(it.uid) }
 
-    /**
-     * Google Sign-In via Credential Manager. Returns null on success, or a
-     * user-displayable error message.
-     */
-    suspend fun signInWithGoogle(activityContext: Context): String? {
+    override suspend fun signInWithGoogle(activityContext: Context): String? {
         if (webClientId.isBlank()) {
             return "Missing webClientId in local.properties — see FIREBASE_SETUP.md"
         }
@@ -66,7 +73,7 @@ class AuthRepository(
         }
     }
 
-    fun signOut() {
+    override fun signOut() {
         auth.signOut()
     }
 }
