@@ -13,6 +13,7 @@ Review the current diff (`git diff` / `git diff HEAD`) against these invariants.
 - **Repository parity.** `InMemoryTripRepository` and `FirestoreTripRepository` implement the same interface and must stay behaviorally equivalent (ordering, id generation on blank id, cascade delete of stops/expenses with the trip). A change to one usually needs the mirror change.
 - **Camping cost lives on the Stop** (`campingCostTotal`). The CAMPING expense type is only for extra fees not tied to a stay; `CostCalculator.breakdown` merges both. Don't introduce double-counting.
 - Dates are `LocalDate` in models, epoch-day `Long` in Firestore. Mapping is manual in the Firestore repos — new fields need both `toMap()` and the snapshot reader, with a null-safe default.
+- **No collection-group queries.** Security rules are path-scoped and would reject them; cross-trip reads combine per-trip listeners (see `allStops()`). Flag any `collectionGroup(...)` call.
 
 ## UI conventions
 
@@ -21,6 +22,11 @@ Review the current diff (`git diff` / `git diff HEAD`) against these invariants.
 - New ViewModels follow the companion `Factory = containerViewModelFactory { … }` pattern; dependencies come from `AppContainer` only.
 - New screens/routes: `@Serializable` route in `ui/nav/Routes.kt` + `composable<Route>` in `AppNavHost`. Results back to a previous screen go through the previous back-stack entry's `SavedStateHandle` (see `PICKED_LOCATION_KEY`).
 - Map work stays inside `ui/map/TripMap.kt`; trip colors via `tripColor(trip.id.hashCode())` for cross-screen stability.
+
+## Build-gate blind spots
+
+- New JVM-pure logic (ViewModel without Robolectric tests, domain/data class) should be in the pitest `--targetClasses`/`--targetTests` lists in app/build.gradle.kts; Robolectric-dependent classes must **not** be (minions crash).
+- New device-only code (MapLibre, Play services location, Firebase classes) needs a `coverageExcludes` entry or `coverageVerify` fails; conversely, flag exclusions added for code that *could* be JVM-tested.
 
 ## Auth-mode blind spots
 
