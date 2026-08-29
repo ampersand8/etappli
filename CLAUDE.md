@@ -17,10 +17,14 @@ adding new ones.
 
 ```bash
 ./gradlew :app:assembleDebug    # build
-./gradlew test                  # unit tests (domain logic only)
+./gradlew test                  # all unit + Robolectric/Compose UI tests
+./gradlew :app:coverageVerify   # JaCoCo gate: 100% line coverage (device-only code excluded)
+./gradlew :app:pitest           # mutation tests over JVM-pure logic, threshold 80%
 ./gradlew :app:installDebug     # install on connected device/emulator
 ./gradlew test --tests "com.nuelto.camperexperience.domain.CostCalculatorTest"  # one test class
 ```
+
+CI (`.github/workflows/ci.yml`) runs tests + both gates + assembleDebug on every PR.
 
 Emulator workflow (AVD `Pixel_9a` exists locally; needs Play services image for
 sign-in/fused location/reverse geocoding — `location/PlaceNameResolver.kt` uses the
@@ -91,9 +95,21 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   `tripColor(trip.id.hashCode())` so they're stable across screens. `AllTripsMapScreen`
   doubles as the single-trip fullscreen map via its nullable `tripId` filter.
 
+## Testing conventions
+
+UI tests run on the JVM: Robolectric + Compose test APIs (`robolectric.properties`
+pins sdk/graphics/screen). `TestCamperApp` forces the in-memory container regardless
+of a local google-services.json; `LocalMapEnabled provides false` swaps MapLibre for
+a placeholder (`ui/map/TripMap.kt`). Fakes live in `testutil/`. The coverage gate is
+100% of non-excluded lines (`coverageExcludes` in app/build.gradle.kts lists the
+device-only code) — new code needs tests or, if genuinely untestable on the JVM, an
+exclusion entry. pitest mutates domain/data/format/plain-JVM ViewModels only
+(Robolectric tests don't survive pitest minions); keep its 80% threshold green.
+
 ## Verification expectations
 
-Domain changes: `./gradlew test`. UI/map/location changes: verify in the emulator
+Logic/UI changes: `./gradlew test :app:coverageVerify` (+ `:app:pitest` for domain/
+data changes). Map/location changes: verify in the emulator
 (screenshots via `adb exec-out screencap -p`); map tiles need network, GPS needs a
 `geo fix` plus the in-app permission grant. Firebase-mode changes can only be fully
 tested after the FIREBASE_SETUP.md console steps; sign-in additionally needs a Google
