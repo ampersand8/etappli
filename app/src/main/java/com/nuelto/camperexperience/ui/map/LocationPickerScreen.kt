@@ -66,11 +66,13 @@ fun LocationPickerScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            MaplibreMap(
-                modifier = Modifier.fillMaxSize(),
-                baseStyle = BaseStyle.Uri(MAP_STYLE_URL),
-                cameraState = cameraState,
-            )
+            if (LocalMapEnabled.current) {
+                MaplibreMap(
+                    modifier = Modifier.fillMaxSize(),
+                    baseStyle = BaseStyle.Uri(MAP_STYLE_URL),
+                    cameraState = cameraState,
+                )
+            }
             Crosshair(Modifier.align(Alignment.Center))
         }
     }

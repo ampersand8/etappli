@@ -32,7 +32,7 @@ class AppContainer(
 
 open class CamperApp : Application() {
     lateinit var container: AppContainer
-        private set
+        internal set // tests swap in their own repositories
 
     override fun onCreate() {
         super.onCreate()

@@ -17,9 +17,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Geocoder (Play-services backed, no API key). Returns null when the geocoder is
  * unavailable, offline, or finds nothing.
  */
-class PlaceNameResolver(private val context: Context) {
+open class PlaceNameResolver(private val context: Context) {
 
-    suspend fun placeName(location: LatLng): String? {
+    open suspend fun placeName(location: LatLng): String? {
         if (!Geocoder.isPresent()) return null
         val geocoder = Geocoder(context, Locale.getDefault())
         val address = withTimeoutOrNull(10_000) {
