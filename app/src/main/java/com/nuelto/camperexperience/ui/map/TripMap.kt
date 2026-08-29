@@ -10,7 +10,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
+import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.ui.theme.stopColor
+import com.nuelto.camperexperience.ui.theme.statusColor
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -40,32 +45,22 @@ const val MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
  */
 val LocalMapEnabled = staticCompositionLocalOf { true }
 
-/** Distinct marker/route color per trip, cycling through a fixed palette. */
-val tripColorPalette = listOf(
-    Color(0xFF2E5D3E), // forest green
-    Color(0xFFC0392B), // brick red
-    Color(0xFF2963A8), // lake blue
-    Color(0xFFB8860B), // ochre
-    Color(0xFF6A3FA0), // plum
-    Color(0xFF167F7A), // teal
-    Color(0xFFB44E9C), // heather
-    Color(0xFF7A5230), // bark brown
-)
-
-fun tripColor(index: Int): Color = tripColorPalette[index.mod(tripColorPalette.size)]
-
 data class TripMapData(
     val trip: Trip,
     val stops: List<Stop>,
-    val color: Color,
+    // Tonight's stop on an active trip — rendered green, with a green current leg.
+    val currentStopId: String? = null,
 )
 
 private fun Stop.position(): Position? =
     location?.let { Position(longitude = it.longitude, latitude = it.latitude) }
 
 /**
- * Shared map: one marker layer + route line per trip. Straight lines between stops in
- * order — a trip log, not turn-by-turn routing.
+ * Shared map: markers + route line per trip in the lifecycle color language
+ * (blue = planned, green = active/current, grey = done). Active trips split the
+ * route: grey behind, green current leg, dashed blue ahead; planned routes are
+ * dashed blue throughout; visits render hollow, skipped stops drop out.
+ * Straight lines between stops in order — a trip log, not turn-by-turn routing.
  */
 @Composable
 fun TripMap(
@@ -83,7 +78,7 @@ fun TripMap(
     val cameraState = cameraState ?: rememberCameraState(
         firstPosition = CameraPosition(target = Position(longitude = 8.2, latitude = 46.8), zoom = 6.0),
     )
-    val allPositions = data.flatMap { it.stops.sortedBy { s -> s.orderIndex }.mapNotNull { s -> s.position() } }
+    val allPositions = data.flatMap { entry -> entry.routeStops().mapNotNull { it.position() } }
 
     if (fitToStops) {
         LaunchedEffect(allPositions) {
@@ -112,61 +107,112 @@ fun TripMap(
         cameraState = cameraState,
     ) {
         data.forEach { entry ->
-            val orderedPositions = entry.stops.sortedBy { it.orderIndex }.mapNotNull { it.position() }
-
-            if (orderedPositions.size >= 2) {
-                val routeSource = rememberGeoJsonSource(
+            entry.routeSegments().forEachIndexed { index, segment ->
+                val segmentSource = rememberGeoJsonSource(
                     data = GeoJsonData.Features(
                         FeatureCollection(
-                            listOf(Feature(geometry = LineString(orderedPositions), properties = null)),
+                            listOf(Feature(geometry = LineString(segment.positions), properties = null)),
                         ),
                     ),
                 )
                 LineLayer(
-                    id = "route-${entry.trip.id}",
-                    source = routeSource,
-                    color = const(entry.color.copy(alpha = 0.7f)),
+                    id = "route-${entry.trip.id}-$index",
+                    source = segmentSource,
+                    color = const(segment.color.copy(alpha = 0.7f)),
                     width = const(3.dp),
+                    dasharray = if (segment.dashed) const(listOf(2, 2)) else const(emptyList<Number>()),
                 )
             }
 
-            if (orderedPositions.isNotEmpty()) {
-                val stopsSource = rememberGeoJsonSource(
-                    data = GeoJsonData.Features(
-                        FeatureCollection(
-                            entry.stops.mapNotNull { stop ->
-                                stop.position()?.let { pos ->
-                                    Feature(
-                                        geometry = Point(pos),
-                                        properties = buildJsonObject {
-                                            put("tripId", entry.trip.id)
-                                            put("stopId", stop.id)
-                                        },
-                                    )
+            val markerStops = entry.stops.filter { it.location != null }
+            if (markerStops.isNotEmpty()) {
+                // Grouped by styling (color + filled vs hollow visit markers): one layer each.
+                markerStops.groupBy { entry.markerColor(it) to (it.kind == StopKind.VISIT) }
+                    .entries.forEachIndexed { index, (style, stops) ->
+                        val (color, hollow) = style
+                        val ids = stops.map { it.id }.toSet()
+                        val groupSource = rememberGeoJsonSource(
+                            data = GeoJsonData.Features(
+                                FeatureCollection(
+                                    stops.map { stop ->
+                                        Feature(
+                                            geometry = Point(stop.position()!!),
+                                            properties = buildJsonObject {
+                                                put("tripId", entry.trip.id)
+                                                put("stopId", stop.id)
+                                            },
+                                        )
+                                    },
+                                ),
+                            ),
+                        )
+                        CircleLayer(
+                            id = "stops-${entry.trip.id}-$index",
+                            source = groupSource,
+                            radius = const(if (hollow) 6.dp else 8.dp),
+                            color = const(if (hollow) Color.White else color),
+                            strokeWidth = const(2.dp),
+                            strokeColor = const(if (hollow) color else Color.White),
+                            onClick = { features ->
+                                val props = features.firstOrNull()?.properties
+                                val tripId = props?.get("tripId")?.jsonPrimitive?.content
+                                val stopId = props?.get("stopId")?.jsonPrimitive?.content
+                                if (tripId != null && stopId != null && stopId in ids && onStopClick != null) {
+                                    onStopClick(tripId, stopId)
+                                    ClickResult.Consume
+                                } else {
+                                    ClickResult.Pass
                                 }
                             },
+                        )
+                    }
+            }
+        }
+    }
+}
+
+private data class RouteSegment(val positions: List<Position>, val color: Color, val dashed: Boolean)
+
+/** Ordered, non-skipped stops — the route as it will actually be driven. */
+private fun TripMapData.routeStops(): List<Stop> =
+    stops.sortedBy { it.orderIndex }.filterNot { it.state == StopState.SKIPPED }
+
+private fun TripMapData.markerColor(stop: Stop): Color = when (trip.status) {
+    TripStatus.PLANNED, TripStatus.DONE -> statusColor(trip.status)
+    TripStatus.ACTIVE -> stopColor(stop.state, isCurrent = stop.id == currentStopId)
+}
+
+/**
+ * DONE: one grey line. PLANNED: one dashed blue line. ACTIVE: grey behind (done
+ * stops), green current leg, dashed blue ahead.
+ */
+private fun TripMapData.routeSegments(): List<RouteSegment> {
+    val located = routeStops().filter { it.location != null }
+    if (located.size < 2) return emptyList()
+    val positions = { list: List<Stop> -> list.mapNotNull { it.position() } }
+
+    return when (trip.status) {
+        TripStatus.DONE -> listOf(RouteSegment(positions(located), statusColor(TripStatus.DONE), dashed = false))
+        TripStatus.PLANNED -> listOf(RouteSegment(positions(located), statusColor(TripStatus.PLANNED), dashed = true))
+        TripStatus.ACTIVE -> {
+            val done = located.filter { it.state == StopState.DONE }
+            val upcoming = located.filter { it.state == StopState.PLANNED }
+            buildList {
+                if (done.size >= 2) {
+                    add(RouteSegment(positions(done), stopColor(StopState.DONE, false), dashed = false))
+                }
+                if (done.isNotEmpty() && upcoming.isNotEmpty()) {
+                    add(
+                        RouteSegment(
+                            positions(listOf(done.last(), upcoming.first())),
+                            stopColor(upcoming.first().state, isCurrent = true),
+                            dashed = false,
                         ),
-                    ),
-                )
-                CircleLayer(
-                    id = "stops-${entry.trip.id}",
-                    source = stopsSource,
-                    radius = const(8.dp),
-                    color = const(entry.color),
-                    strokeWidth = const(2.dp),
-                    strokeColor = const(Color.White),
-                    onClick = { features ->
-                        val props = features.firstOrNull()?.properties
-                        val tripId = props?.get("tripId")?.jsonPrimitive?.content
-                        val stopId = props?.get("stopId")?.jsonPrimitive?.content
-                        if (tripId != null && stopId != null && onStopClick != null) {
-                            onStopClick(tripId, stopId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    },
-                )
+                    )
+                }
+                if (upcoming.size >= 2) {
+                    add(RouteSegment(positions(upcoming), stopColor(StopState.PLANNED, false), dashed = true))
+                }
             }
         }
     }

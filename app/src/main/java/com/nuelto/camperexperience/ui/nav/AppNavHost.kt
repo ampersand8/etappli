@@ -40,6 +40,8 @@ fun AppNavHost() {
                 onAddStop = { tripId -> navController.navigate(StopEditRoute(tripId)) },
                 onEditStop = { tripId, stopId -> navController.navigate(StopEditRoute(tripId, stopId)) },
                 onOpenTripMap = { tripId -> navController.navigate(AllTripsMapRoute(tripId)) },
+                // Start-as-copy and plan-again land on the freshly created trip.
+                onOpenTrip = { tripId -> navController.navigate(TripDetailRoute(tripId)) },
             )
         }
         composable<TripEditRoute> {

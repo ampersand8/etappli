@@ -1,5 +1,10 @@
 package com.nuelto.camperexperience.ui.tripdetail
 
+import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,23 +15,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.draw.clip
-import com.nuelto.camperexperience.ui.map.TripMap
-import com.nuelto.camperexperience.ui.map.TripMapData
-import com.nuelto.camperexperience.ui.map.tripColor
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -35,7 +42,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,20 +56,42 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.TripEstimator
+import com.nuelto.camperexperience.ui.components.DecimalField
+import com.nuelto.camperexperience.ui.components.DateField
+import com.nuelto.camperexperience.ui.components.StatusBadge
+import com.nuelto.camperexperience.ui.components.parseDecimal
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
 import com.nuelto.camperexperience.ui.formatDateRange
+import com.nuelto.camperexperience.ui.map.TripMap
+import com.nuelto.camperexperience.ui.map.TripMapData
+import com.nuelto.camperexperience.ui.theme.ActiveGreen
+import com.nuelto.camperexperience.ui.theme.PlannedBlue
+import com.nuelto.camperexperience.ui.theme.stopColor
+import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 val ExpenseType.displayName: String
     get() = when (this) {
@@ -74,6 +109,7 @@ fun TripDetailScreen(
     onAddStop: (String) -> Unit,
     onEditStop: (String, String) -> Unit,
     onOpenTripMap: (String) -> Unit,
+    onOpenTrip: (String) -> Unit,
     viewModel: TripDetailViewModel = viewModel(factory = TripDetailViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -82,13 +118,35 @@ fun TripDetailScreen(
     var showExpenseSheet by remember { mutableStateOf(false) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     var fabMenuExpanded by remember { mutableStateOf(false) }
+    var showStartSheet by remember { mutableStateOf(false) }
+    var arrivalPromptStop by remember { mutableStateOf<Stop?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
 
+    fun skipWithUndo(stop: Stop) {
+        viewModel.skip(stop.id)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = "Skipped ${stop.name}",
+                actionLabel = "Undo",
+                withDismissAction = true,
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.restore(stop.id)
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(trip?.name ?: "") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(trip?.name ?: "")
+                        if (trip != null) StatusBadge(trip.status)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -96,6 +154,11 @@ fun TripDetailScreen(
                 },
                 actions = {
                     if (trip != null) {
+                        if (trip.status == TripStatus.DONE) {
+                            IconButton(onClick = { viewModel.planAgain(onCreated = onOpenTrip) }) {
+                                Icon(Icons.Default.Route, contentDescription = "Plan again")
+                            }
+                        }
                         IconButton(onClick = { onEditTrip(trip.id) }) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit trip")
                         }
@@ -105,6 +168,20 @@ fun TripDetailScreen(
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (trip != null && trip.status != TripStatus.DONE && state.estimate != null) {
+                TimelineBottomBar(
+                    status = trip.status,
+                    totalText = if (state.estimate!!.hasEstimates) {
+                        "≈ ${formatCurrency(state.estimate!!.total, state.settings.currency)}"
+                    } else {
+                        formatCurrency(state.estimate!!.total, state.settings.currency)
+                    },
+                    onStart = { showStartSheet = true },
+                    onFinish = viewModel::finishTrip,
+                )
+            }
         },
         floatingActionButton = {
             if (trip != null) {
@@ -145,7 +222,7 @@ fun TripDetailScreen(
         if (trip == null) return@Scaffold
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding).testTag("timeline"),
             contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -175,9 +252,7 @@ fun TripDetailScreen(
                             .clip(MaterialTheme.shapes.medium),
                     ) {
                         TripMap(
-                            data = listOf(
-                                TripMapData(trip, state.stops, tripColor(trip.id.hashCode())),
-                            ),
+                            data = listOf(TripMapData(trip, state.stops, currentStopId = state.currentStopId)),
                             modifier = Modifier.fillMaxSize(),
                         )
                         // Transparent overlay: tap anywhere on the mini map to go fullscreen.
@@ -191,13 +266,25 @@ fun TripDetailScreen(
             }
 
             item {
-                CostBreakdownCard(
-                    total = trip.totalCost,
-                    nights = trip.nights,
-                    breakdown = state.breakdown,
-                    fuelEstimate = state.fuelEstimate,
-                    currency = state.settings.currency,
-                )
+                val estimate = state.estimate
+                if (estimate != null) {
+                    EstimateCard(
+                        estimate = estimate,
+                        nights = trip.nights,
+                        recordedTotal = if (trip.status == TripStatus.ACTIVE) trip.totalCost else null,
+                        currency = state.settings.currency,
+                        vignetteSuggestions = state.vignetteSuggestions,
+                        onAddVignette = viewModel::addVignette,
+                    )
+                } else {
+                    CostBreakdownCard(
+                        total = trip.totalCost,
+                        nights = trip.nights,
+                        breakdown = state.breakdown,
+                        fuelEstimate = state.fuelEstimate,
+                        currency = state.settings.currency,
+                    )
+                }
             }
 
             item {
@@ -206,18 +293,40 @@ fun TripDetailScreen(
             if (state.stops.isEmpty()) {
                 item {
                     Text(
-                        "No stops yet — add where you camped.",
+                        if (trip.status == TripStatus.PLANNED) {
+                            "No stops yet — add where you want to go."
+                        } else {
+                            "No stops yet — add where you camped."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             items(state.stops, key = { it.id }) { stop ->
-                StopCard(
-                    stop = stop,
-                    currency = state.settings.currency,
-                    onClick = { onEditStop(trip.id, stop.id) },
-                )
+                if (stop.id == state.currentStopId) {
+                    NowCard(
+                        stop = stop,
+                        settings = state.settings,
+                        onClick = { onEditStop(trip.id, stop.id) },
+                        onChangeNights = { delta -> viewModel.changeNights(stop.id, delta) },
+                        onArrived = {
+                            viewModel.arrived(stop.id)
+                            if (stop.kind != StopKind.VISIT) arrivalPromptStop = stop
+                        },
+                        onSkip = { skipWithUndo(stop) },
+                    )
+                } else {
+                    TimelineStopRow(
+                        stop = stop,
+                        tripStatus = trip.status,
+                        settings = state.settings,
+                        onClick = { onEditStop(trip.id, stop.id) },
+                        onMove = { delta -> viewModel.moveStop(stop.id, delta) },
+                        onSkip = { skipWithUndo(stop) },
+                        onRestore = { viewModel.restore(stop.id) },
+                    )
+                }
             }
 
             item {
@@ -259,6 +368,30 @@ fun TripDetailScreen(
         )
     }
 
+    if (showStartSheet && trip != null) {
+        StartTourSheet(
+            onStart = { startDate, keepPlan ->
+                showStartSheet = false
+                viewModel.startTour(startDate, keepPlan) { startedId ->
+                    if (startedId != trip.id) onOpenTrip(startedId)
+                }
+            },
+            onDismiss = { showStartSheet = false },
+        )
+    }
+
+    arrivalPromptStop?.let { stop ->
+        ArrivalPriceSheet(
+            stop = stop,
+            settings = state.settings,
+            onSave = { price ->
+                viewModel.setStopPrice(stop.id, price)
+                arrivalPromptStop = null
+            },
+            onDismiss = { arrivalPromptStop = null },
+        )
+    }
+
     if (showDeleteDialog && trip != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -274,6 +407,271 @@ fun TripDetailScreen(
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun TimelineBottomBar(
+    status: TripStatus,
+    totalText: String,
+    onStart: () -> Unit,
+    onFinish: () -> Unit,
+) {
+    Surface(shadowElevation = 8.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                totalText,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (status == TripStatus.PLANNED) PlannedBlue else ActiveGreen,
+            )
+            if (status == TripStatus.PLANNED) {
+                Button(onClick = onStart) { Text("Start tour") }
+            } else {
+                Button(onClick = onFinish) { Text("Finish trip") }
+            }
+        }
+    }
+}
+
+/** Tonight's stop on an active trip: check in, adjust the stay, hand off navigation. */
+@Composable
+private fun NowCard(
+    stop: Stop,
+    settings: UserSettings,
+    onClick: () -> Unit,
+    onChangeNights: (Int) -> Unit,
+    onArrived: () -> Unit,
+    onSkip: () -> Unit,
+) {
+    val context = LocalContext.current
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().border(2.dp, ActiveGreen, MaterialTheme.shapes.medium),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                if (stop.kind == StopKind.VISIT) "NEXT" else "TONIGHT",
+                style = MaterialTheme.typography.labelSmall,
+                color = ActiveGreen,
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stop.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (stop.kind != StopKind.VISIT) {
+                    Text(
+                        stopPriceText(stop, TripStatus.ACTIVE, settings),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+            }
+            if (stop.kind != StopKind.VISIT) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "${formatDate(stop.arrivalDate)} ·",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    IconButton(onClick = { onChangeNights(-1) }) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "One night less")
+                    }
+                    Text(
+                        if (stop.nights == 1) "1 night" else "${stop.nights} nights",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    IconButton(onClick = { onChangeNights(1) }) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "One night more")
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onArrived) { Text("✓ Arrived") }
+                if (stop.location != null) {
+                    TextButton(onClick = {
+                        val loc = stop.location
+                        // Hand driving off to the maps app; we never build turn-by-turn.
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    "geo:${loc.latitude},${loc.longitude}?q=${loc.latitude},${loc.longitude}".toUri(),
+                                ),
+                            )
+                        }
+                    }) { Text("Navigate") }
+                }
+                TextButton(onClick = onSkip) { Text("Skip") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineStopRow(
+    stop: Stop,
+    tripStatus: TripStatus,
+    settings: UserSettings,
+    onClick: () -> Unit,
+    onMove: (Int) -> Unit,
+    onSkip: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            StopDot(stop, tripStatus)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stop.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    textDecoration = if (stop.state == StopState.SKIPPED) TextDecoration.LineThrough else null,
+                )
+                Text(
+                    stopMetaText(stop, tripStatus, settings),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (tripStatus != TripStatus.DONE && stop.state == StopState.PLANNED) {
+                IconButton(onClick = { onMove(-1) }) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+                }
+                IconButton(onClick = { onMove(1) }) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+                }
+            }
+            if (tripStatus == TripStatus.ACTIVE && stop.state == StopState.PLANNED) {
+                IconButton(onClick = onSkip) {
+                    Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Skip stop")
+                }
+            }
+            if (tripStatus == TripStatus.ACTIVE && stop.state == StopState.SKIPPED) {
+                IconButton(onClick = onRestore) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Restore stop")
+                }
+            }
+        }
+    }
+}
+
+/** Blue = upcoming, green = current, grey = done/skipped; visits are hollow. */
+@Composable
+private fun StopDot(stop: Stop, tripStatus: TripStatus) {
+    val color = if (tripStatus == TripStatus.DONE) {
+        stopColor(StopState.DONE, isCurrent = false)
+    } else {
+        stopColor(stop.state, isCurrent = false)
+    }
+    val dot = Modifier.size(12.dp).clip(CircleShape)
+    Box(
+        if (stop.kind == StopKind.VISIT) {
+            dot.border(2.dp, color, CircleShape)
+        } else {
+            dot.background(color)
+        },
+    )
+}
+
+private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String {
+    val date = formatDate(stop.arrivalDate)
+    return when {
+        stop.state == StopState.SKIPPED -> "skipped"
+        stop.kind == StopKind.VISIT -> "$date · visit"
+        else -> {
+            val nights = if (stop.nights == 1) "1 night" else "${stop.nights} nights"
+            "$date · $nights · ${stopPriceText(stop, tripStatus, settings)}"
+        }
+    }
+}
+
+/** An unpriced stay on a live trip shows what the default rate would charge. */
+private fun stopPriceText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String =
+    if (!stop.costKnown && tripStatus != TripStatus.DONE) {
+        "≈ ${formatCurrency(stop.nights * TripEstimator.nightlyRate(stop.kind, settings), settings.currency)}"
+    } else {
+        formatCurrency(stop.campingCostTotal, settings.currency)
+    }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StartTourSheet(
+    onStart: (LocalDate, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var startDate by remember { mutableStateOf(LocalDate.now()) }
+    var keepPlan by remember { mutableStateOf(true) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Start this tour", style = MaterialTheme.typography.titleLarge)
+            DateField(label = "Start date", date = startDate, onDateChange = { startDate = it })
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keep plan as template", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "The tour stays in your library for next time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = keepPlan, onCheckedChange = { keepPlan = it })
+            }
+            Button(
+                onClick = { onStart(startDate, keepPlan) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Start") }
+        }
+    }
+}
+
+/** Check-in moment: one optional number turns the estimate into the actual price. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ArrivalPriceSheet(
+    stop: Stop,
+    settings: UserSettings,
+    onSave: (Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var priceText by remember { mutableStateOf("") }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Arrived at ${stop.name}", style = MaterialTheme.typography.titleLarge)
+            DecimalField(
+                label = "Price for the stay",
+                value = priceText,
+                onValueChange = { priceText = it },
+                supportingText = if (stop.costKnown) {
+                    null
+                } else {
+                    "≈ ${formatCurrency(stop.nights * TripEstimator.nightlyRate(stop.kind, settings), settings.currency)} estimated"
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { parseDecimal(priceText)?.let(onSave) }) { Text("Save price") }
+                TextButton(onClick = onDismiss) { Text("Later") }
+            }
+        }
     }
 }
 
@@ -339,30 +737,6 @@ private fun BreakdownRow(label: String, amount: Double, currency: String) {
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Text(formatCurrency(amount, currency), style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun StopCard(stop: Stop, currency: String, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stop.name, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    formatCurrency(stop.campingCostTotal, currency),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-            }
-            Text(
-                "${formatDate(stop.arrivalDate)} · ${if (stop.nights == 1) "1 night" else "${stop.nights} nights"}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
