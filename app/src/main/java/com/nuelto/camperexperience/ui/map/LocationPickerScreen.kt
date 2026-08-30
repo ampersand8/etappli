@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.MapAccent
 import com.nuelto.camperexperience.domain.MapMarker
 import com.nuelto.camperexperience.domain.MapOverlay
@@ -50,6 +51,7 @@ fun LocationPickerScreen(
     initial: LatLng?,
     onPicked: (LatLng, PlaceSuggestion?) -> Unit,
     onCancel: () -> Unit,
+    prefer: StopKind? = null,
     viewModel: LocationPickerViewModel = viewModel(factory = LocationPickerViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -87,7 +89,7 @@ fun LocationPickerScreen(
             )
             SearchOverlay(
                 state = state,
-                onQueryChange = { query -> viewModel.setQuery(query, camera.center) },
+                onQueryChange = { query -> viewModel.setQuery(query, camera.center, prefer) },
                 onClear = viewModel::clearSearch,
                 onSelect = viewModel::select,
                 onUseSelected = { place ->

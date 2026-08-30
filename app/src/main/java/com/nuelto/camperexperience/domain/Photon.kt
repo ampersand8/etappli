@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import java.net.URLEncoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -29,10 +30,25 @@ object Photon {
      * [near] biases results towards a point; zoom 8 makes that a day's drive rather than
      * the default neighbourhood, so a destination two countries away still wins on rank.
      */
-    fun searchUrl(query: String, near: LatLng?, language: String): String {
+    fun searchUrl(
+        query: String,
+        near: LatLng?,
+        language: String,
+        tags: List<String> = emptyList(),
+    ): String {
         val url = "https://photon.komoot.io/api?q=${URLEncoder.encode(query, "UTF-8")}" +
             "&limit=$REQUEST_LIMIT&lang=$language"
-        return if (near == null) url else "$url&lat=${near.latitude}&lon=${near.longitude}&zoom=8"
+        val bias = if (near == null) "" else "&lat=${near.latitude}&lon=${near.longitude}&zoom=8"
+        val filter = tags.joinToString("") { "&osm_tag=${URLEncoder.encode(it, "UTF-8")}" }
+        return "$url$bias$filter"
+    }
+
+    /** The OSM tags behind each kind of stop, for privileging what the user is after. */
+    fun preferredTags(kind: StopKind): List<String> = when (kind) {
+        StopKind.CAMPSITE -> listOf("tourism:camp_site")
+        StopKind.STELLPLATZ -> listOf("tourism:caravan_site")
+        StopKind.FREE_CAMP -> listOf("highway:rest_area", "amenity:parking")
+        StopKind.VISIT -> listOf("tourism:attraction")
     }
 
     /** Lenient by design: an error body or a surprise shape yields no suggestions, never a throw. */

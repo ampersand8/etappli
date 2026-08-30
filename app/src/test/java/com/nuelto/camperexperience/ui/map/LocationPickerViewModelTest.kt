@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.ui.map
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.testutil.FakePlaceSearch
@@ -230,5 +231,17 @@ class LocationPickerViewModelTest {
         advanceTimeBy(301)
         assertNull(vm.uiState.value.selected)
         assertEquals(1, vm.uiState.value.results.size)
+    }
+
+    @Test
+    fun `the kind of stop being added is passed to the search`() = runTest {
+        val vm = viewModel()
+        vm.setQuery("grimsel", bern, StopKind.STELLPLATZ)
+        advanceTimeBy(301)
+        assertEquals(listOf(StopKind.STELLPLATZ), search.preferences)
+
+        vm.setQuery("grimsel again", bern)
+        advanceTimeBy(301)
+        assertEquals(listOf(StopKind.STELLPLATZ, null), search.preferences)
     }
 }

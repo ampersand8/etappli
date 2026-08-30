@@ -17,8 +17,9 @@ data class StopEditRoute(val tripId: String, val stopId: String? = null)
 @Serializable
 data class AllTripsMapRoute(val tripId: String? = null)
 
+/** [kind] is what the stop is meant to be, so the search can put those places first. */
 @Serializable
-data class LocationPickerRoute(val lat: Double? = null, val lon: Double? = null)
+data class LocationPickerRoute(val lat: Double?, val lon: Double?, val kind: String?)
 
 @Serializable
 object SettingsRoute

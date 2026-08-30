@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -177,5 +178,26 @@ class PhotonTest {
         assertEquals("en", Photon.language("it"))
         assertEquals("en", Photon.language("rm"))
         assertEquals("en", Photon.language(""))
+    }
+
+    @Test
+    fun `each kind of stop asks OSM for its own tags`() {
+        assertEquals(listOf("tourism:camp_site"), Photon.preferredTags(StopKind.CAMPSITE))
+        assertEquals(listOf("tourism:caravan_site"), Photon.preferredTags(StopKind.STELLPLATZ))
+        assertEquals(listOf("highway:rest_area", "amenity:parking"), Photon.preferredTags(StopKind.FREE_CAMP))
+        assertEquals(listOf("tourism:attraction"), Photon.preferredTags(StopKind.VISIT))
+    }
+
+    @Test
+    fun `tags are appended to the url, encoded`() {
+        assertEquals(
+            "https://photon.komoot.io/api?q=grimsel&limit=8&lang=en&osm_tag=tourism%3Acamp_site",
+            Photon.searchUrl("grimsel", null, "en", listOf("tourism:camp_site")),
+        )
+        assertEquals(
+            "https://photon.komoot.io/api?q=g&limit=8&lang=en&lat=46.5&lon=7.9&zoom=8" +
+                "&osm_tag=highway%3Arest_area&osm_tag=amenity%3Aparking",
+            Photon.searchUrl("g", LatLng(46.5, 7.9), "en", listOf("highway:rest_area", "amenity:parking")),
+        )
     }
 }

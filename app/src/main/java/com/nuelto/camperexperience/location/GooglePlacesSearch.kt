@@ -2,9 +2,11 @@ package com.nuelto.camperexperience.location
 
 import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.GooglePlaces
 import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSuggestion
+import com.nuelto.camperexperience.domain.mergePreferred
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -25,12 +27,25 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
     // resolves the chosen hit. The token is retired once that lookup happens.
     private var sessionToken: String = UUID.randomUUID().toString()
 
-    override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? =
-        withContext(Dispatchers.IO) {
-            val body = GooglePlaces.autocompleteBody(query, near, sessionToken)
-            post(GooglePlaces.AUTOCOMPLETE_URL, body, null)
-                ?.let(GooglePlaces::parseAutocomplete)
-        }
+    override suspend fun search(
+        query: String,
+        near: LatLng?,
+        prefer: StopKind?,
+    ): List<PlaceSuggestion>? = withContext(Dispatchers.IO) {
+        val all = autocomplete(query, near, emptyList()) ?: return@withContext null
+        val types = prefer?.let(GooglePlaces::preferredTypes) ?: return@withContext all
+        // A second, type-filtered pass: what the user is looking for goes to the top,
+        // and it surfaces places the open query misses entirely.
+        val wanted = autocomplete(query, near, types).orEmpty()
+        mergePreferred(wanted, all, GooglePlaces.MAX_SUGGESTIONS)
+    }
+
+    private fun autocomplete(query: String, near: LatLng?, types: List<String>) =
+        post(
+            GooglePlaces.AUTOCOMPLETE_URL,
+            GooglePlaces.autocompleteBody(query, near, sessionToken, types),
+            null,
+        )?.let(GooglePlaces::parseAutocomplete)
 
     override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? {
         suggestion.location?.let { return suggestion }

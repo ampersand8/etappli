@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -34,12 +35,35 @@ object GooglePlaces {
      * coordinate, so [parseDetails] fills it in once a hit is chosen. [sessionToken]
      * groups the keystrokes and that final lookup into one billable session.
      */
-    fun autocompleteBody(input: String, near: LatLng?, sessionToken: String): String {
+    fun autocompleteBody(
+        input: String,
+        near: LatLng?,
+        sessionToken: String,
+        types: List<String> = emptyList(),
+    ): String {
         val bias = near?.let {
-            ""","locationBias":{"circle":{"center":{"latitude":${it.latitude},""" +
-                """"longitude":${it.longitude}},"radius":$BIAS_RADIUS_M}}"""
+            ",\"locationBias\":{\"circle\":{\"center\":{\"latitude\":${it.latitude}," +
+                "\"longitude\":${it.longitude}},\"radius\":$BIAS_RADIUS_M}}"
         }.orEmpty()
-        return """{"input":${input.jsonString()},"sessionToken":${sessionToken.jsonString()}$bias}"""
+        val filter = types.takeIf { it.isNotEmpty() }
+            ?.joinToString(",", ",\"includedPrimaryTypes\":[", "]") { it.jsonString() }
+            .orEmpty()
+        return "{\"input\":${input.jsonString()},\"sessionToken\":${sessionToken.jsonString()}" +
+            "$bias$filter}"
+    }
+
+    /**
+     * Google's own categories for what the user says they are after. Free camping is not
+     * a category Google has, so it aims at the car parks and rest areas that usually are
+     * one. An unsupported type is a hard 400, so this list is deliberate.
+     */
+    fun preferredTypes(kind: StopKind): List<String> = when (kind) {
+        StopKind.CAMPSITE -> listOf("campground")
+        StopKind.STELLPLATZ -> listOf("rv_park", "campground")
+        // Not "park": a municipal park is nowhere to overnight, and having few local
+        // matches it pulled in weak ones from the other side of the continent.
+        StopKind.FREE_CAMP -> listOf("parking", "rest_stop")
+        StopKind.VISIT -> listOf("tourist_attraction")
     }
 
     /** Lenient by design: an error body or a surprise shape yields no hits, never a throw. */
