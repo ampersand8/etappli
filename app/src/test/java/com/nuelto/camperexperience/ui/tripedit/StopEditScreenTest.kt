@@ -17,6 +17,7 @@ import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.testutil.FakePlaceSearch
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -38,9 +39,19 @@ class StopEditScreenTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val events = mutableListOf<String>()
 
-    private fun setContent(stopId: String? = null, withLocationSection: Boolean = false) {
+    private fun setContent(
+        stopId: String? = null,
+        withLocationSection: Boolean = false,
+        withSearch: Boolean = false,
+    ) {
         val args = if (stopId == null) mapOf("tripId" to "t1") else mapOf("tripId" to "t1", "stopId" to stopId)
-        val viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, InMemorySettingsRepository(), null)
+        val viewModel = StopEditViewModel(
+            SavedStateHandle(args),
+            tripRepository,
+            InMemorySettingsRepository(),
+            null,
+            if (withSearch) FakePlaceSearch() else null,
+        )
         compose.setContent {
             if (withLocationSection) {
                 StopEditScreen(
@@ -84,6 +95,7 @@ class StopEditScreenTest {
         setContent(withLocationSection = true)
         compose.onNodeWithText("Not set").assertIsDisplayed()
         compose.onNodeWithText("Location section slot").assertIsDisplayed()
+        compose.onNodeWithText("Search a place").assertDoesNotExist()
     }
 
     @Test
@@ -131,5 +143,11 @@ class StopEditScreenTest {
         }
         setContent()
         compose.onNodeWithText("≈ CHF45.00/night if left blank").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the search field appears when a place search is wired`() {
+        setContent(withSearch = true)
+        compose.onNodeWithText("Search a place").assertIsDisplayed()
     }
 }

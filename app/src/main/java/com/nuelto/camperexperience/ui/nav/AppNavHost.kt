@@ -80,6 +80,7 @@ fun AppNavHost() {
                         },
                         autoLocate = stopEditState.autoLocatePending,
                         onAutoLocateHandled = viewModel::autoLocateHandled,
+                        onAutoLocated = viewModel::setAutoLocation,
                     )
                 },
             )

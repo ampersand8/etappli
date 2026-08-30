@@ -141,6 +141,14 @@ fun StopEditScreen(
             }
             // GPS + map picker buttons are provided by the nav layer from M3 on.
             locationSection?.invoke()
+            if (state.searchEnabled) {
+                PlaceSearchField(
+                    state = state,
+                    onQueryChange = viewModel::setPlaceQuery,
+                    onClear = viewModel::clearSearch,
+                    onPick = viewModel::pickSuggestion,
+                )
+            }
 
             OutlinedTextField(
                 value = state.notes,

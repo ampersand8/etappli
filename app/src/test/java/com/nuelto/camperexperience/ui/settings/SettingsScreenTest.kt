@@ -105,6 +105,7 @@ class SettingsScreenTest {
     fun `shows the app version`() {
         setContent()
         compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        compose.onNodeWithText("Maps and place search © OpenStreetMap contributors").assertIsDisplayed()
     }
 
     @Test

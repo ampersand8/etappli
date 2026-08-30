@@ -167,6 +167,12 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // ODbL: map tiles and place search both serve OpenStreetMap data.
+            Text(
+                "Maps and place search © OpenStreetMap contributors",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
