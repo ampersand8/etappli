@@ -88,6 +88,8 @@ class FirestoreTripRepository(
         "kind" to kind.name,
         "state" to state.name,
         "costKnown" to costKnown,
+        "placeId" to placeId,
+        "locationCachedAt" to locationCachedAt?.toEpochDay(),
     )
 
     private fun DocumentSnapshot.toStop(tripId: String): Stop = Stop(
@@ -105,6 +107,8 @@ class FirestoreTripRepository(
         state = getString("state")?.let { runCatching { StopState.valueOf(it) }.getOrNull() }
             ?: StopState.PLANNED,
         costKnown = getBoolean("costKnown") ?: true,
+        placeId = getString("placeId"),
+        locationCachedAt = getLong("locationCachedAt")?.let { LocalDate.ofEpochDay(it) },
     )
 
     private fun Expense.toMap() = mapOf(

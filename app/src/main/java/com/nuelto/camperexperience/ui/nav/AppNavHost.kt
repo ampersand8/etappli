@@ -67,6 +67,7 @@ fun AppNavHost() {
                         LatLng(lat, lon),
                         place?.getOrNull(0).orEmpty(),
                         place?.getOrNull(1).orEmpty(),
+                        place?.getOrNull(2).orEmpty(),
                     )
                     backStackEntry.savedStateHandle[PICKED_LOCATION_KEY] = null
                     backStackEntry.savedStateHandle[PICKED_PLACE_KEY] = null
@@ -107,7 +108,10 @@ fun AppNavHost() {
                 initial = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null,
                 onPicked = { location, place ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
-                        set(PICKED_PLACE_KEY, arrayOf(place?.name.orEmpty(), place?.label.orEmpty()))
+                        set(
+                            PICKED_PLACE_KEY,
+                            arrayOf(place?.name.orEmpty(), place?.label.orEmpty(), place?.id.orEmpty()),
+                        )
                         set(PICKED_LOCATION_KEY, doubleArrayOf(location.latitude, location.longitude))
                     }
                     navController.popBackStack()

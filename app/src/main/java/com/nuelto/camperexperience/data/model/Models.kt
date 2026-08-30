@@ -53,6 +53,12 @@ data class Stop(
     // false = not priced yet: estimates use nights × the kind's default rate.
     // true covers "free, price known: 0" — never write estimates into campingCostTotal.
     val costKnown: Boolean = true,
+    // Google Place ID, which the Places terms allow keeping indefinitely — unlike the
+    // coordinate, which they don't. Null for GPS fixes, map picks and OSM results.
+    val placeId: String? = null,
+    // When [location] was fetched from Google Places. Null means the coordinate came
+    // from somewhere without a retention limit and never expires. See domain/PlaceCache.
+    val locationCachedAt: LocalDate? = null,
 )
 
 enum class ExpenseType {

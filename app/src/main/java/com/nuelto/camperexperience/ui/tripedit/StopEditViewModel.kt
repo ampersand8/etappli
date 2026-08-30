@@ -43,6 +43,9 @@ data class StopEditUiState(
     val autoLocatePending: Boolean = false,
     // Nearest located stop — where the picker opens when this stop has no spot yet.
     val nearbyLocation: LatLng? = null,
+    // Set only for a Google Places hit; its coordinate expires (domain/PlaceCache).
+    val placeId: String? = null,
+    val locationCachedAt: LocalDate? = null,
 ) {
     val canSave: Boolean get() = name.isNotBlank()
     val isVisit: Boolean get() = kind == StopKind.VISIT
@@ -112,6 +115,8 @@ class StopEditViewModel(
                         notes = stop.notes,
                         kind = stop.kind,
                         isNew = false,
+                        placeId = stop.placeId,
+                        locationCachedAt = stop.locationCachedAt,
                     )
                 }
                 stop.location?.let { resolvePlaceName(it, autoFillName = false) }
@@ -137,7 +142,10 @@ class StopEditViewModel(
 
     fun setLocation(location: LatLng?) {
         val rounded = location?.let(::round)
-        _uiState.update { it.copy(location = rounded, locationName = null) }
+        // A GPS fix or crosshair pick is ours to keep — no place id, no expiry.
+        _uiState.update {
+            it.copy(location = rounded, locationName = null, placeId = null, locationCachedAt = null)
+        }
         rounded?.let { resolvePlaceName(it, autoFillName = true) }
     }
 
@@ -160,7 +168,7 @@ class StopEditViewModel(
      * the name and geocode over it. Moving the location in the same update also retires
      * any reverse geocode still in flight.
      */
-    fun setPickedLocation(location: LatLng, name: String, label: String) {
+    fun setPickedLocation(location: LatLng, name: String, label: String, placeId: String = "") {
         if (name.isBlank()) return setLocation(location)
         _uiState.update { state ->
             val fillName = state.name.isBlank() || state.name == autoFilledName
@@ -169,6 +177,9 @@ class StopEditViewModel(
                 location = round(location),
                 locationName = label.ifBlank { name },
                 name = if (fillName) name else state.name,
+                // A Google place is kept by id; its coordinate is only cached (30 days).
+                placeId = placeId.ifBlank { null },
+                locationCachedAt = placeId.ifBlank { null }?.let { LocalDate.now() },
             )
         }
     }
@@ -218,6 +229,8 @@ class StopEditViewModel(
                         notes = state.notes.trim(),
                         kind = state.kind,
                         costKnown = costKnown,
+                        placeId = state.placeId,
+                        locationCachedAt = state.locationCachedAt,
                     ),
                 )
                 // A moved departure shifts the downstream planned schedule along.
