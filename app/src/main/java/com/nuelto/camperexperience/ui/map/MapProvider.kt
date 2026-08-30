@@ -1,5 +1,6 @@
 package com.nuelto.camperexperience.ui.map
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -47,7 +48,8 @@ interface MapProvider {
 
     /**
      * Draws [markers] and [routes]. [onMarkerClick] gets (tripId, stopId) and returns
-     * true when it consumed the tap.
+     * true when it consumed the tap; [onLongPress] gets the point pressed and held,
+     * which is how a spot with no name gets chosen.
      */
     @Composable
     fun Canvas(
@@ -55,7 +57,8 @@ interface MapProvider {
         markers: List<MapMarker>,
         routes: List<MapRoute>,
         modifier: Modifier,
-        onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
+        onMarkerClick: ((tripId: String, stopId: String) -> Boolean)? = null,
+        onLongPress: ((LatLng) -> Unit)? = null,
     )
 }
 
@@ -82,8 +85,15 @@ object PlaceholderMapProvider : MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
+        onLongPress: ((LatLng) -> Unit)?,
     ) {
-        Box(modifier.testTag("map-placeholder"))
+        // Tapping the placeholder stands in for the long press, so the picker's
+        // drop-a-pin flow can still be driven end to end on the JVM.
+        Box(
+            modifier
+                .testTag("map-placeholder")
+                .clickable(enabled = onLongPress != null) { onLongPress?.invoke(camera.center) },
+        )
     }
 }
 

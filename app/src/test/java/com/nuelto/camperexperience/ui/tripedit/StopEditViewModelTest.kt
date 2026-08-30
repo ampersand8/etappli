@@ -58,9 +58,9 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `location label falls back from place name to coordinates to not set`() {
+    fun `location label names the place, never a coordinate`() {
         assertEquals("Not set", StopEditUiState().locationLabel)
-        assertEquals("46.5, 7.5", StopEditUiState(location = LatLng(46.5, 7.5)).locationLabel)
+        assertEquals("Pin on map", StopEditUiState(location = LatLng(46.5, 7.5)).locationLabel)
         assertEquals("Thun", StopEditUiState(location = LatLng(46.5, 7.5), locationName = "Thun").locationLabel)
     }
 
@@ -282,7 +282,7 @@ class StopEditViewModelTest {
         val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository, settingsRepository)
         vm.setLocation(LatLng(46.0, 7.0))
         assertNull(vm.uiState.value.locationName)
-        assertEquals("46.0, 7.0", vm.uiState.value.locationLabel)
+        assertEquals("Pin on map", vm.uiState.value.locationLabel)
     }
 
     @Test

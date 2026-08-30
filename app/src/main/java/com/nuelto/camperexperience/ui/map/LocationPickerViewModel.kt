@@ -70,6 +70,10 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
 
     fun select(place: PlaceSuggestion) = _uiState.update { it.copy(selected = place) }
 
+    /** Press and hold on the map. No name — the editor reverse-geocodes one. */
+    fun dropPin(at: LatLng) =
+        _uiState.update { it.copy(selected = PlaceSuggestion(name = "", label = "", location = at)) }
+
     companion object {
         private const val DEBOUNCE_MS = 300L
         private const val MIN_QUERY_LENGTH = 3

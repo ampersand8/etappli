@@ -147,4 +147,26 @@ class LocationPickerViewModelTest {
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
         assertTrue(vm.uiState.value.results.isEmpty())
     }
+
+    @Test
+    fun `pressing and holding the map drops a nameless pin`() {
+        val vm = viewModel()
+        vm.dropPin(LatLng(46.5, 7.9))
+        val selected = vm.uiState.value.selected!!
+        assertEquals(LatLng(46.5, 7.9), selected.location)
+        // No name: the stop editor reverse-geocodes one from the coordinate.
+        assertEquals("", selected.name)
+        assertEquals("", selected.label)
+        assertEquals("", selected.id)
+    }
+
+    @Test
+    fun `a dropped pin gives way to a fresh search`() = runTest {
+        val vm = viewModel()
+        vm.dropPin(LatLng(46.5, 7.9))
+        vm.setQuery("Lauter", bern)
+        advanceTimeBy(301)
+        assertNull(vm.uiState.value.selected)
+        assertEquals(1, vm.uiState.value.results.size)
+    }
 }

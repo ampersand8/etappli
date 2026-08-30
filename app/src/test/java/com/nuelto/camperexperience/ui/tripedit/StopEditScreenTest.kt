@@ -94,7 +94,7 @@ class StopEditScreenTest {
         setContent("s1")
         compose.onNodeWithText("Edit stop").assertIsDisplayed()
         compose.onNodeWithText("Camp").assertIsDisplayed()
-        compose.onNodeWithText("46.0, 7.0").assertIsDisplayed()
+        compose.onNodeWithText("Pin on map").assertIsDisplayed()
         compose.onNodeWithContentDescription("Delete stop").performClick()
         assertEquals(listOf("back"), events)
         runBlocking { assertTrue(tripRepository.stops("t1").first().isEmpty()) }

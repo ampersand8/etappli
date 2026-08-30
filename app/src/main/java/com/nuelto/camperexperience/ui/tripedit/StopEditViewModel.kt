@@ -51,9 +51,10 @@ data class StopEditUiState(
     val isVisit: Boolean get() = kind == StopKind.VISIT
     val pickerStart: LatLng? get() = location ?: nearbyLocation
 
+    // Never a raw coordinate: a place has a name, and a dropped pin is just "set".
     val locationLabel: String
         get() = locationName
-            ?: location?.let { "${it.latitude}, ${it.longitude}" }
+            ?: location?.let { "Pin on map" }
             ?: "Not set"
 }
 
