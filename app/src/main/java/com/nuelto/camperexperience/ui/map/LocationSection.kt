@@ -1,15 +1,19 @@
 package com.nuelto.camperexperience.ui.map
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,6 +48,8 @@ fun LocationSection(
     autoLocate: Boolean = false,
     onAutoLocateHandled: () -> Unit = {},
     onAutoLocated: (LatLng) -> Unit = onLocationChange,
+    // Google Maps link for this stop, once it has somewhere to point at.
+    shareUrl: String? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -107,6 +113,24 @@ fun LocationSection(
                 Text("  Pick on map")
             }
         }
+        shareUrl?.let { url ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { context.startActivity(viewIntent(url)) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.Map, contentDescription = null)
+                    Text("  Open in Maps")
+                }
+                OutlinedButton(
+                    onClick = { context.startActivity(Intent.createChooser(shareIntent(url), null)) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Text("  Share")
+                }
+            }
+        }
         status?.let {
             Text(
                 it,
@@ -115,4 +139,11 @@ fun LocationSection(
             )
         }
     }
+}
+
+private fun viewIntent(url: String) = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+
+private fun shareIntent(url: String) = Intent(Intent.ACTION_SEND).apply {
+    type = "text/plain"
+    putExtra(Intent.EXTRA_TEXT, url)
 }

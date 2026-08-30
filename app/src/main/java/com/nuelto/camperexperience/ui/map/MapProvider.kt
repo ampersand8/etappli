@@ -13,6 +13,7 @@ import com.nuelto.camperexperience.domain.MapRoute
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.PlaceSuggestion
 
 /**
  * Camera the map screens drive, in the app's own types — no SDK class ever reaches a
@@ -59,6 +60,7 @@ interface MapProvider {
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)? = null,
         onLongPress: ((LatLng) -> Unit)? = null,
+        onPoiClick: ((PlaceSuggestion) -> Unit)? = null,
     )
 }
 
@@ -86,6 +88,7 @@ object PlaceholderMapProvider : MapProvider {
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
+        onPoiClick: ((PlaceSuggestion) -> Unit)?,
     ) {
         // Tapping the placeholder stands in for the long press, so the picker's
         // drop-a-pin flow can still be driven end to end on the JVM.

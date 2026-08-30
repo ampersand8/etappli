@@ -63,13 +63,20 @@ There is no lint/format tooling configured.
   Firebase decides the store, the key decides the map. Tests provide
   `LocalMapProvider provides PlaceholderMapProvider`, which records camera moves so the
   picker's confirm flow still works on the JVM. Setup: GOOGLE_MAPS_SETUP.md.
-- **Google mode searches via Google Places (New) Text Search** (`domain/GooglePlaces.kt`
-  pure, `location/GooglePlacesSearch.kt` the HTTP call); MapLibre mode stays on Photon —
+- **Google mode searches via Places (New) Autocomplete** — Text Search resolves "grimsel"
+  to one place, autocomplete offers the pass, the lake, the hospice and the hotel.
+  Predictions carry no coordinate, so `PlaceSearch.resolve` fetches it via Place Details
+  when a hit is chosen, inside the same billed session token. Tapping a POI Google already
+  draws (`onPOIClick`) picks it directly — no lookup needed, it arrives with both.
+  (`domain/GooglePlaces.kt` pure, `location/GooglePlacesSearch.kt` the HTTP calls);
+  MapLibre mode stays on Photon —
   Places SST §14.2 forbids showing Places results on a non-Google map. §14.3 caps caching
   a Places coordinate at 30 days, so such stops carry `placeId` + `locationCachedAt`, and
   `domain/PlaceCacheSweeper` (run from TripDetailViewModel) refreshes them via Place
   Details or **deletes** them. Coordinates from GPS/crosshair/OSM have no
   `locationCachedAt` and never expire. Details: GOOGLE_MAPS_SETUP.md.
+- A stop that came from Google keeps its place id, so `domain/MapsUri` can link back to
+  the real place — "Open in Maps" and "Share" in the stop editor's location section.
 - The picker is **search-and-choose, not aim**: hits come back as a tappable list (and
   as markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the
   user a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than

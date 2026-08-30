@@ -58,8 +58,10 @@ fun LocationPickerScreen(
 
     // New hits pull the camera over them; tapping one slides the crosshair onto it so
     // both ways of confirming agree, without yanking the zoom around.
-    LaunchedEffect(state.results) { camera.apply(MapOverlay.frame(state.results.map { it.location })) }
-    LaunchedEffect(state.selected) { state.selected?.let { camera.centerOn(it.location) } }
+    LaunchedEffect(state.results) {
+        camera.apply(MapOverlay.frame(state.results.mapNotNull { it.location }))
+    }
+    LaunchedEffect(state.selected) { state.selected?.location?.let { camera.centerOn(it) } }
 
     Scaffold(
         topBar = {
@@ -81,13 +83,16 @@ fun LocationPickerScreen(
                 modifier = Modifier.fillMaxSize(),
                 onMarkerClick = { _, id -> state.hit(id)?.also(viewModel::select) != null },
                 onLongPress = viewModel::dropPin,
+                onPoiClick = viewModel::select,
             )
             SearchOverlay(
                 state = state,
                 onQueryChange = { query -> viewModel.setQuery(query, camera.center) },
                 onClear = viewModel::clearSearch,
                 onSelect = viewModel::select,
-                onUseSelected = { onPicked(it.location, it.takeIf { p -> p.name.isNotBlank() }) },
+                onUseSelected = { place ->
+                    place.location?.let { onPicked(it, place.takeIf { p -> p.name.isNotBlank() }) }
+                },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }
@@ -97,19 +102,22 @@ fun LocationPickerScreen(
 /** Hits as markers: the chosen one is filled, the rest are hollow rings. A pin dropped
  *  by hand is not in the results, so it gets a marker of its own. */
 private fun LocationPickerUiState.markers(): List<MapMarker> {
-    val hits = results.mapIndexed { index, place ->
-        MapMarker(
-            tripId = SEARCH_MARKERS,
-            stopId = index.toString(),
-            at = place.location,
-            accent = MapAccent.PLANNED,
-            hollow = place != selected,
-        )
+    // Predictions have no coordinate until they are chosen, so only some hits show.
+    val hits = results.mapIndexedNotNull { index, place ->
+        place.location?.let {
+            MapMarker(
+                tripId = SEARCH_MARKERS,
+                stopId = index.toString(),
+                at = it,
+                accent = MapAccent.PLANNED,
+                hollow = place != selected,
+            )
+        }
     }
-    val pin = selected?.takeIf { it !in results }?.let {
-        MapMarker(SEARCH_MARKERS, DROPPED_PIN, it.location, MapAccent.PLANNED, hollow = false)
+    val chosen = selected?.takeIf { it !in results }?.location?.let {
+        MapMarker(SEARCH_MARKERS, DROPPED_PIN, it, MapAccent.PLANNED, hollow = false)
     }
-    return hits + listOfNotNull(pin)
+    return hits + listOfNotNull(chosen)
 }
 
 private fun LocationPickerUiState.hit(markerId: String): PlaceSuggestion? =
@@ -209,10 +217,14 @@ private fun SearchOverlay(
                             )
                         }
                     }
-                    Button(onClick = {
-                        keyboard?.hide()
-                        onUseSelected(selected)
-                    }) {
+                    Button(
+                        onClick = {
+                            keyboard?.hide()
+                            onUseSelected(selected)
+                        },
+                        // A prediction is still being looked up until it has a coordinate.
+                        enabled = selected.location != null,
+                    ) {
                         Text("Use this place")
                     }
                 }

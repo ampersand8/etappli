@@ -16,6 +16,7 @@ import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.DateCascade
+import com.nuelto.camperexperience.domain.MapsUri
 import com.nuelto.camperexperience.domain.nearestLocated
 import com.nuelto.camperexperience.location.PlaceNameResolver
 import com.nuelto.camperexperience.ui.components.parseDecimal
@@ -50,6 +51,9 @@ data class StopEditUiState(
     val canSave: Boolean get() = name.isNotBlank()
     val isVisit: Boolean get() = kind == StopKind.VISIT
     val pickerStart: LatLng? get() = location ?: nearbyLocation
+
+    /** Google Maps link for this stop — the place itself when it came from Google. */
+    val shareUrl: String? get() = MapsUri.share(placeId, location?.latitude, location?.longitude)
 
     // Never a raw coordinate: a place has a name, and a dropped pin is just "set".
     val locationLabel: String

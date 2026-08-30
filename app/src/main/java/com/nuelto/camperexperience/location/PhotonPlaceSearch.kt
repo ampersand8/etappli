@@ -19,6 +19,10 @@ import kotlinx.coroutines.withContext
  */
 class PhotonPlaceSearch : PlaceSearch {
 
+    /** Photon hands back coordinates with the hit, so there is nothing left to look up. */
+    override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? =
+        suggestion.takeIf { it.location != null }
+
     override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? =
         withContext(Dispatchers.IO) {
             val url = Photon.searchUrl(query, near, Photon.language(Locale.getDefault().language))

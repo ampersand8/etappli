@@ -7,7 +7,7 @@ import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -21,20 +21,34 @@ import kotlinx.coroutines.withContext
  */
 class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) : PlaceSearch {
 
+    // Google bills autocomplete per session: every keystroke plus the one lookup that
+    // resolves the chosen hit. The token is retired once that lookup happens.
+    private var sessionToken: String = UUID.randomUUID().toString()
+
     override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? =
         withContext(Dispatchers.IO) {
-            val body = GooglePlaces.searchBody(query, near, Locale.getDefault().language)
-            post(GooglePlaces.SEARCH_URL, body, GooglePlaces.FIELD_MASK)
-                ?.let(GooglePlaces::parseSearch)
+            val body = GooglePlaces.autocompleteBody(query, near, sessionToken)
+            post(GooglePlaces.AUTOCOMPLETE_URL, body, null)
+                ?.let(GooglePlaces::parseAutocomplete)
         }
 
-    /** Re-fetches one place, to renew a coordinate whose 30-day retention ran out. */
-    suspend fun details(placeId: String): PlaceSuggestion? = withContext(Dispatchers.IO) {
-        get(GooglePlaces.detailsUrl(placeId), GooglePlaces.DETAILS_FIELD_MASK)
-            ?.let(GooglePlaces::parseDetails)
+    override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? {
+        suggestion.location?.let { return suggestion }
+        val id = suggestion.id.ifBlank { return null }
+        val resolved = details(id, sessionToken) ?: return null
+        sessionToken = UUID.randomUUID().toString()
+        // Keep the name the user picked from the list; take only the coordinate.
+        return suggestion.copy(location = resolved.location)
     }
 
-    private fun post(url: String, body: String, fieldMask: String): String? = runCatching {
+    /** Fetches one place, to fill in or renew a coordinate. */
+    suspend fun details(placeId: String, token: String? = null): PlaceSuggestion? =
+        withContext(Dispatchers.IO) {
+            get(GooglePlaces.detailsUrl(placeId, token), GooglePlaces.DETAILS_FIELD_MASK)
+                ?.let(GooglePlaces::parseDetails)
+        }
+
+    private fun post(url: String, body: String, fieldMask: String?): String? = runCatching {
         val connection = open(url, fieldMask).apply {
             requestMethod = "POST"
             doOutput = true
@@ -57,12 +71,12 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
         }
     }.getOrNull()
 
-    private fun open(url: String, fieldMask: String) =
+    private fun open(url: String, fieldMask: String?) =
         (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 5_000
             readTimeout = 5_000
             setRequestProperty("X-Goog-Api-Key", apiKey)
-            setRequestProperty("X-Goog-FieldMask", fieldMask)
+            fieldMask?.let { setRequestProperty("X-Goog-FieldMask", it) }
             setRequestProperty("User-Agent", "CamperExperience/${BuildConfig.VERSION_NAME}")
         }
 
