@@ -23,7 +23,15 @@ object GooglePlaces {
         "https://places.googleapis.com/v1/places/${placeId.encodePathSegment()}" +
             sessionToken?.let { "?sessionToken=${it.encodePathSegment()}" }.orEmpty()
 
-    const val DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location"
+    // Billing is per requested field and these push Place Details into a higher tier,
+    // but they are the difference between a name and knowing whether to stay there.
+    const val DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location,rating," +
+        "userRatingCount,editorialSummary,primaryTypeDisplayName,photos,reviews"
+
+    /** The media URL for a photo handle, which already carries the places/ prefix. */
+    fun photoUrl(photo: String, apiKey: String, maxPx: Int = 640): String =
+        "https://places.googleapis.com/v1/$photo/media?maxHeightPx=$maxPx&maxWidthPx=$maxPx" +
+            "&key=${apiKey.encodePathSegment()}"
 
     // The API caps the bias radius at 50 km; a day's drive is further, but bias only
     // reorders — a destination outside it still ranks on its own merits.
@@ -107,8 +115,33 @@ object GooglePlaces {
             label = label,
             location = LatLng(latitude, longitude),
             id = place.string("id").orEmpty(),
+            details = details(place),
         )
     }
+
+    /** Everything beyond a pin. Absent throughout for a place Google knows little about. */
+    private fun details(place: JsonObject): PlaceDetails? {
+        val rating = (place["rating"] as? JsonPrimitive)
+            ?.takeIf { !it.isString }?.content?.toDoubleOrNull()
+        val count = (place["userRatingCount"] as? JsonPrimitive)
+            ?.takeIf { !it.isString }?.content?.toIntOrNull() ?: 0
+        val details = PlaceDetails(
+            kind = (place["primaryTypeDisplayName"] as? JsonObject)?.string("text").orEmpty(),
+            rating = rating,
+            ratingCount = count,
+            summary = (place["editorialSummary"] as? JsonObject)?.string("text").orEmpty(),
+            review = firstReview(place),
+            photo = ((place["photos"] as? JsonArray)?.firstOrNull() as? JsonObject)
+                ?.string("name").orEmpty(),
+        )
+        return details.takeIf { !it.isEmpty }
+    }
+
+    private fun firstReview(place: JsonObject): String =
+        (place["reviews"] as? JsonArray).orEmpty()
+            .filterIsInstance<JsonObject>()
+            .firstNotNullOfOrNull { (it["text"] as? JsonObject)?.string("text") }
+            .orEmpty()
 
     private fun JsonObject.string(key: String): String? =
         (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }

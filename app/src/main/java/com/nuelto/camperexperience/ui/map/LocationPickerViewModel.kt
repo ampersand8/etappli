@@ -20,13 +20,17 @@ data class LocationPickerUiState(
     val results: List<PlaceSuggestion> = emptyList(),
     val status: PlaceSearchStatus = PlaceSearchStatus.IDLE,
     val selected: PlaceSuggestion? = null,
+    val photo: ByteArray? = null,
 )
 
 /**
  * Debounced place search for the picker map: hits land as markers so you can pick the
  * one in the right spot. Search is additive — the crosshair keeps working without it.
  */
-class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : ViewModel() {
+class LocationPickerViewModel(
+    private val placeSearch: PlaceSearch? = null,
+    private val loadPhoto: (suspend (String) -> ByteArray?)? = null,
+) : ViewModel() {
 
     private var searchJob: Job? = null
 
@@ -41,7 +45,12 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
         val query = value.trim()
         if (query.length < MIN_QUERY_LENGTH) {
             _uiState.update {
-                it.copy(results = emptyList(), selected = null, status = PlaceSearchStatus.IDLE)
+                it.copy(
+                    results = emptyList(),
+                    selected = null,
+                    photo = null,
+                    status = PlaceSearchStatus.IDLE,
+                )
             }
             return
         }
@@ -54,6 +63,7 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
                 it.copy(
                     results = found.orEmpty(),
                     selected = null,
+                    photo = null,
                     status = when {
                         found == null -> PlaceSearchStatus.UNAVAILABLE
                         found.isEmpty() -> PlaceSearchStatus.EMPTY
@@ -70,17 +80,18 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
     }
 
     /**
-     * A prediction names a place but may not know where it is yet, so choosing one can
-     * need a second lookup. Tapping a marker or a POI already has the coordinate.
+     * A prediction names a place but knows neither where it is nor what it is like, and
+     * a tapped POI knows only the former, so choosing either needs a second lookup.
      */
     fun select(place: PlaceSuggestion) {
         _uiState.update {
             it.copy(
                 selected = place,
+                photo = null,
                 status = if (place.location == null) PlaceSearchStatus.SEARCHING else PlaceSearchStatus.IDLE,
             )
         }
-        if (place.location != null) return
+        if (place.location != null && place.details != null) return fetchPhoto(place)
         val search = placeSearch ?: return
         viewModelScope.launch {
             val resolved = search.resolve(place)
@@ -96,12 +107,24 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
                     },
                 )
             }
+            resolved?.let(::fetchPhoto)
+        }
+    }
+
+    /** The picture arrives after the card, rather than holding it back. */
+    private fun fetchPhoto(place: PlaceSuggestion) {
+        val handle = place.details?.photo?.takeIf { it.isNotBlank() } ?: return
+        val load = loadPhoto ?: return
+        viewModelScope.launch {
+            val image = load(handle) ?: return@launch
+            _uiState.update { if (it.selected == place) it.copy(photo = image) else it }
         }
     }
 
     /** Press and hold on the map. No name — the editor reverse-geocodes one. */
-    fun dropPin(at: LatLng) =
-        _uiState.update { it.copy(selected = PlaceSuggestion(name = "", label = "", location = at)) }
+    fun dropPin(at: LatLng) = _uiState.update {
+        it.copy(selected = PlaceSuggestion(name = "", label = "", location = at), photo = null)
+    }
 
     companion object {
         private const val DEBOUNCE_MS = 300L
@@ -109,7 +132,10 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
 
         // Search must match the map: Google Places may not be shown on a non-Google map.
         val Factory = containerViewModelFactory { container ->
-            LocationPickerViewModel(container.mapProvider.placeSearch())
+            LocationPickerViewModel(
+                container.mapProvider.placeSearch(),
+                container.mapProvider::photo,
+            )
         }
     }
 }

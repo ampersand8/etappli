@@ -206,4 +206,74 @@ class GooglePlacesTest {
             GooglePlaces.autocompleteBody("g", null, "t").contains("includedPrimaryTypes"),
         )
     }
+
+    // --- details beyond a pin -----------------------------------------------
+
+    private val rich = """{"id":"ChIJ1","displayName":{"text":"Grimsel Pass"},
+        "formattedAddress":"Grimsel Pass, 3999 Obergoms, Switzerland",
+        "location":{"latitude":46.5614,"longitude":8.33758},
+        "rating":4.8,"userRatingCount":1787,
+        "primaryTypeDisplayName":{"text":"Natural Feature"},
+        "editorialSummary":{"text":"This paved mountain road connects Bern to Valais."},
+        "reviews":[{"rating":5,"text":{"text":"Truly memorable roads and views."}}],
+        "photos":[{"name":"places/ChIJ1/photos/AVoN"},{"name":"places/ChIJ1/photos/BWpO"}]}"""
+
+    @Test
+    fun `details carry what the place is like, not just where`() {
+        val d = GooglePlaces.parseDetails(rich)!!.details!!
+        assertEquals("Natural Feature", d.kind)
+        assertEquals(4.8, d.rating!!, 1e-9)
+        assertEquals(1787, d.ratingCount)
+        assertEquals("This paved mountain road connects Bern to Valais.", d.summary)
+        assertEquals("Truly memorable roads and views.", d.review)
+        // The first photo only; the card shows one.
+        assertEquals("places/ChIJ1/photos/AVoN", d.photo)
+    }
+
+    @Test
+    fun `a place Google knows little about carries no details at all`() {
+        assertNull(GooglePlaces.parseDetails(place())!!.details)
+    }
+
+    @Test
+    fun `missing or malformed detail fields are simply absent`() {
+        val d = GooglePlaces.parseDetails(
+            """{"displayName":{"text":"X"},"location":{"latitude":1.0,"longitude":2.0},
+            "rating":"4.8","userRatingCount":"many","editorialSummary":{},
+            "reviews":[{"rating":5},{"text":{"text":"Second one counts."}}],"photos":[]}""",
+        )!!.details!!
+        assertNull(d.rating)
+        assertEquals(0, d.ratingCount)
+        assertEquals("", d.summary)
+        assertEquals("", d.photo)
+        // The first review with actual text wins, not the first review.
+        assertEquals("Second one counts.", d.review)
+    }
+
+    @Test
+    fun `an empty details block counts as none`() {
+        assertTrue(PlaceDetails().isEmpty)
+        assertFalse(PlaceDetails(rating = 1.0).isEmpty)
+        assertFalse(PlaceDetails(kind = "Campground").isEmpty)
+        assertFalse(PlaceDetails(summary = "s").isEmpty)
+        assertFalse(PlaceDetails(review = "r").isEmpty)
+        assertFalse(PlaceDetails(photo = "p").isEmpty)
+    }
+
+    @Test
+    fun `a photo handle becomes a sized media url with the key escaped`() {
+        assertEquals(
+            "https://places.googleapis.com/v1/places/ChIJ1/photos/AVoN/media" +
+                "?maxHeightPx=640&maxWidthPx=640&key=a%2Fb",
+            GooglePlaces.photoUrl("places/ChIJ1/photos/AVoN", "a/b"),
+        )
+        assertTrue(GooglePlaces.photoUrl("p", "k", maxPx = 200).contains("maxHeightPx=200"))
+    }
+
+    @Test
+    fun `the details field mask asks for what the card shows`() {
+        listOf("rating", "userRatingCount", "editorialSummary", "photos", "reviews").forEach {
+            assertTrue(it, GooglePlaces.DETAILS_FIELD_MASK.contains(it))
+        }
+    }
 }

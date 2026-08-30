@@ -74,8 +74,16 @@ There is no lint/format tooling configured.
   TripDetailViewModel) refreshes them via Place Details or **deletes** them. Coordinates
   from GPS or a dropped pin have no `locationCachedAt` and never expire. With OSM gone
   there is no non-expiring search source, so this path is not optional.
+- Choosing a hit fetches **what the place is like** (`PlaceDetails`: type, rating, editorial
+  summary, top review, one photo) in the same Place Details call that resolves its
+  coordinate; a tapped POI is enriched the same way. Photos come back as bytes and are
+  decoded in `ui/map` so the picker's state — and `LocationPickerViewModel`, a pitest
+  target — stays free of Android graphics types. Note the richer field mask moves Place
+  Details into a higher billing tier.
 - A stop that came from Google keeps its place id, so `domain/MapsUri` can link back to
   the real place — "Open in Maps" and "Share" in the stop editor's location section.
+  **Use the documented `maps/search/?api=1&query=…&query_place_id=…` form**: `query` is
+  required, and the shorter `maps/place/?q=place_id:` form does not reliably open.
 - The picker is **search-and-choose, not aim**: hits come back as a tappable list (and as
   markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the user
   a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than lat/lng
