@@ -68,7 +68,35 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
         _uiState.value = LocationPickerUiState()
     }
 
-    fun select(place: PlaceSuggestion) = _uiState.update { it.copy(selected = place) }
+    /**
+     * A prediction names a place but may not know where it is yet, so choosing one can
+     * need a second lookup. Tapping a marker or a POI already has the coordinate.
+     */
+    fun select(place: PlaceSuggestion) {
+        _uiState.update {
+            it.copy(
+                selected = place,
+                status = if (place.location == null) PlaceSearchStatus.SEARCHING else PlaceSearchStatus.IDLE,
+            )
+        }
+        if (place.location != null) return
+        val search = placeSearch ?: return
+        viewModelScope.launch {
+            val resolved = search.resolve(place)
+            _uiState.update { state ->
+                // Ignore a late answer for something the user has moved on from.
+                if (state.selected != place) return@update state
+                state.copy(
+                    selected = resolved ?: place,
+                    status = if (resolved?.location == null) {
+                        PlaceSearchStatus.UNAVAILABLE
+                    } else {
+                        PlaceSearchStatus.IDLE
+                    },
+                )
+            }
+        }
+    }
 
     /** Press and hold on the map. No name — the editor reverse-geocodes one. */
     fun dropPin(at: LatLng) =

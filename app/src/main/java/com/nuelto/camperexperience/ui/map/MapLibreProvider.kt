@@ -11,6 +11,7 @@ import com.nuelto.camperexperience.domain.MapFrame
 import com.nuelto.camperexperience.domain.MapMarker
 import com.nuelto.camperexperience.domain.MapRoute
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.location.PhotonPlaceSearch
 import com.nuelto.camperexperience.ui.theme.accentColor
 import kotlinx.serialization.json.buildJsonObject
@@ -64,6 +65,8 @@ object MapLibreProvider : MapProvider {
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
+        // OpenFreeMap draws POI labels but exposes no place behind them.
+        onPoiClick: ((PlaceSuggestion) -> Unit)?,
     ) {
         MaplibreMap(
             modifier = modifier,

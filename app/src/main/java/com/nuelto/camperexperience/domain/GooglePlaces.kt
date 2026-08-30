@@ -14,15 +14,13 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object GooglePlaces {
 
-    const val SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
-    const val MAX_SUGGESTIONS = 5
-
-    /** Billing is per requested field, so ask for exactly what a suggestion needs. */
-    const val FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location"
+    const val AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
+    const val MAX_SUGGESTIONS = 8
 
     /** Place Details for one id, used to refresh an expired coordinate. */
-    fun detailsUrl(placeId: String): String =
-        "https://places.googleapis.com/v1/places/${placeId.encodePathSegment()}"
+    fun detailsUrl(placeId: String, sessionToken: String? = null): String =
+        "https://places.googleapis.com/v1/places/${placeId.encodePathSegment()}" +
+            sessionToken?.let { "?sessionToken=${it.encodePathSegment()}" }.orEmpty()
 
     const val DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location"
 
@@ -30,22 +28,39 @@ object GooglePlaces {
     // reorders — a destination outside it still ranks on its own merits.
     private const val BIAS_RADIUS_M = 50_000.0
 
-    fun searchBody(query: String, near: LatLng?, language: String): String {
+    /**
+     * Autocomplete rather than Text Search: typing "grimsel" should offer the pass, the
+     * lake, the hospice and the hotel, not resolve to one of them. Predictions carry no
+     * coordinate, so [parseDetails] fills it in once a hit is chosen. [sessionToken]
+     * groups the keystrokes and that final lookup into one billable session.
+     */
+    fun autocompleteBody(input: String, near: LatLng?, sessionToken: String): String {
         val bias = near?.let {
             ""","locationBias":{"circle":{"center":{"latitude":${it.latitude},""" +
                 """"longitude":${it.longitude}},"radius":$BIAS_RADIUS_M}}"""
         }.orEmpty()
-        return """{"textQuery":${query.jsonString()},"pageSize":$MAX_SUGGESTIONS,""" +
-            """"languageCode":${language.jsonString()}$bias}"""
+        return """{"input":${input.jsonString()},"sessionToken":${sessionToken.jsonString()}$bias}"""
     }
 
     /** Lenient by design: an error body or a surprise shape yields no hits, never a throw. */
-    fun parseSearch(body: String): List<PlaceSuggestion> {
+    fun parseAutocomplete(body: String): List<PlaceSuggestion> {
         val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject
-        val places = root?.get("places") as? JsonArray ?: return emptyList()
-        return places.mapNotNull(::suggestion)
+        val suggestions = root?.get("suggestions") as? JsonArray ?: return emptyList()
+        return suggestions.mapNotNull(::prediction)
             .distinctBy { it.name to it.label }
             .take(MAX_SUGGESTIONS)
+    }
+
+    /** A query prediction ("pizza near me") names no place, so it is skipped. */
+    private fun prediction(element: JsonElement): PlaceSuggestion? {
+        val prediction = (element as? JsonObject)?.get("placePrediction") as? JsonObject ?: return null
+        val id = prediction.string("placeId") ?: return null
+        val format = prediction["structuredFormat"] as? JsonObject
+        val name = (format?.get("mainText") as? JsonObject)?.string("text")
+            ?: (prediction["text"] as? JsonObject)?.string("text")
+            ?: return null
+        val label = (format?.get("secondaryText") as? JsonObject)?.string("text").orEmpty()
+        return PlaceSuggestion(name = name, label = label, location = null, id = id)
     }
 
     /** A Place Details body, for refreshing one expired coordinate. */

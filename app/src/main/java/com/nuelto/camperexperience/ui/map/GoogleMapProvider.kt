@@ -29,6 +29,7 @@ import com.nuelto.camperexperience.domain.MapRoute
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.location.GooglePlacesSearch
 import com.nuelto.camperexperience.ui.theme.accentColor
 import androidx.compose.foundation.background
@@ -73,12 +74,25 @@ object GoogleMapProvider : MapProvider {
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
+        onPoiClick: ((PlaceSuggestion) -> Unit)?,
     ) {
         GoogleMap(
             modifier = modifier,
             cameraPositionState = (camera as GoogleCamera).state,
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
             onMapLongClick = { at -> onLongPress?.invoke(LatLng(at.latitude, at.longitude)) },
+            // The aires, campsites and huts Google already draws are choosable directly.
+            onPOIClick = { poi ->
+                onPoiClick?.invoke(
+                    PlaceSuggestion(
+                        // Google wraps long POI labels with a newline; it is not a separator.
+                        name = poi.name.replace('\n', ' '),
+                        label = "",
+                        location = LatLng(poi.latLng.latitude, poi.latLng.longitude),
+                        id = poi.placeId,
+                    ),
+                )
+            },
         ) {
             routes.forEach { route ->
                 Polyline(

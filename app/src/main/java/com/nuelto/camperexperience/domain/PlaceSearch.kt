@@ -11,7 +11,9 @@ import com.nuelto.camperexperience.data.model.StopState
 data class PlaceSuggestion(
     val name: String,
     val label: String,
-    val location: LatLng,
+    // Null while a hit is only a prediction: some providers only name a place, and hand
+    // over its coordinate when you actually choose it. See [PlaceSearch.resolve].
+    val location: LatLng? = null,
     val id: String = "",
 )
 
@@ -22,6 +24,12 @@ enum class PlaceSearchStatus { IDLE, SEARCHING, EMPTY, UNAVAILABLE }
 interface PlaceSearch {
     /** null = the lookup failed (offline, timeout, junk response); empty = no matches. */
     suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>?
+
+    /**
+     * Fills in the coordinate of a hit that came back without one. A provider whose
+     * search already returns coordinates just hands the hit straight back.
+     */
+    suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion?
 }
 
 /** Where to open the map for the stop at [orderIndex] that has no location of its own:

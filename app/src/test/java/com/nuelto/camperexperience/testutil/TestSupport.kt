@@ -82,6 +82,11 @@ class FakePlaceSearch : PlaceSearch {
         PlaceSuggestion("Lauterbrunnen", "Bern, Switzerland", LatLng(46.5939043, 7.9078016)),
     )
 
+    /** Whatever [resolve] should hand back; by default the hit itself. */
+    var resolved: (PlaceSuggestion) -> PlaceSuggestion? = { it }
+
+    override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? = resolved(suggestion)
+
     override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? {
         requests += query to near
         if (gated) {

@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -146,6 +147,67 @@ class LocationPickerViewModelTest {
         assertEquals("Lauterbrunnen", vm.uiState.value.query)
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
         assertTrue(vm.uiState.value.results.isEmpty())
+    }
+
+    @Test
+    fun `choosing a prediction looks up where it actually is`() = runTest {
+        val pass = PlaceSuggestion("Grimsel Pass", "Obergoms, Switzerland", location = null, id = "ChIJ1")
+        search.result = listOf(pass)
+        search.resolved = { it.copy(location = LatLng(46.5606, 8.3376)) }
+        val vm = viewModel()
+        vm.setQuery("grimsel", bern)
+        advanceTimeBy(301)
+
+        vm.select(vm.uiState.value.results.single())
+        val selected = vm.uiState.value.selected!!
+        assertEquals(LatLng(46.5606, 8.3376), selected.location)
+        // The name the user picked from the list survives the lookup.
+        assertEquals("Grimsel Pass", selected.name)
+        assertEquals("ChIJ1", selected.id)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
+    }
+
+    @Test
+    fun `a prediction that cannot be located says so instead of pretending`() = runTest {
+        search.result = listOf(PlaceSuggestion("Grimsel Pass", "", location = null, id = "ChIJ1"))
+        search.resolved = { null }
+        val vm = viewModel()
+        vm.setQuery("grimsel", bern)
+        advanceTimeBy(301)
+
+        vm.select(vm.uiState.value.results.single())
+        assertNull(vm.uiState.value.selected?.location)
+        assertEquals(PlaceSearchStatus.UNAVAILABLE, vm.uiState.value.status)
+    }
+
+    @Test
+    fun `a late lookup for a prediction the user moved on from is ignored`() = runTest {
+        val first = PlaceSuggestion("Grimselsee", "", location = null, id = "a")
+        val second = PlaceSuggestion("Grimsel Hospiz", "", location = null, id = "b")
+        search.resolved = { it.copy(location = LatLng(46.0, 8.0)) }
+        val vm = viewModel()
+        vm.select(first)
+        vm.select(second)
+        assertEquals("Grimsel Hospiz", vm.uiState.value.selected?.name)
+    }
+
+    @Test
+    fun `a hit that already knows its coordinate needs no lookup`() {
+        val vm = viewModel()
+        var asked = false
+        search.resolved = { asked = true; it }
+        vm.select(PlaceSuggestion("Aire de Grimsel", "", LatLng(46.56, 8.33), id = "ChIJ2"))
+        assertEquals(LatLng(46.56, 8.33), vm.uiState.value.selected?.location)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
+        assertFalse(asked)
+    }
+
+    @Test
+    fun `without a search backend a prediction stays unlocated`() {
+        val vm = LocationPickerViewModel()
+        vm.select(PlaceSuggestion("Grimsel Pass", "", location = null, id = "ChIJ1"))
+        assertNull(vm.uiState.value.selected?.location)
+        assertEquals(PlaceSearchStatus.SEARCHING, vm.uiState.value.status)
     }
 
     @Test

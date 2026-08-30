@@ -66,4 +66,5 @@ class PlaceSearchTest {
         assertNotEquals(PlaceSuggestion("A", "B", bern), PlaceSuggestion("A", "C", bern))
         assertNotEquals(PlaceSuggestion("A", "B", bern), PlaceSuggestion("Z", "B", bern))
     }
+
 }

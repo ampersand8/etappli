@@ -29,34 +29,27 @@ class GooglePlacesTest {
     // --- request ------------------------------------------------------------
 
     @Test
-    fun `a search asks for the fields it uses and no more`() {
-        val body = GooglePlaces.searchBody("Camping Delta", near = null, language = "en")
-        assertEquals(
-            """{"textQuery":"Camping Delta","pageSize":5,"languageCode":"en"}""",
-            body,
-        )
+    fun `a search carries the input and its billing session, and no bias by default`() {
+        val body = GooglePlaces.autocompleteBody("Camping Delta", near = null, sessionToken = "tok")
+        assertEquals("""{"input":"Camping Delta","sessionToken":"tok"}""", body)
         assertFalse(body.contains("locationBias"))
-        assertEquals(
-            "places.id,places.displayName,places.formattedAddress,places.location",
-            GooglePlaces.FIELD_MASK,
-        )
     }
 
     @Test
     fun `the map centre becomes a circular bias`() {
         assertEquals(
-            """{"textQuery":"Camping","pageSize":5,"languageCode":"de",""" +
+            """{"input":"Camping","sessionToken":"tok",""" +
                 """"locationBias":{"circle":{"center":{"latitude":46.95,"longitude":7.45},""" +
                 """"radius":50000.0}}}""",
-            GooglePlaces.searchBody("Camping", LatLng(46.95, 7.45), language = "de"),
+            GooglePlaces.autocompleteBody("Camping", LatLng(46.95, 7.45), sessionToken = "tok"),
         )
     }
 
     @Test
     fun `a query with quotes or newlines cannot break the request body`() {
         assertEquals(
-            """{"textQuery":"say \"hi\"\nnow\\","pageSize":5,"languageCode":"en"}""",
-            GooglePlaces.searchBody("say \"hi\"\nnow\\", near = null, language = "en"),
+            """{"input":"say \"hi\"\nnow\\","sessionToken":"t"}""",
+            GooglePlaces.autocompleteBody("say \"hi\"\nnow\\", near = null, sessionToken = "t"),
         )
         assertEquals("\"a\\tb\"", "a\tb".jsonString())
         assertEquals("\"a\\rb\"", "a\rb".jsonString())
@@ -64,46 +57,71 @@ class GooglePlacesTest {
     }
 
     @Test
-    fun `a place id is escaped into the details path`() {
+    fun `a place id is escaped into the details path, with the session when there is one`() {
         assertEquals(
             "https://places.googleapis.com/v1/places/ChIJ%2Fa%20b",
             GooglePlaces.detailsUrl("ChIJ/a b"),
         )
+        assertEquals(
+            "https://places.googleapis.com/v1/places/ChIJ1?sessionToken=a%20b",
+            GooglePlaces.detailsUrl("ChIJ1", "a b"),
+        )
         assertTrue(GooglePlaces.DETAILS_FIELD_MASK.contains("location"))
     }
 
-    // --- search response ----------------------------------------------------
+    // --- autocomplete response ----------------------------------------------
+
+    private fun prediction(id: String = "ChIJ1", main: String? = "Grimsel Pass", secondary: String? = "Obergoms, Switzerland"): String {
+        val format = buildList {
+            main?.let { add(""""mainText":{"text":"$it"}""") }
+            secondary?.let { add(""""secondaryText":{"text":"$it"}""") }
+        }
+        return """{"placePrediction":{"placeId":"$id","text":{"text":"$main, $secondary"},""" +
+            """"structuredFormat":{${format.joinToString(",")}}}}"""
+    }
+
+    private fun suggestions(vararg items: String) = """{"suggestions":[${items.joinToString(",")}]}"""
 
     @Test
-    fun `parses the display name, address and coordinate`() {
-        assertEquals(
-            PlaceSuggestion(
-                name = "Camping Delta",
-                label = "Via Respini 7, 6600 Locarno, Switzerland",
-                location = LatLng(46.1712, 8.7936),
-                id = "ChIJ1",
+    fun `predictions come back named but not yet located`() {
+        val parsed = GooglePlaces.parseAutocomplete(suggestions(prediction())).single()
+        assertEquals("Grimsel Pass", parsed.name)
+        assertEquals("Obergoms, Switzerland", parsed.label)
+        assertEquals("ChIJ1", parsed.id)
+        // The coordinate arrives only when the hit is chosen.
+        assertNull(parsed.location)
+    }
+
+    @Test
+    fun `one query becomes several things to choose from`() {
+        val parsed = GooglePlaces.parseAutocomplete(
+            suggestions(
+                prediction("a", "Grimsel Pass"),
+                prediction("b", "Grimselsee"),
+                prediction("c", "Grimsel Hospiz"),
             ),
-            GooglePlaces.parseSearch(response(place())).single(),
+        )
+        assertEquals(listOf("Grimsel Pass", "Grimselsee", "Grimsel Hospiz"), parsed.map { it.name })
+    }
+
+    @Test
+    fun `a prediction with no structure falls back to its full text`() {
+        assertEquals(
+            "Grimsel Pass, Obergoms",
+            GooglePlaces.parseAutocomplete(
+                suggestions("""{"placePrediction":{"placeId":"x","text":{"text":"Grimsel Pass, Obergoms"}}}"""),
+            ).single().name,
         )
     }
 
     @Test
-    fun `a nameless place falls back to its address, and loses the duplicate label`() {
-        val parsed = GooglePlaces.parseSearch(response(place(name = null))).single()
-        assertEquals("Via Respini 7, 6600 Locarno, Switzerland", parsed.name)
-        assertEquals("", parsed.label)
-    }
-
-    @Test
-    fun `places without a name or a coordinate are dropped`() {
+    fun `query predictions and idless or nameless entries are skipped`() {
         assertTrue(
-            GooglePlaces.parseSearch(
-                response(
-                    place(name = null, address = null),
-                    place(location = null),
-                    place(location = """"location":{"latitude":46.1}"""),
-                    place(location = """"location":{"longitude":8.7}"""),
-                    """{"id":"x","location":"46,8"}""",
+            GooglePlaces.parseAutocomplete(
+                suggestions(
+                    """{"queryPrediction":{"text":{"text":"pizza near me"}}}""",
+                    """{"placePrediction":{"structuredFormat":{"mainText":{"text":"No id"}}}}""",
+                    """{"placePrediction":{"placeId":"y"}}""",
                     "42",
                 ),
             ).isEmpty(),
@@ -111,34 +129,23 @@ class GooglePlacesTest {
     }
 
     @Test
-    fun `a coordinate sent as a string is not trusted`() {
-        assertTrue(
-            GooglePlaces.parseSearch(
-                response(place(location = """"location":{"latitude":"46.1","longitude":"8.7"}""")),
-            ).isEmpty(),
-        )
+    fun `duplicate predictions collapse and at most eight are shown`() {
+        val many = (1..12).map { prediction("id$it", "Place $it") }
+        assertEquals(8, GooglePlaces.parseAutocomplete(suggestions(*many.toTypedArray())).size)
+        assertEquals(1, GooglePlaces.parseAutocomplete(suggestions(prediction(), prediction("other"))).size)
     }
 
     @Test
-    fun `the same place twice collapses and at most five are shown`() {
-        val many = (1..8).map { place(id = "id$it", name = "Camp $it") }
-        assertEquals(5, GooglePlaces.parseSearch(response(*many.toTypedArray())).size)
-        assertEquals(1, GooglePlaces.parseSearch(response(place(), place(id = "other"))).size)
-    }
-
-    @Test
-    fun `an empty list, an error body and junk all yield nothing`() {
-        assertTrue(GooglePlaces.parseSearch("""{"places":[]}""").isEmpty())
-        assertTrue(GooglePlaces.parseSearch("{}").isEmpty())
+    fun `an empty list, an error body and junk all yield no predictions`() {
+        assertTrue(GooglePlaces.parseAutocomplete("""{"suggestions":[]}""").isEmpty())
+        assertTrue(GooglePlaces.parseAutocomplete("{}").isEmpty())
         assertTrue(
-            GooglePlaces.parseSearch(
-                """{"error":{"code":403,"message":"API key not valid","status":"PERMISSION_DENIED"}}""",
-            ).isEmpty(),
+            GooglePlaces.parseAutocomplete("""{"error":{"code":403,"status":"PERMISSION_DENIED"}}""").isEmpty(),
         )
-        assertTrue(GooglePlaces.parseSearch("""{"places":{"id":"x"}}""").isEmpty())
-        assertTrue(GooglePlaces.parseSearch("<html>404</html>").isEmpty())
-        assertTrue(GooglePlaces.parseSearch("[]").isEmpty())
-        assertTrue(GooglePlaces.parseSearch("").isEmpty())
+        assertTrue(GooglePlaces.parseAutocomplete("""{"suggestions":{"a":1}}""").isEmpty())
+        assertTrue(GooglePlaces.parseAutocomplete("<html>404</html>").isEmpty())
+        assertTrue(GooglePlaces.parseAutocomplete("[]").isEmpty())
+        assertTrue(GooglePlaces.parseAutocomplete("").isEmpty())
     }
 
     // --- details response ---------------------------------------------------
@@ -148,6 +155,18 @@ class GooglePlacesTest {
         val detail = GooglePlaces.parseDetails(place())!!
         assertEquals("ChIJ1", detail.id)
         assertEquals(LatLng(46.1712, 8.7936), detail.location)
+    }
+
+    @Test
+    fun `details name themselves from the address when they have no display name`() {
+        val detail = GooglePlaces.parseDetails(place(name = null))!!
+        assertEquals("Via Respini 7, 6600 Locarno, Switzerland", detail.name)
+        assertEquals("", detail.label)
+    }
+
+    @Test
+    fun `details with neither a name nor an address are unusable`() {
+        assertNull(GooglePlaces.parseDetails(place(name = null, address = null)))
     }
 
     @Test
