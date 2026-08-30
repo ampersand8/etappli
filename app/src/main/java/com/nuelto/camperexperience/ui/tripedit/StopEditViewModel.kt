@@ -53,7 +53,7 @@ data class StopEditUiState(
     val pickerStart: LatLng? get() = location ?: nearbyLocation
 
     /** Google Maps link for this stop — the place itself when it came from Google. */
-    val shareUrl: String? get() = MapsUri.share(placeId, location?.latitude, location?.longitude)
+    val shareUrl: String? get() = MapsUri.share(name, location, placeId)
 
     // Never a raw coordinate: a place has a name, and a dropped pin is just "set".
     val locationLabel: String

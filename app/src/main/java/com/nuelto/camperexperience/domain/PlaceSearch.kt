@@ -16,7 +16,26 @@ data class PlaceSuggestion(
     // over its coordinate when you actually choose it. See [PlaceSearch.resolve].
     val location: LatLng? = null,
     val id: String = "",
+    // Filled in by [PlaceSearch.resolve] — what the place is actually like.
+    val details: PlaceDetails? = null,
 )
+
+/**
+ * What a chosen place looks like: enough to decide whether to stay there without
+ * leaving the app. [photo] is a provider-side handle, fetched separately.
+ */
+data class PlaceDetails(
+    val kind: String = "",
+    val rating: Double? = null,
+    val ratingCount: Int = 0,
+    val summary: String = "",
+    val review: String = "",
+    val photo: String = "",
+) {
+    val isEmpty: Boolean
+        get() = kind.isBlank() && rating == null && summary.isBlank() &&
+            review.isBlank() && photo.isBlank()
+}
 
 /** Search feedback; IDLE also covers "results are showing" and "nothing typed yet". */
 enum class PlaceSearchStatus { IDLE, SEARCHING, EMPTY, UNAVAILABLE }

@@ -49,6 +49,8 @@ object GoogleMapProvider : MapProvider {
 
     override fun placeSearch(): PlaceSearch = GooglePlacesSearch()
 
+    override suspend fun photo(handle: String): ByteArray? = GooglePlacesSearch().photo(handle)
+
     override fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper {
         val places = GooglePlacesSearch()
         return PlaceCacheSweeper(tripRepository) { placeId -> places.details(placeId) }

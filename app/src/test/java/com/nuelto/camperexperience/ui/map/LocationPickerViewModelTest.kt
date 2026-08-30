@@ -2,10 +2,12 @@ package com.nuelto.camperexperience.ui.map
 
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.domain.PlaceDetails
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.testutil.FakePlaceSearch
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -193,14 +195,53 @@ class LocationPickerViewModelTest {
     }
 
     @Test
-    fun `a hit that already knows its coordinate needs no lookup`() {
+    fun `a hit that already knows everything needs no lookup`() {
         val vm = viewModel()
         var asked = false
         search.resolved = { asked = true; it }
-        vm.select(PlaceSuggestion("Aire de Grimsel", "", LatLng(46.56, 8.33), id = "ChIJ2"))
+        vm.select(
+            PlaceSuggestion("Aire", "", LatLng(46.56, 8.33), "ChIJ2", PlaceDetails(rating = 4.5)),
+        )
         assertEquals(LatLng(46.56, 8.33), vm.uiState.value.selected?.location)
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
         assertFalse(asked)
+    }
+
+    @Test
+    fun `a tapped POI knows where it is but is still enriched`() {
+        val vm = viewModel()
+        search.resolved = { it.copy(details = PlaceDetails(rating = 4.8, ratingCount = 1787)) }
+        vm.select(PlaceSuggestion("Aire de Grimsel", "", LatLng(46.56, 8.33), id = "ChIJ2"))
+        val selected = vm.uiState.value.selected!!
+        assertEquals(4.8, selected.details!!.rating!!, 1e-9)
+        assertEquals(LatLng(46.56, 8.33), selected.location)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
+    }
+
+    @Test
+    fun `a picture arrives after the card and only for the place still chosen`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val image = byteArrayOf(1, 2, 3)
+        val vm = LocationPickerViewModel(search) { gate.await(); image }
+        search.resolved = { it.copy(details = PlaceDetails(photo = "places/x/photos/y")) }
+
+        vm.select(PlaceSuggestion("Camping", "", LatLng(46.0, 8.0), id = "ChIJ3"))
+        assertNull(vm.uiState.value.photo)
+        gate.complete(Unit)
+        assertEquals(image, vm.uiState.value.photo)
+
+        // Moving on drops it again.
+        vm.dropPin(LatLng(47.0, 8.0))
+        assertNull(vm.uiState.value.photo)
+    }
+
+    @Test
+    fun `a place with no picture asks for none`() {
+        var asked = false
+        val vm = LocationPickerViewModel(search) { asked = true; null }
+        vm.select(PlaceSuggestion("X", "", LatLng(46.0, 8.0), "id", PlaceDetails(rating = 3.0)))
+        assertFalse(asked)
+        assertNull(vm.uiState.value.photo)
     }
 
     @Test

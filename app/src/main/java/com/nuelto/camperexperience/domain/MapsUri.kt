@@ -1,22 +1,23 @@
 package com.nuelto.camperexperience.domain
 
+import com.nuelto.camperexperience.data.model.LatLng
+
 /**
- * Links back out to Google Maps. A stop chosen from Google keeps its place id, so it can
- * be shared or opened as the real place — reviews, photos, opening hours and all —
- * rather than as a bare coordinate.
+ * Links back out to Google Maps, in the documented `api=1` form. `query` is required
+ * even when a place id is given — Maps falls back to it when the id will not resolve.
+ * The shorter `maps/place/?q=place_id:` form is undocumented and does not reliably open
+ * the place, which is exactly how it failed.
  */
 object MapsUri {
 
-    /** The place itself, by id. Null when the stop was never a Google place. */
-    fun place(placeId: String?): String? =
-        placeId?.takeIf { it.isNotBlank() }
-            ?.let { "https://www.google.com/maps/place/?q=place_id:${it.encodePathSegment()}" }
-
-    /** A plain point, for a stop that has no place id. */
-    fun point(latitude: Double, longitude: Double): String =
-        "https://www.google.com/maps/search/?api=1&query=$latitude%2C$longitude"
-
-    /** What to share for a stop: the place when known, the point otherwise, else nothing. */
-    fun share(placeId: String?, latitude: Double?, longitude: Double?): String? = place(placeId)
-        ?: latitude?.let { lat -> longitude?.let { lon -> point(lat, lon) } }
+    /** Null only when there is nothing at all to point at. */
+    fun share(name: String, location: LatLng?, placeId: String?): String? {
+        val query = location?.let { "${it.latitude},${it.longitude}" }
+            ?: name.takeIf { it.isNotBlank() }
+            ?: return null
+        val id = placeId?.takeIf { it.isNotBlank() }
+            ?.let { "&query_place_id=${it.encodePathSegment()}" }
+            .orEmpty()
+        return "https://www.google.com/maps/search/?api=1&query=${query.encodePathSegment()}$id"
+    }
 }

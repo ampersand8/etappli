@@ -1,11 +1,12 @@
 package com.nuelto.camperexperience.ui.map
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -22,12 +23,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import android.graphics.BitmapFactory
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +44,7 @@ import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.MapAccent
 import com.nuelto.camperexperience.domain.MapMarker
 import com.nuelto.camperexperience.domain.MapOverlay
+import com.nuelto.camperexperience.domain.PlaceDetails
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 
@@ -199,40 +207,90 @@ private fun SearchOverlay(
                 }
             }
         } else {
-            Card(Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        // A dropped pin has no name yet; the editor geocodes one.
-                        Text(
-                            selected.name.ifBlank { "Dropped pin" },
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        if (selected.label.isNotBlank()) {
-                            Text(
-                                selected.label,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Button(
-                        onClick = {
-                            keyboard?.hide()
-                            onUseSelected(selected)
-                        },
-                        // A prediction is still being looked up until it has a coordinate.
-                        enabled = selected.location != null,
-                    ) {
-                        Text("Use this place")
-                    }
+            ChosenPlaceCard(
+                place = selected,
+                photo = rememberDecoded(state.photo),
+                onUse = {
+                    keyboard?.hide()
+                    onUseSelected(selected)
+                },
+            )
+        }
+    }
+}
+
+/** Photo bytes become a bitmap once, not on every recomposition. */
+@Composable
+private fun rememberDecoded(bytes: ByteArray?): ImageBitmap? = remember(bytes) {
+    bytes?.let {
+        runCatching { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull()
+    }
+}
+
+/** What the place is actually like, so the choice can be made without leaving the app. */
+@Composable
+private fun ChosenPlaceCard(
+    place: PlaceSuggestion,
+    photo: ImageBitmap?,
+    onUse: () -> Unit,
+) {
+    val details = place.details
+    Card(Modifier.fillMaxWidth()) {
+        Column {
+            photo?.let {
+                Image(
+                    bitmap = it,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // A dropped pin has no name yet; the editor geocodes one.
+                Text(place.name.ifBlank { "Dropped pin" }, style = MaterialTheme.typography.titleSmall)
+                if (place.label.isNotBlank()) {
+                    Text(
+                        place.label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                ratingLine(details)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                details?.summary?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                details?.review?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        "\u201C$it\u201D",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Button(onClick = onUse, enabled = place.location != null) {
+                    Text("Use this place")
                 }
             }
         }
     }
+}
+
+/** e.g. "Campground · 4.8 ★ (1787)" — whichever halves Google actually knows. */
+private fun ratingLine(details: PlaceDetails?): String? {
+    if (details == null) return null
+    val stars = details.rating?.let { rating ->
+        val count = details.ratingCount.takeIf { it > 0 }?.let { " ($it)" }.orEmpty()
+        "$rating \u2605$count"
+    }
+    return listOfNotNull(details.kind.takeIf { it.isNotBlank() }, stars)
+        .joinToString(" \u00B7 ")
+        .takeIf { it.isNotBlank() }
 }
 
 /** The results list speaks for itself, so a hit needs no status line. */

@@ -44,6 +44,12 @@ interface MapProvider {
      */
     fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper? = null
 
+    /**
+     * Loads a photo handed out by [PlaceDetails.photo], as encoded bytes — decoding is
+     * left to the UI so the picker's state stays free of Android graphics types.
+     */
+    suspend fun photo(handle: String): ByteArray? = null
+
     @Composable
     fun rememberCamera(start: LatLng?, zoom: Double): MapCamera
 

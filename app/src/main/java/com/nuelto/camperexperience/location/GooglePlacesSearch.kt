@@ -48,12 +48,13 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
         )?.let(GooglePlaces::parseAutocomplete)
 
     override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? {
-        suggestion.location?.let { return suggestion }
-        val id = suggestion.id.ifBlank { return null }
-        val resolved = details(id, sessionToken) ?: return null
+        // Already complete: a hit that has both a coordinate and what the place is like.
+        if (suggestion.location != null && suggestion.details != null) return suggestion
+        val id = suggestion.id.ifBlank { return suggestion.takeIf { it.location != null } }
+        val resolved = details(id, sessionToken) ?: return suggestion.takeIf { it.location != null }
         sessionToken = UUID.randomUUID().toString()
-        // Keep the name the user picked from the list; take only the coordinate.
-        return suggestion.copy(location = resolved.location)
+        // Keep the name the user picked from the list, take everything else.
+        return suggestion.copy(location = resolved.location, details = resolved.details)
     }
 
     /** Fetches one place, to fill in or renew a coordinate. */
@@ -62,6 +63,24 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
             get(GooglePlaces.detailsUrl(placeId, token), GooglePlaces.DETAILS_FIELD_MASK)
                 ?.let(GooglePlaces::parseDetails)
         }
+
+    /** Photo bytes. Best-effort like everything else here. */
+    suspend fun photo(handle: String): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = URL(GooglePlaces.photoUrl(handle, apiKey))
+            (url.openConnection() as HttpURLConnection).run {
+                connectTimeout = 5_000
+                readTimeout = 10_000
+                instanceFollowRedirects = true
+                try {
+                    if (responseCode != HttpURLConnection.HTTP_OK) return@run null
+                    inputStream.use { it.readBytes() }
+                } finally {
+                    disconnect()
+                }
+            }
+        }.getOrNull()
+    }
 
     private fun post(url: String, body: String, fieldMask: String?): String? = runCatching {
         val connection = open(url, fieldMask).apply {
