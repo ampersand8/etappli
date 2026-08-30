@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 fun rememberReorderState(
     listState: LazyListState,
     keys: Set<String>,
-    onMove: (from: String, to: String) -> Unit,
+    onMove: (from: String, to: String) -> String,
 ): ReorderState {
     val currentKeys by rememberUpdatedState(keys)
     val currentOnMove by rememberUpdatedState(onMove)

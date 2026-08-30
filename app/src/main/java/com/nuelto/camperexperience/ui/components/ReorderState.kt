@@ -14,11 +14,12 @@ data class ItemGeometry(val key: String, val offset: Int, val size: Int)
  * subset of its items. The lifted row is drawn at the finger; [onMove] rewrites the
  * real order as soon as the finger's centre crosses another row, and the relayout that
  * follows keeps the card under the finger — the translation is always "where the finger
- * put it" minus "where the row now sits".
+ * put it" minus "where the row now sits". [onMove] returns the key the moved row carries
+ * afterwards, so a row whose identity comes from its neighbours stays draggable.
  */
 class ReorderState(
     private val rows: () -> List<ItemGeometry>,
-    private val onMove: (from: String, to: String) -> Unit,
+    private val onMove: (from: String, to: String) -> String,
 ) {
     var draggedKey by mutableStateOf<String?>(null)
         private set
@@ -43,7 +44,7 @@ class ReorderState(
         // over several rows lands on the right one, and hovering the lifted row's own
         // slot is a no-op — so a move fires once per crossing, reordered data or not.
         val target = rows().minByOrNull { abs(it.offset + it.size / 2f - centre) } ?: return
-        if (target.key != key) onMove(key, target.key)
+        if (target.key != key) draggedKey = onMove(key, target.key)
     }
 
     fun stop() {
