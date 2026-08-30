@@ -5,6 +5,7 @@ import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.domain.CostCalculator
@@ -131,7 +132,14 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
             notes = "Über den Gotthard, zurück am Lago Maggiore entlang.",
             status = TripStatus.PLANNED,
         )
-        tripsFlow.value = listOf(provence, blackForest, jura)
+        // Dated relative to today so the in-progress color coding always shows.
+        val vierwald = Trip(
+            id = "demo-vierwald",
+            name = "Vierwaldstättersee",
+            startDate = LocalDate.now().minusDays(1),
+            status = TripStatus.ACTIVE,
+        )
+        tripsFlow.value = listOf(provence, blackForest, jura, vierwald)
         stopsFlow.value = listOf(
             Stop(
                 id = "demo-p1", tripId = provence.id, name = "Camping de la Durance",
@@ -178,6 +186,26 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 location = LatLng(46.1591, 8.7853), arrivalDate = LocalDate.of(2027, 6, 13),
                 nights = 3, campingCostTotal = 186.0, orderIndex = 3,
             ),
+            Stop(
+                id = "demo-v1", tripId = vierwald.id, name = "Camping Seefeld Sarnen",
+                location = LatLng(46.8709, 8.2492), arrivalDate = LocalDate.now().minusDays(1),
+                nights = 2, campingCostTotal = 84.0, orderIndex = 0, state = StopState.DONE,
+            ),
+            Stop(
+                id = "demo-v2", tripId = vierwald.id, name = "Rütli",
+                location = LatLng(46.9690, 8.5990), arrivalDate = LocalDate.now().plusDays(1),
+                nights = 0, orderIndex = 1, kind = StopKind.VISIT,
+            ),
+            Stop(
+                id = "demo-v3", tripId = vierwald.id, name = "Stellplatz Brunnen",
+                location = LatLng(46.9930, 8.6060), arrivalDate = LocalDate.now().plusDays(1),
+                nights = 1, orderIndex = 2, kind = StopKind.STELLPLATZ, costKnown = false,
+            ),
+            Stop(
+                id = "demo-v4", tripId = vierwald.id, name = "Camping Buochs",
+                location = LatLng(46.9740, 8.4230), arrivalDate = LocalDate.now().plusDays(2),
+                nights = 2, orderIndex = 3, costKnown = false,
+            ),
         )
         expensesFlow.value = listOf(
             Expense(
@@ -204,9 +232,14 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 id = "demo-e6", tripId = jura.id, type = ExpenseType.ROAD_TAX, amount = 40.0,
                 date = LocalDate.of(2027, 6, 10), label = "CH Vignette", isEstimate = true,
             ),
+            Expense(
+                id = "demo-e7", tripId = vierwald.id, type = ExpenseType.ROAD_TAX, amount = 40.0,
+                date = LocalDate.now().minusDays(1), label = "CH Vignette", isEstimate = true,
+            ),
         )
         recomputeTotals(provence.id)
         recomputeTotals(blackForest.id)
         recomputeTotals(jura.id)
+        recomputeTotals(vierwald.id)
     }
 }

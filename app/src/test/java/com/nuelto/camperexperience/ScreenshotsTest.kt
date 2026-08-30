@@ -85,6 +85,19 @@ class ScreenshotsTest {
     }
 
     @Test
+    fun activeTrip() = shoot("active-trip") {
+        TripDetailScreen(
+            onBack = {}, onEditTrip = {}, onAddStop = {}, onEditStop = { _, _ -> },
+            onOpenTripMap = {}, onOpenTrip = {},
+            viewModel = TripDetailViewModel(
+                SavedStateHandle(mapOf("tripId" to "demo-vierwald")),
+                tripRepository,
+                settingsRepository,
+            ),
+        )
+    }
+
+    @Test
     fun plannedTour() = shoot("planned-tour") {
         TripDetailScreen(
             onBack = {}, onEditTrip = {}, onAddStop = {}, onEditStop = { _, _ -> },

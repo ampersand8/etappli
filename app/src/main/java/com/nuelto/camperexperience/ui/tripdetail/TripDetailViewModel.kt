@@ -17,6 +17,7 @@ import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.CostCalculator
 import com.nuelto.camperexperience.domain.CountryGuess
+import com.nuelto.camperexperience.domain.CurrentStop
 import com.nuelto.camperexperience.domain.DateCascade
 import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.FuelEstimator
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class TripDetailUiState(
     val trip: Trip? = null,
@@ -73,7 +76,7 @@ class TripDetailViewModel(
                 fuelEstimate = FuelEstimator.autoTripFuelCost(stops, expenses, settings),
                 estimate = if (planning) TripEstimator.estimate(stops, expenses, settings) else null,
                 currentStopId = if (trip?.status == TripStatus.ACTIVE) {
-                    stops.sortedBy { it.orderIndex }.firstOrNull { it.state == StopState.PLANNED }?.id
+                    CurrentStop.of(stops, LocalDate.now())
                 } else {
                     null
                 },
@@ -91,7 +94,13 @@ class TripDetailViewModel(
             }
             .mapNotNull { code -> VignetteTable.cheapestCovering(code, CountryGuess.daysIn(code, stops)) }
 
-    private fun stop(stopId: String): Stop? = uiState.value.stops.find { it.id == stopId }
+    // Serializes stop mutations and reads fresh state inside the lock: rapid taps on
+    // the stepper/arrive/skip must not act on a stale snapshot (Firestore emissions
+    // lag behind the fire-and-forget writes).
+    private val writeLock = Mutex()
+
+    private suspend fun freshStop(stopId: String): Stop? =
+        tripRepository.stops(tripId).first().find { it.id == stopId }
 
     fun deleteStop(stopId: String) {
         viewModelScope.launch { tripRepository.deleteStop(tripId, stopId) }
@@ -114,40 +123,54 @@ class TripDetailViewModel(
 
     /** ±1 night on a stop; the downstream planned schedule shifts along. */
     fun changeNights(stopId: String, delta: Int) {
-        val stop = stop(stopId) ?: return
-        val nights = (stop.nights + delta).coerceIn(0, 365)
-        if (nights == stop.nights) return
         viewModelScope.launch {
-            tripRepository.upsertStop(stop.copy(nights = nights))
-            shiftAfter(stop.orderIndex, (nights - stop.nights).toLong())
+            writeLock.withLock {
+                val stop = freshStop(stopId) ?: return@withLock
+                val nights = (stop.nights + delta).coerceIn(0, 365)
+                if (nights == stop.nights) return@withLock
+                tripRepository.upsertStop(stop.copy(nights = nights))
+                shiftAfter(stop.orderIndex, (nights - stop.nights).toLong())
+            }
         }
     }
 
     /** Check-in: stamps today as the actual arrival; a late arrival shifts what follows. */
     fun arrived(stopId: String) {
-        val stop = stop(stopId) ?: return
-        val today = LocalDate.now()
         viewModelScope.launch {
-            tripRepository.upsertStop(stop.copy(state = StopState.DONE, arrivalDate = today))
-            shiftAfter(stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today))
+            writeLock.withLock {
+                val stop = freshStop(stopId) ?: return@withLock
+                val today = LocalDate.now()
+                tripRepository.upsertStop(stop.copy(state = StopState.DONE, arrivalDate = today))
+                shiftAfter(stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today))
+            }
         }
     }
 
     /** Typing the real price at check-in is the whole plan→actual reconciliation. */
     fun setStopPrice(stopId: String, price: Double) {
-        val stop = stop(stopId) ?: return
         viewModelScope.launch {
-            tripRepository.upsertStop(stop.copy(campingCostTotal = price, costKnown = true))
+            writeLock.withLock {
+                val stop = freshStop(stopId) ?: return@withLock
+                tripRepository.upsertStop(stop.copy(campingCostTotal = price, costKnown = true))
+            }
         }
     }
 
     fun skip(stopId: String) = setState(stopId, StopState.SKIPPED)
 
-    fun restore(stopId: String) = setState(stopId, StopState.PLANNED)
+    /** Undo for skip — but never resurrect a planned stop inside a finished trip. */
+    fun restore(stopId: String) {
+        if (uiState.value.trip?.status == TripStatus.DONE) return
+        setState(stopId, StopState.PLANNED)
+    }
 
     private fun setState(stopId: String, state: StopState) {
-        val stop = stop(stopId) ?: return
-        viewModelScope.launch { tripRepository.upsertStop(stop.copy(state = state)) }
+        viewModelScope.launch {
+            writeLock.withLock {
+                val stop = freshStop(stopId) ?: return@withLock
+                tripRepository.upsertStop(stop.copy(state = state))
+            }
+        }
     }
 
     private suspend fun shiftAfter(orderIndex: Int, days: Long) {
@@ -157,14 +180,18 @@ class TripDetailViewModel(
 
     /** Swaps the stop with its neighbor; done stops are locked in place. */
     fun moveStop(stopId: String, delta: Int) {
-        val ordered = uiState.value.stops.sortedBy { it.orderIndex }
-        val from = ordered.indexOfFirst { it.id == stopId }
-        val to = from + delta
-        if (from < 0 || to < 0 || to > ordered.lastIndex) return
-        if (ordered[from].state == StopState.DONE || ordered[to].state == StopState.DONE) return
-        val ids = ordered.map { it.id }.toMutableList()
-        ids[from] = ids[to].also { ids[to] = ids[from] }
-        viewModelScope.launch { tripRepository.reorderStops(tripId, ids) }
+        viewModelScope.launch {
+            writeLock.withLock {
+                val ordered = tripRepository.stops(tripId).first().sortedBy { it.orderIndex }
+                val from = ordered.indexOfFirst { it.id == stopId }
+                val to = from + delta
+                if (from < 0 || to < 0 || to > ordered.lastIndex) return@withLock
+                if (ordered[from].state == StopState.DONE || ordered[to].state == StopState.DONE) return@withLock
+                val ids = ordered.map { it.id }.toMutableList()
+                ids[from] = ids[to].also { ids[to] = ids[from] }
+                tripRepository.reorderStops(tripId, ids)
+            }
+        }
     }
 
     fun addVignette(choice: VignetteTable.Choice) {
@@ -183,13 +210,22 @@ class TripDetailViewModel(
         }
     }
 
+    // Guards the copy-making actions: a double-tap must not mint two trips.
+    private var copyInFlight = false
+
     /** Start the tour; lands on the (possibly new) ACTIVE trip via [onStarted]. */
     fun startTour(startDate: LocalDate, keepPlanAsTemplate: Boolean, onStarted: (String) -> Unit) {
+        if (copyInFlight) return
+        copyInFlight = true
         viewModelScope.launch {
-            val id = TripStarter.start(
-                tripRepository, tripId, startDate, keepPlanAsTemplate, uiState.value.settings,
-            )
-            onStarted(id)
+            try {
+                val id = TripStarter.start(
+                    tripRepository, tripId, startDate, keepPlanAsTemplate, uiState.value.settings,
+                )
+                onStarted(id)
+            } finally {
+                copyInFlight = false
+            }
         }
     }
 
@@ -201,8 +237,14 @@ class TripDetailViewModel(
     }
 
     fun planAgain(onCreated: (String) -> Unit) {
+        if (copyInFlight) return
+        copyInFlight = true
         viewModelScope.launch {
-            onCreated(TripStarter.planAgain(tripRepository, tripId, LocalDate.now()))
+            try {
+                onCreated(TripStarter.planAgain(tripRepository, tripId, LocalDate.now()))
+            } finally {
+                copyInFlight = false
+            }
         }
     }
 

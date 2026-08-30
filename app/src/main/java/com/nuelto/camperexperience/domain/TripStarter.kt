@@ -50,7 +50,9 @@ object TripStarter {
             return tripId
         }
 
-        val newId = repository.upsertTrip(started.copy(id = ""))
+        // Fresh copies start with clean denormalized totals; the stop/expense upserts
+        // below rebuild them (Firestore only recomputes on those mutation paths).
+        val newId = repository.upsertTrip(started.copy(id = "", totalCost = 0.0, nights = 0))
         stops.forEach {
             repository.upsertStop(
                 it.copy(
@@ -85,6 +87,8 @@ object TripStarter {
                 endDate = null,
                 plannedCost = null,
                 plannedNights = null,
+                totalCost = 0.0,
+                nights = 0,
             ),
         )
         stops.filterNot { it.state == StopState.SKIPPED }.forEach {

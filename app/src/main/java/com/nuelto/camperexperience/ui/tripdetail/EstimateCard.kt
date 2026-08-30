@@ -55,7 +55,7 @@ fun EstimateCard(
                 buildString {
                     append(if (nights == 1) "1 night" else "$nights nights")
                     if (recordedTotal != null) {
-                        append(" · ${formatCurrency(recordedTotal, currency)} recorded so far")
+                        append(" · ${formatCurrency(recordedTotal, currency)} recorded")
                     }
                 },
                 style = MaterialTheme.typography.bodyMedium,

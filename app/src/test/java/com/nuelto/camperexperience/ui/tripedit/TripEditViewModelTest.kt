@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.ui.tripedit
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.InMemoryTripRepository
+import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
@@ -135,6 +136,26 @@ class TripEditViewModelTest {
         vm.setName("Ongoing")
         vm.save { _, _ -> }
         assertEquals(TripStatus.ACTIVE, tripRepository.trips().first().single().status)
+    }
+
+    @Test
+    fun `moving a plan's start date shifts its whole itinerary`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "p1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "p1", arrivalDate = LocalDate.of(2027, 6, 10), nights = 2, orderIndex = 0),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s2", tripId = "p1", arrivalDate = LocalDate.of(2027, 6, 12), nights = 1, orderIndex = 1),
+        )
+        val vm = editViewModel("p1")
+        vm.setStartDate(LocalDate.of(2027, 6, 17))
+        vm.save { _, _ -> }
+        assertEquals(
+            listOf(LocalDate.of(2027, 6, 17), LocalDate.of(2027, 6, 19)),
+            tripRepository.stops("p1").first().map { it.arrivalDate },
+        )
     }
 
     @Test

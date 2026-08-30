@@ -22,7 +22,8 @@ object VignetteTable {
     /** How many of this vignette cover [days], and what that costs. */
     data class Choice(val vignette: Vignette, val count: Int) {
         val total: Double get() = vignette.price * count
-        val label: String get() = if (count == 1) vignette.label else "$count× ${vignette.label}"
+        // Country code stays the prefix — expense labels are matched on it for dedup.
+        val label: String get() = if (count == 1) vignette.label else "${vignette.label} ×$count"
     }
 
     val vignettes: List<Vignette> = listOf(

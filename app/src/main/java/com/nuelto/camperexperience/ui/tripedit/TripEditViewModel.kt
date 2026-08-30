@@ -11,6 +11,7 @@ import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.ui.nav.TripEditRoute
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -70,29 +71,45 @@ class TripEditViewModel(
     fun setEndDate(value: LocalDate?) = _uiState.update { it.copy(endDate = value) }
     fun setNotes(value: String) = _uiState.update { it.copy(notes = value) }
 
+    private var saving = false
+
     fun save(onSaved: (tripId: String, isNew: Boolean) -> Unit) {
         val state = _uiState.value
-        if (!state.canSave) return
+        if (!state.canSave || saving) return
+        saving = true
         viewModelScope.launch {
-            val base = existing ?: Trip()
-            val endDate = state.endDate
-            val status = when {
-                state.isNew && state.isPlan -> TripStatus.PLANNED
-                // Logging/editing a trip that already ended finishes it right away.
-                base.status != TripStatus.PLANNED && endDate != null && endDate.isBefore(LocalDate.now()) ->
-                    TripStatus.DONE
-                else -> base.status
+            try {
+                val base = existing ?: Trip()
+                val endDate = state.endDate
+                val status = when {
+                    state.isNew && state.isPlan -> TripStatus.PLANNED
+                    // Logging/editing a trip that already ended finishes it right away.
+                    base.status != TripStatus.PLANNED && endDate != null && endDate.isBefore(LocalDate.now()) ->
+                        TripStatus.DONE
+                    else -> base.status
+                }
+                val savedId = tripRepository.upsertTrip(
+                    base.copy(
+                        name = state.name.trim(),
+                        startDate = state.startDate,
+                        endDate = endDate,
+                        notes = state.notes.trim(),
+                        status = status,
+                    ),
+                )
+                // Moving a plan's start moves its whole itinerary along.
+                if (base.status == TripStatus.PLANNED) {
+                    val days = ChronoUnit.DAYS.between(base.startDate, state.startDate)
+                    if (days != 0L) {
+                        tripRepository.stops(savedId).first().forEach {
+                            tripRepository.upsertStop(it.copy(arrivalDate = it.arrivalDate.plusDays(days)))
+                        }
+                    }
+                }
+                onSaved(savedId, state.isNew)
+            } finally {
+                saving = false
             }
-            val savedId = tripRepository.upsertTrip(
-                base.copy(
-                    name = state.name.trim(),
-                    startDate = state.startDate,
-                    endDate = endDate,
-                    notes = state.notes.trim(),
-                    status = status,
-                ),
-            )
-            onSaved(savedId, state.isNew)
         }
     }
 

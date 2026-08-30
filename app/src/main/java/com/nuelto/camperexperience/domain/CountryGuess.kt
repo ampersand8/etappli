@@ -35,9 +35,9 @@ object CountryGuess {
     fun vignetteCountries(stops: List<Stop>): List<String> =
         boxes.filter { box -> stops.any { it.isIn(box) } }.map { it.code }
 
-    /** Days spent in the country: nights of its stops, at least 1 (a visit is a transit day). */
+    /** Days a vignette must cover: nights in the country plus the arrival day. */
     fun daysIn(countryCode: String, stops: List<Stop>): Int {
         val box = boxes.first { it.code == countryCode }
-        return stops.filter { it.isIn(box) }.sumOf { it.nights }.coerceAtLeast(1)
+        return stops.filter { it.isIn(box) }.sumOf { it.nights } + 1
     }
 }

@@ -15,10 +15,12 @@ import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.DateCascade
 import com.nuelto.camperexperience.location.PlaceNameResolver
 import com.nuelto.camperexperience.ui.components.parseDecimal
 import com.nuelto.camperexperience.ui.nav.StopEditRoute
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -75,16 +77,17 @@ class StopEditViewModel(
             _uiState.update { it.copy(tripStatus = trip?.status, settings = settings) }
 
             if (route.stopId == null) {
-                if (trip?.status == TripStatus.PLANNED) {
-                    // Planning ahead: no GPS fix, arrival chains from the last stop.
+                if (trip == null || trip.status == TripStatus.ACTIVE) {
+                    // Logging where you are: immediately try a GPS fix.
+                    _uiState.update { it.copy(autoLocatePending = true) }
+                } else {
+                    // Planning ahead or back-filling a finished trip: no GPS fix
+                    // (your couch is not the campsite), arrival chains from the last stop.
                     val last = tripRepository.stops(route.tripId).first()
                         .filterNot { it.state == StopState.SKIPPED }
                         .maxByOrNull { it.orderIndex }
                     val arrival = last?.arrivalDate?.plusDays(last.nights.toLong()) ?: trip.startDate
                     _uiState.update { it.copy(arrivalDate = arrival) }
-                } else {
-                    // Logging where you are: immediately try a GPS fix.
-                    _uiState.update { it.copy(autoLocatePending = true) }
                 }
                 return@launch
             }
@@ -154,29 +157,48 @@ class StopEditViewModel(
         }
     }
 
+    private var saving = false
+
     fun save(onSaved: () -> Unit) {
         val state = _uiState.value
-        if (!state.canSave) return
+        if (!state.canSave || saving) return
+        saving = true
         viewModelScope.launch {
-            val base = existing ?: Stop(tripId = route.tripId, orderIndex = newOrderIndex())
-            // A blank price means "estimate at the kind's default rate" — except for
-            // kinds that are free by nature, and legacy stops recorded as known 0.
-            val costKnown = state.campingCost.isNotBlank() ||
-                state.kind == StopKind.FREE_CAMP || state.isVisit ||
-                (existing?.costKnown == true && existing?.campingCostTotal == 0.0)
-            tripRepository.upsertStop(
-                base.copy(
-                    name = state.name.trim(),
-                    arrivalDate = state.arrivalDate,
-                    nights = if (state.isVisit) 0 else state.nights,
-                    campingCostTotal = if (state.isVisit) 0.0 else parseDecimal(state.campingCost) ?: 0.0,
-                    location = state.location,
-                    notes = state.notes.trim(),
-                    kind = state.kind,
-                    costKnown = costKnown,
-                ),
-            )
-            onSaved()
+            try {
+                val old = existing
+                val base = old ?: Stop(tripId = route.tripId, orderIndex = newOrderIndex())
+                val parsed = parseDecimal(state.campingCost)
+                val nights = if (state.isVisit) 0 else state.nights
+                // No parseable price means "estimate at the kind's default rate" —
+                // except kinds free by nature, and unchanged legacy known-zero stops.
+                val costKnown = parsed != null ||
+                    state.kind == StopKind.FREE_CAMP || state.isVisit ||
+                    (old != null && old.costKnown && old.campingCostTotal == 0.0 && old.kind == state.kind)
+                tripRepository.upsertStop(
+                    base.copy(
+                        name = state.name.trim(),
+                        arrivalDate = state.arrivalDate,
+                        nights = nights,
+                        campingCostTotal = if (state.isVisit) 0.0 else parsed ?: 0.0,
+                        location = state.location,
+                        notes = state.notes.trim(),
+                        kind = state.kind,
+                        costKnown = costKnown,
+                    ),
+                )
+                // A moved departure shifts the downstream planned schedule along.
+                if (old != null) {
+                    val days = ChronoUnit.DAYS.between(
+                        old.arrivalDate.plusDays(old.nights.toLong()),
+                        state.arrivalDate.plusDays(nights.toLong()),
+                    )
+                    DateCascade.shift(tripRepository.stops(route.tripId).first(), old.orderIndex, days)
+                        .forEach { tripRepository.upsertStop(it) }
+                }
+                onSaved()
+            } finally {
+                saving = false
+            }
         }
     }
 
@@ -187,7 +209,9 @@ class StopEditViewModel(
     private suspend fun newOrderIndex(): Int {
         val stops = tripRepository.stops(route.tripId).first()
         val lastDone = stops.filter { it.state == StopState.DONE }.maxOfOrNull { it.orderIndex }
-        if (tripStatus != TripStatus.ACTIVE || lastDone == null) return stops.size
+        if (tripStatus != TripStatus.ACTIVE || lastDone == null) {
+            return (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1
+        }
         val insertAt = lastDone + 1
         stops.filter { it.orderIndex >= insertAt }.forEach {
             tripRepository.upsertStop(it.copy(orderIndex = it.orderIndex + 1))

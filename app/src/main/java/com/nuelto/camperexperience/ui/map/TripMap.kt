@@ -78,7 +78,8 @@ fun TripMap(
     val cameraState = cameraState ?: rememberCameraState(
         firstPosition = CameraPosition(target = Position(longitude = 8.2, latitude = 46.8), zoom = 6.0),
     )
-    val allPositions = data.flatMap { entry -> entry.routeStops().mapNotNull { it.position() } }
+    // Camera fit covers every visible marker — skipped stops leave the route but keep theirs.
+    val allPositions = data.flatMap { entry -> entry.stops.mapNotNull { it.position() } }
 
     if (fitToStops) {
         LaunchedEffect(allPositions) {

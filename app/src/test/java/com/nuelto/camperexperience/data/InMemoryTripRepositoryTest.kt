@@ -185,17 +185,26 @@ class InMemoryTripRepositoryTest {
     fun `seeded repository has consistent demo data`() = runTest {
         val seeded = InMemoryTripRepository(seed = true)
         val trips = seeded.trips().first()
-        assertEquals(3, trips.size)
-        // Sorted by start date descending: Jura (2027, planned), Schwarzwald, Provence.
+        assertEquals(4, trips.size)
+        // Sorted by start date descending: Jura (2027, planned), Vierwaldstättersee
+        // (active, dated around today), Schwarzwald, Provence.
         assertEquals("Jura–Ticino Runde", trips[0].name)
-        assertEquals("Schwarzwald", trips[1].name)
-        assertEquals("Provence", trips[2].name)
+        assertEquals("Vierwaldstättersee", trips[1].name)
+        assertEquals("Schwarzwald", trips[2].name)
+        assertEquals("Provence", trips[3].name)
         assertEquals(TripStatus.PLANNED, trips[0].status)
-        assertEquals(TripStatus.DONE, trips[1].status)
+        assertEquals(TripStatus.ACTIVE, trips[1].status)
         assertEquals(TripStatus.DONE, trips[2].status)
+        assertEquals(TripStatus.DONE, trips[3].status)
         // Exact seeded totals: dropping seeded stops or expenses must be caught.
-        assertEquals(84.0 + 128.0 + 30.0 + 145.30 + 98.60 + 61.40, trips[2].totalCost, 1e-9)
-        assertEquals(9, trips[2].nights)
+        assertEquals(84.0 + 128.0 + 30.0 + 145.30 + 98.60 + 61.40, trips[3].totalCost, 1e-9)
+        assertEquals(9, trips[3].nights)
+        // Active demo trip: one checked-in stop, a visit, and unpriced upcoming stops.
+        assertEquals(84.0 + 40.0, trips[1].totalCost, 1e-9)
+        assertEquals(5, trips[1].nights)
+        val activeStops = seeded.stops(trips[1].id).first()
+        assertEquals(StopState.DONE, activeStops.first().state)
+        assertTrue(activeStops.any { it.kind == StopKind.VISIT })
         // Planned trip: recorded numbers only (entered price + vignette estimate).
         assertEquals(186.0 + 40.0, trips[0].totalCost, 1e-9)
         assertEquals(6, trips[0].nights)
