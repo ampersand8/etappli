@@ -23,6 +23,7 @@ import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.FuelEstimator
 import com.nuelto.camperexperience.domain.GapRow
 import com.nuelto.camperexperience.domain.StopRow
+import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.Timeline
 import com.nuelto.camperexperience.domain.TimelineRow
 import com.nuelto.camperexperience.domain.TripEstimator
@@ -62,9 +63,16 @@ class TripDetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
     private val settingsRepository: SettingsRepository,
+    // Renews Google Places coordinates that hit their 30-day retention, and deletes the
+    // ones it cannot renew. Null when the map provider has no place lookup of its own.
+    private val placeCacheSweeper: PlaceCacheSweeper? = null,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle.toRoute<TripDetailRoute>().tripId
+
+    init {
+        placeCacheSweeper?.let { sweeper -> viewModelScope.launch { sweeper.sweep(tripId) } }
+    }
 
     val uiState: StateFlow<TripDetailUiState> =
         combine(
@@ -281,6 +289,7 @@ class TripDetailViewModel(
                 createSavedStateHandle(),
                 container.tripRepository,
                 container.settingsRepository,
+                container.mapProvider.placeCacheSweeper(container.tripRepository),
             )
         }
     }

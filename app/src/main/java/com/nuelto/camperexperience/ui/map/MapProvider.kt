@@ -9,6 +9,8 @@ import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.domain.MapFrame
 import com.nuelto.camperexperience.domain.MapMarker
 import com.nuelto.camperexperience.domain.MapRoute
+import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
 
 /**
@@ -33,6 +35,12 @@ interface MapProvider {
 
     /** Search that is licensed to run alongside this map. */
     fun placeSearch(): PlaceSearch?
+
+    /**
+     * Enforcement for providers whose coordinates expire. Null means this provider's
+     * results are ours to keep, so nothing ever has to be swept.
+     */
+    fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper? = null
 
     @Composable
     fun rememberCamera(start: LatLng?, zoom: Double): MapCamera

@@ -4,11 +4,15 @@ import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopState
 
-/** A search hit: [name] fills the stop name, [label] is the address line under it. */
+/**
+ * A search hit: [name] fills the stop name, [label] is the address line under it.
+ * [id] is the provider's stable id — a Google Place ID, or blank for OSM results.
+ */
 data class PlaceSuggestion(
     val name: String,
     val label: String,
     val location: LatLng,
+    val id: String = "",
 )
 
 /** Search feedback; IDLE also covers "results are showing" and "nothing typed yet". */

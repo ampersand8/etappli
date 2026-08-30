@@ -26,7 +26,10 @@ import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.domain.MapFrame
 import com.nuelto.camperexperience.domain.MapMarker
 import com.nuelto.camperexperience.domain.MapRoute
+import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.location.GooglePlacesSearch
 import com.nuelto.camperexperience.ui.theme.accentColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,15 +39,20 @@ private fun LatLng.gms() = GmsLatLng(latitude, longitude)
 
 /**
  * Google Maps, active only when a `mapsApiKey` is configured (see MapsBackend). Search
- * stays on Photon/OpenStreetMap: Google's Places terms forbid showing Places content on
- * a non-Google map, and — the reason it matters here — permit caching Places coordinates
- * for only 30 days, while this app stores a stop's coordinate for the life of the trip.
+ * is Google Places, which is why it may only exist here: the Places terms forbid showing
+ * that content alongside a non-Google map. Coordinates it returns are on a 30-day
+ * retention clock — see domain/PlaceCache.
  */
 object GoogleMapProvider : MapProvider {
 
-    override val attribution = "Map data © Google · place search © OpenStreetMap contributors"
+    override val attribution = "Map data and places © Google"
 
-    override fun placeSearch(): PlaceSearch = MapLibreProvider.placeSearch()
+    override fun placeSearch(): PlaceSearch = GooglePlacesSearch()
+
+    override fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper {
+        val places = GooglePlacesSearch()
+        return PlaceCacheSweeper(tripRepository) { placeId -> places.details(placeId) }
+    }
 
     @Composable
     override fun rememberCamera(start: LatLng?, zoom: Double): MapCamera {

@@ -13,6 +13,7 @@ import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.domain.VignetteTable
+import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,11 +42,13 @@ class TripDetailViewModelTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val settingsRepository = InMemorySettingsRepository()
 
-    private fun viewModel(tripId: String = "t1") = TripDetailViewModel(
-        SavedStateHandle(mapOf("tripId" to tripId)),
-        tripRepository,
-        settingsRepository,
-    )
+    private fun viewModel(tripId: String = "t1", sweeper: PlaceCacheSweeper? = null) =
+        TripDetailViewModel(
+            SavedStateHandle(mapOf("tripId" to tripId)),
+            tripRepository,
+            settingsRepository,
+            sweeper,
+        )
 
     /** ViewModel with a live collector so uiState.value follows repository writes. */
     private fun TestScope.hotViewModel(tripId: String = "t1"): TripDetailViewModel {
@@ -398,5 +401,21 @@ class TripDetailViewModelTest {
         viewModel().deleteTrip { deleted = true }
         assertTrue(deleted)
         assertNull(tripRepository.trip("t1").first())
+    }
+
+    @Test
+    fun `opening a trip renews any Places coordinate that ran out of retention`() = runTest {
+        tripRepository.upsertStop(
+            Stop(
+                id = "s1", tripId = "t1", name = "Camping Delta",
+                location = LatLng(46.17, 8.79),
+                placeId = "ChIJ1", locationCachedAt = LocalDate.now().minusDays(31),
+            ),
+        )
+        viewModel(sweeper = PlaceCacheSweeper(tripRepository) { null })
+        // No refresh available, so the terms say delete — the place id survives.
+        val stop = tripRepository.stops("t1").first().single()
+        assertNull(stop.location)
+        assertEquals("ChIJ1", stop.placeId)
     }
 }

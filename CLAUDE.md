@@ -63,10 +63,13 @@ There is no lint/format tooling configured.
   Firebase decides the store, the key decides the map. Tests provide
   `LocalMapProvider provides PlaceholderMapProvider`, which records camera moves so the
   picker's confirm flow still works on the JVM. Setup: GOOGLE_MAPS_SETUP.md.
-- **Google Places is deliberately not used for search.** Places SST §14.3 allows caching
-  its coordinates for 30 days only, and this app stores stop coordinates permanently;
-  §14.2 forbids showing Places results on a non-Google map. Both providers therefore
-  search via Photon/OSM.
+- **Google mode searches via Google Places (New) Text Search** (`domain/GooglePlaces.kt`
+  pure, `location/GooglePlacesSearch.kt` the HTTP call); MapLibre mode stays on Photon —
+  Places SST §14.2 forbids showing Places results on a non-Google map. §14.3 caps caching
+  a Places coordinate at 30 days, so such stops carry `placeId` + `locationCachedAt`, and
+  `domain/PlaceCacheSweeper` (run from TripDetailViewModel) refreshes them via Place
+  Details or **deletes** them. Coordinates from GPS/crosshair/OSM have no
+  `locationCachedAt` and never expire. Details: GOOGLE_MAPS_SETUP.md.
 - Place search lives **on the picker map** (`ui/map/LocationPickerScreen.kt`), not in the
   stop form: hits land as markers, tapping one names it, and the picker returns that
   place's name alongside the coordinate (`PICKED_PLACE_KEY`) so the editor skips the
