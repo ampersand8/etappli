@@ -12,6 +12,8 @@ import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.ui.map.MapLibreProvider
+import com.nuelto.camperexperience.ui.map.MapProvider
 
 /**
  * Hand-rolled DI. When Firebase is configured (google-services.json present at build
@@ -22,11 +24,15 @@ class AppContainer(
     val authRepository: AuthRepository?,
     val tripRepository: TripRepository,
     val settingsRepository: SettingsRepository,
+    // Independent of the Firebase switch: a Firestore install with no Maps key still
+    // gets MapLibre, and a local-only install with a key still gets Google Maps.
+    val mapProvider: MapProvider = MapLibreProvider,
 ) {
     val firebaseEnabled: Boolean get() = authRepository != null
 
     companion object {
-        fun inMemory() = AppContainer(null, InMemoryTripRepository(), InMemorySettingsRepository())
+        fun inMemory(mapProvider: MapProvider = MapLibreProvider) =
+            AppContainer(null, InMemoryTripRepository(), InMemorySettingsRepository(), mapProvider)
     }
 }
 
@@ -39,8 +45,11 @@ open class CamperApp : Application() {
         container = createContainer()
     }
 
-    protected open fun createContainer(): AppContainer =
-        firebaseContainer(this) ?: AppContainer.inMemory()
+    protected open fun createContainer(): AppContainer {
+        // Two independent switches: Firebase decides the store, the key decides the map.
+        val map = googleMapProvider(this) ?: MapLibreProvider
+        return firebaseContainer(this, map) ?: AppContainer.inMemory(map)
+    }
 }
 
 val CreationExtras.appContainer: AppContainer

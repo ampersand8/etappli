@@ -2,6 +2,7 @@ package com.nuelto.camperexperience.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.domain.MapAccent
 import com.nuelto.camperexperience.data.model.TripStatus
 
 // One color language across lists, timeline, and maps:
@@ -21,4 +22,11 @@ fun stopColor(state: StopState, isCurrent: Boolean): Color = when {
     isCurrent -> ActiveGreen
     state == StopState.PLANNED -> PlannedBlue
     else -> DoneGrey
+}
+
+/** Same language on the map, whoever renders it. */
+fun accentColor(accent: MapAccent): Color = when (accent) {
+    MapAccent.PLANNED -> PlannedBlue
+    MapAccent.CURRENT -> ActiveGreen
+    MapAccent.DONE -> DoneGrey
 }

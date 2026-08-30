@@ -3,7 +3,6 @@ package com.nuelto.camperexperience.ui.map
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,50 +36,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.MapAccent
+import com.nuelto.camperexperience.domain.MapMarker
+import com.nuelto.camperexperience.domain.MapOverlay
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import org.maplibre.compose.camera.CameraPosition
-import org.maplibre.compose.camera.CameraState
-import org.maplibre.compose.camera.rememberCameraState
-import org.maplibre.compose.expressions.dsl.const
-import org.maplibre.compose.layers.CircleLayer
-import org.maplibre.compose.map.MaplibreMap
-import org.maplibre.compose.sources.GeoJsonData
-import org.maplibre.compose.sources.rememberGeoJsonSource
-import org.maplibre.compose.style.BaseStyle
-import org.maplibre.compose.util.ClickResult
-import org.maplibre.spatialk.geojson.BoundingBox
-import org.maplibre.spatialk.geojson.Feature
-import org.maplibre.spatialk.geojson.FeatureCollection
-import org.maplibre.spatialk.geojson.Point
-import org.maplibre.spatialk.geojson.Position
-
-private fun LatLng.position() = Position(longitude = longitude, latitude = latitude)
-
-/** Frames every hit: one point gets a close zoom, several get a bounding box. */
-private suspend fun CameraState.frame(points: List<LatLng>) {
-    val positions = points.map { it.position() }.distinct()
-    if (positions.isEmpty()) return
-    if (positions.size == 1) {
-        animateTo(finalPosition = CameraPosition(target = positions.first(), zoom = 13.0))
-        return
-    }
-    animateTo(
-        boundingBox = BoundingBox(
-            west = positions.minOf { it.longitude },
-            south = positions.minOf { it.latitude },
-            east = positions.maxOf { it.longitude },
-            north = positions.maxOf { it.latitude },
-        ),
-        padding = PaddingValues(72.dp),
-    )
-}
-
-private suspend fun CameraState.centerOn(point: LatLng) =
-    animateTo(finalPosition = CameraPosition(target = point.position(), zoom = position.zoom))
 
 /**
  * Fullscreen map with a fixed center crosshair; confirming returns the map center.
@@ -96,17 +56,13 @@ fun LocationPickerScreen(
     viewModel: LocationPickerViewModel = viewModel(factory = LocationPickerViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val cameraState = rememberCameraState(
-        firstPosition = CameraPosition(
-            target = initial?.position() ?: Position(longitude = 8.2, latitude = 46.8),
-            zoom = if (initial != null) 12.0 else 6.0,
-        ),
-    )
+    val provider = LocalMapProvider.current
+    val camera = provider.rememberCamera(start = initial, zoom = CLOSE_ZOOM)
 
     // New hits pull the camera over them; tapping one slides the crosshair onto it so
     // both ways of confirming agree, without yanking the zoom around.
-    LaunchedEffect(state.results) { cameraState.frame(state.results.map { it.location }) }
-    LaunchedEffect(state.selected) { state.selected?.let { cameraState.centerOn(it.location) } }
+    LaunchedEffect(state.results) { camera.apply(MapOverlay.frame(state.results.map { it.location })) }
+    LaunchedEffect(state.selected) { state.selected?.let { camera.centerOn(it.location) } }
 
     Scaffold(
         topBar = {
@@ -121,32 +77,24 @@ fun LocationPickerScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = {
-                    val target = cameraState.position.target
-                    onPicked(LatLng(target.latitude, target.longitude), null)
-                },
+                onClick = { onPicked(camera.center, null) },
                 icon = { Icon(Icons.Default.Check, contentDescription = null) },
                 text = { Text("Use this spot") },
             )
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            if (LocalMapEnabled.current) {
-                MaplibreMap(
-                    modifier = Modifier.fillMaxSize(),
-                    baseStyle = BaseStyle.Uri(MAP_STYLE_URL),
-                    cameraState = cameraState,
-                ) {
-                    ResultMarkers(state, onSelect = viewModel::select)
-                }
-            }
+            provider.Canvas(
+                camera = camera,
+                markers = state.markers(),
+                routes = emptyList(),
+                modifier = Modifier.fillMaxSize(),
+                onMarkerClick = { _, id -> state.hit(id)?.also(viewModel::select) != null },
+            )
             Crosshair(Modifier.align(Alignment.Center))
             SearchOverlay(
                 state = state,
-                onQueryChange = { query ->
-                    val target = cameraState.position.target
-                    viewModel.setQuery(query, LatLng(target.latitude, target.longitude))
-                },
+                onQueryChange = { query -> viewModel.setQuery(query, camera.center) },
                 onClear = viewModel::clearSearch,
                 onUseSelected = { onPicked(it.location, it) },
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -155,59 +103,22 @@ fun LocationPickerScreen(
     }
 }
 
-/** Every hit as a marker, the selected one drawn larger on top of the rest. */
-@Composable
-private fun ResultMarkers(state: LocationPickerUiState, onSelect: (PlaceSuggestion) -> Unit) {
-    if (state.results.isEmpty()) return
-    val color = MaterialTheme.colorScheme.primary
-    val source = rememberGeoJsonSource(
-        data = GeoJsonData.Features(
-            FeatureCollection(
-                state.results.mapIndexed { index, place ->
-                    Feature(
-                        geometry = Point(place.location.position()),
-                        properties = buildJsonObject { put("index", index) },
-                    )
-                },
-            ),
-        ),
-    )
-    CircleLayer(
-        id = "search-results",
-        source = source,
-        radius = const(9.dp),
-        color = const(color),
-        strokeWidth = const(2.dp),
-        strokeColor = const(Color.White),
-        onClick = { features ->
-            val index = features.firstOrNull()?.properties?.get("index")?.jsonPrimitive?.content
-            val place = index?.toIntOrNull()?.let { state.results.getOrNull(it) }
-            if (place != null) {
-                onSelect(place)
-                ClickResult.Consume
-            } else {
-                ClickResult.Pass
-            }
-        },
-    )
-    state.selected?.let { selected ->
-        val selectedSource = rememberGeoJsonSource(
-            data = GeoJsonData.Features(
-                FeatureCollection(
-                    listOf(Feature(geometry = Point(selected.location.position()), properties = null)),
-                ),
-            ),
-        )
-        CircleLayer(
-            id = "search-selected",
-            source = selectedSource,
-            radius = const(13.dp),
-            color = const(color),
-            strokeWidth = const(3.dp),
-            strokeColor = const(Color.White),
+/** Hits as markers: the tapped one is filled, the rest are hollow rings. */
+private fun LocationPickerUiState.markers(): List<MapMarker> =
+    results.mapIndexed { index, place ->
+        MapMarker(
+            tripId = SEARCH_MARKERS,
+            stopId = index.toString(),
+            at = place.location,
+            accent = MapAccent.PLANNED,
+            hollow = place != selected,
         )
     }
-}
+
+private fun LocationPickerUiState.hit(markerId: String): PlaceSuggestion? =
+    markerId.toIntOrNull()?.let { results.getOrNull(it) }
+
+private const val SEARCH_MARKERS = "search"
 
 /** Search field, its one-line status, and the card for whichever marker is tapped. */
 @Composable

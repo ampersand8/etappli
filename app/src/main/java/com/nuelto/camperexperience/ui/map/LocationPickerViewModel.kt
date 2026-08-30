@@ -2,13 +2,11 @@ package com.nuelto.camperexperience.ui.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
-import com.nuelto.camperexperience.location.PhotonPlaceSearch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,8 +74,9 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
         private const val DEBOUNCE_MS = 300L
         private const val MIN_QUERY_LENGTH = 3
 
-        val Factory = viewModelFactory {
-            initializer { LocationPickerViewModel(PhotonPlaceSearch()) }
+        // Search must match the map: Google Places may not be shown on a non-Google map.
+        val Factory = containerViewModelFactory { container ->
+            LocationPickerViewModel(container.mapProvider.placeSearch())
         }
     }
 }

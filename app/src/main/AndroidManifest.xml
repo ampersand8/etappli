@@ -11,6 +11,10 @@
         android:icon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.CamperExperience">
+        <!-- Empty unless mapsApiKey is set in local.properties; the app then runs on MapLibre. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -86,6 +86,7 @@ import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.TripMapData
 import com.nuelto.camperexperience.domain.GapRow
 import com.nuelto.camperexperience.domain.StopRow
 import com.nuelto.camperexperience.domain.TripEstimator
@@ -99,7 +100,6 @@ import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
 import com.nuelto.camperexperience.ui.formatTripDates
 import com.nuelto.camperexperience.ui.map.TripMap
-import com.nuelto.camperexperience.ui.map.TripMapData
 import com.nuelto.camperexperience.ui.theme.ActiveGreen
 import com.nuelto.camperexperience.ui.theme.PlannedBlue
 import com.nuelto.camperexperience.ui.theme.stopColor

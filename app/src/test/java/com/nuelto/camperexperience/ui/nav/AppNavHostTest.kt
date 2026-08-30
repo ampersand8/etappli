@@ -11,7 +11,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.testutil.TestCamperApp
-import com.nuelto.camperexperience.ui.map.LocalMapEnabled
+import com.nuelto.camperexperience.ui.map.LocalMapProvider
+import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,7 +20,7 @@ import org.robolectric.annotation.Config
 
 /**
  * End-to-end navigation through the real NavHost, backed by the TestCamperApp's
- * seeded in-memory container. Maps render as placeholders (LocalMapEnabled=false).
+ * seeded in-memory container. Maps render as placeholders (PlaceholderMapProvider).
  */
 @RunWith(AndroidJUnit4::class)
 @Config(application = TestCamperApp::class)
@@ -30,7 +31,7 @@ class AppNavHostTest {
 
     private fun setContent() {
         compose.setContent {
-            CompositionLocalProvider(LocalMapEnabled provides false) {
+            CompositionLocalProvider(LocalMapProvider provides PlaceholderMapProvider) {
                 AppNavHost()
             }
         }

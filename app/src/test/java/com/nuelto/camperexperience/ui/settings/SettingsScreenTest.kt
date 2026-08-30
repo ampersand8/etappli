@@ -1,5 +1,6 @@
 package com.nuelto.camperexperience.ui.settings
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -10,6 +11,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.testutil.FakeAuthRepository
+import com.nuelto.camperexperience.ui.map.LocalMapProvider
+import com.nuelto.camperexperience.ui.map.MapLibreProvider
+import com.nuelto.camperexperience.ui.map.MapProvider
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -29,10 +33,16 @@ class SettingsScreenTest {
     private val settingsRepository = InMemorySettingsRepository()
     private val events = mutableListOf<String>()
 
-    private fun setContent(auth: FakeAuthRepository? = null) {
+    private fun setContent(auth: FakeAuthRepository? = null, provider: MapProvider? = null) {
         val viewModel = SettingsViewModel(settingsRepository, auth)
         compose.setContent {
-            SettingsScreen(onBack = { events += "back" }, viewModel = viewModel)
+            if (provider == null) {
+                SettingsScreen(onBack = { events += "back" }, viewModel = viewModel)
+            } else {
+                CompositionLocalProvider(LocalMapProvider provides provider) {
+                    SettingsScreen(onBack = { events += "back" }, viewModel = viewModel)
+                }
+            }
         }
     }
 
@@ -102,10 +112,17 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun `shows the app version`() {
+    fun `shows the app version, and no attribution line when the map has none`() {
         setContent()
         compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        compose.onNodeWithText(MapLibreProvider.attribution).assertDoesNotExist()
+    }
+
+    @Test
+    fun `attribution follows the map provider`() {
+        setContent(provider = MapLibreProvider)
         compose.onNodeWithText("Maps and place search © OpenStreetMap contributors").assertIsDisplayed()
+        assertEquals("Maps and place search © OpenStreetMap contributors", MapLibreProvider.attribution)
     }
 
     @Test

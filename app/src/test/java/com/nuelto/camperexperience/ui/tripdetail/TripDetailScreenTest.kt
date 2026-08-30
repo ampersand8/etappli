@@ -29,7 +29,8 @@ import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
-import com.nuelto.camperexperience.ui.map.LocalMapEnabled
+import com.nuelto.camperexperience.ui.map.LocalMapProvider
+import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -133,7 +134,7 @@ class TripDetailScreenTest {
             settingsRepository,
         )
         compose.setContent {
-            CompositionLocalProvider(LocalMapEnabled provides false) {
+            CompositionLocalProvider(LocalMapProvider provides PlaceholderMapProvider) {
                 TripDetailScreen(
                     onBack = { events += "back" },
                     onEditTrip = { events += "edit:$it" },
