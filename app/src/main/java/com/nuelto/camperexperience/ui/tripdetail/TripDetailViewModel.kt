@@ -179,13 +179,18 @@ class TripDetailViewModel(
         DateCascade.shift(stops, orderIndex, days).forEach { tripRepository.upsertStop(it) }
     }
 
-    /** Drops a dragged stop at [toIndex]; done stops are anchors it cannot cross. */
+    /**
+     * Drops a dragged stop at [toIndex]; done stops are anchors it cannot cross.
+     * The plan is re-dated around the new order — the itinerary keeps its start,
+     * its gaps and its length, so only who you visit when changes.
+     */
     fun moveStop(stopId: String, toIndex: Int) {
         viewModelScope.launch {
             writeLock.withLock {
                 val stops = tripRepository.stops(tripId).first()
                 val ids = StopReorder.move(stops, stopId, toIndex) ?: return@withLock
                 tripRepository.reorderStops(tripId, ids)
+                DateCascade.resequence(stops, ids).forEach { tripRepository.upsertStop(it) }
             }
         }
     }

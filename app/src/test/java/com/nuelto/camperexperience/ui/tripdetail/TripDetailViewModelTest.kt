@@ -263,6 +263,16 @@ class TripDetailViewModelTest {
     }
 
     @Test
+    fun `reordering re-dates the plan around the new order`() = runTest {
+        seedTrip(status = TripStatus.PLANNED)
+        val vm = hotViewModel()
+        vm.moveStop("s2", 0)
+        assertEquals(listOf("s2", "s1"), stops().map { it.id })
+        assertEquals(LocalDate.of(2026, 7, 1), stops()[0].arrivalDate) // trip still starts Jul 1
+        assertEquals(LocalDate.of(2026, 7, 2), stops()[1].arrivalDate) // after B's single night
+    }
+
+    @Test
     fun `starting a tour as template lands on a fresh trip, in place on the same`() = runTest {
         tripRepository.upsertTrip(
             Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
