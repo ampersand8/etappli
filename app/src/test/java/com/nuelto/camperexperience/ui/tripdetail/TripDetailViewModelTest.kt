@@ -141,6 +141,51 @@ class TripDetailViewModelTest {
     }
 
     @Test
+    fun `a multi-count vignette suggestion dismisses itself once accepted`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Austria", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "Innsbruck", nights = 11, location = LatLng(47.26, 11.39), orderIndex = 0),
+        )
+        val vm = hotViewModel()
+        val suggestion = vm.uiState.value.vignetteSuggestions.single()
+        // 12 covered days -> two 10-day vignettes beat twelve 1-day ones and the annual.
+        assertEquals(2, suggestion.count)
+        vm.addVignette(suggestion)
+        assertTrue(vm.uiState.value.vignetteSuggestions.isEmpty())
+        val expense = tripRepository.expenses("t1").first().single()
+        assertEquals("AT 10-day vignette ×2 (${VignetteTable.YEAR})", expense.label)
+        assertEquals(25.60 * 0.94, expense.amount, 1e-9)
+    }
+
+    @Test
+    fun `a checked-in stop stays current mid-stay`() = runTest {
+        val today = LocalDate.now()
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Now", startDate = today.minusDays(1), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "A", nights = 2, arrivalDate = today.minusDays(1), orderIndex = 0, state = StopState.DONE),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s2", tripId = "t1", name = "B", nights = 1, arrivalDate = today.plusDays(1), orderIndex = 1),
+        )
+        viewModel().uiState.test {
+            assertEquals("s1", awaitItem().currentStopId)
+        }
+    }
+
+    @Test
+    fun `restore is refused on a finished trip`() = runTest {
+        seedTrip(status = TripStatus.DONE)
+        tripRepository.upsertStop(stops().first { it.id == "s2" }.copy(state = StopState.SKIPPED))
+        val vm = hotViewModel()
+        vm.restore("s2")
+        assertEquals(StopState.SKIPPED, stops().first { it.id == "s2" }.state)
+    }
+
+    @Test
     fun `changing nights shifts the downstream planned schedule`() = runTest {
         seedTrip(status = TripStatus.ACTIVE)
         val vm = hotViewModel()

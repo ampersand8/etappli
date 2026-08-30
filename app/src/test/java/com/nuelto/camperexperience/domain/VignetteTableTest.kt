@@ -21,7 +21,8 @@ class VignetteTableTest {
         val twelve = VignetteTable.cheapestCovering("AT", 12)!!
         assertEquals(2, twelve.count)
         assertEquals(25.60, twelve.total, 1e-9)
-        assertEquals("2× AT 10-day vignette", twelve.label)
+        // The country code stays the label prefix — expense dedup matches on it.
+        assertEquals("AT 10-day vignette ×2", twelve.label)
         // A long stay falls back to the annual.
         assertEquals(106.80, VignetteTable.cheapestCovering("AT", 120)!!.total, 1e-9)
     }

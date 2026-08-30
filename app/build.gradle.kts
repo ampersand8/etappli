@@ -183,7 +183,9 @@ tasks.register<JavaExec>("pitest") {
         listOf(
             "com.nuelto.camperexperience.domain.*",
             "com.nuelto.camperexperience.data.InMemory*",
+            "com.nuelto.camperexperience.data.model.ModelsKt",
             "com.nuelto.camperexperience.ui.FormatKt",
+            "com.nuelto.camperexperience.ui.theme.StatusColorsKt",
             "com.nuelto.camperexperience.ui.triplist.TripListViewModel",
             "com.nuelto.camperexperience.ui.settings.SettingsViewModel",
         ).joinToString(","),
@@ -195,6 +197,7 @@ tasks.register<JavaExec>("pitest") {
             "com.nuelto.camperexperience.domain.*",
             "com.nuelto.camperexperience.data.*",
             "com.nuelto.camperexperience.ui.FormatTest",
+            "com.nuelto.camperexperience.ui.theme.StatusColorsTest",
             "com.nuelto.camperexperience.ui.triplist.TripListViewModelTest",
             "com.nuelto.camperexperience.ui.settings.SettingsViewModelTest",
         ).joinToString(","),

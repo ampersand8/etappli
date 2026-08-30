@@ -34,11 +34,15 @@ import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.Stop
-import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.CurrentStop
+import com.nuelto.camperexperience.domain.EstimateBreakdown
+import com.nuelto.camperexperience.domain.TripEstimator
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
+import java.time.LocalDate
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -46,6 +50,8 @@ import kotlinx.coroutines.flow.stateIn
 
 data class AllTripsMapUiState(
     val data: List<TripMapData> = emptyList(),
+    // Trip id -> live ≈ estimate for planned/active trips (recorded totals mislead there).
+    val estimates: Map<String, EstimateBreakdown> = emptyMap(),
     val settings: UserSettings = UserSettings(),
 )
 
@@ -58,8 +64,9 @@ class AllTripsMapViewModel(
         combine(
             tripRepository.trips(),
             tripRepository.allStops(),
+            tripRepository.allExpenses(),
             settingsRepository.settings(),
-        ) { trips, stops, settings ->
+        ) { trips, stops, expenses, settings ->
             AllTripsMapUiState(
                 data = trips.map { trip ->
                     val tripStops = stops.filter { it.tripId == trip.id }
@@ -67,11 +74,17 @@ class AllTripsMapViewModel(
                         trip = trip,
                         stops = tripStops,
                         currentStopId = if (trip.status == TripStatus.ACTIVE) {
-                            tripStops.sortedBy { it.orderIndex }
-                                .firstOrNull { it.state == StopState.PLANNED }?.id
+                            CurrentStop.of(tripStops, LocalDate.now())
                         } else {
                             null
                         },
+                    )
+                },
+                estimates = trips.filterNot { it.status == TripStatus.DONE }.associate { trip ->
+                    trip.id to TripEstimator.estimate(
+                        stops.filter { it.tripId == trip.id },
+                        expenses.filter { it.tripId == trip.id },
+                        settings,
                     )
                 },
                 settings = settings,
@@ -83,6 +96,13 @@ class AllTripsMapViewModel(
             AllTripsMapViewModel(container.tripRepository, container.settingsRepository)
         }
     }
+}
+
+/** PLANNED/ACTIVE trips render the live ≈ estimate; done trips their actuals. */
+private fun tripTotalText(trip: Trip, state: AllTripsMapUiState): String {
+    val estimate = state.estimates[trip.id] ?: return formatCurrency(trip.totalCost, state.settings.currency)
+    val amount = formatCurrency(estimate.total, state.settings.currency)
+    return if (estimate.hasEstimates) "≈ $amount" else amount
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,7 +160,7 @@ fun AllTripsMapScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Trip total: ${formatCurrency(entry.trip.totalCost, state.settings.currency)}",
+                                "Trip total: ${tripTotalText(entry.trip, state)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )

@@ -539,6 +539,21 @@ class TripDetailScreenTest {
     // --- done trips ------------------------------------------------------------------
 
     @Test
+    fun `a done trip started from a plan shows the planned-vs-actual line`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(
+                    id = "t1", name = "Jura", startDate = LocalDate.of(2026, 7, 1),
+                    endDate = LocalDate.of(2026, 7, 4), status = TripStatus.DONE,
+                    plannedCost = 357.18, plannedNights = 6,
+                ),
+            )
+        }
+        setContent()
+        compose.onNodeWithText("Planned: ≈ CHF357.18 · 6 nights").assertIsDisplayed()
+    }
+
+    @Test
     fun `plan again copies a done trip into a new plan`() {
         seed()
         setContent()

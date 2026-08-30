@@ -44,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -133,6 +134,9 @@ fun TripDetailScreen(
                 message = "Skipped ${stop.name}",
                 actionLabel = "Undo",
                 withDismissAction = true,
+                // Self-dismissing: several skips must not queue indefinitely; the
+                // row's restore icon stays as the durable undo.
+                duration = SnackbarDuration.Short,
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.restore(stop.id)
         }
@@ -289,6 +293,18 @@ fun TripDetailScreen(
                         breakdown = state.breakdown,
                         fuelEstimate = state.fuelEstimate,
                         currency = state.settings.currency,
+                    )
+                }
+            }
+            val plannedCost = trip.plannedCost
+            if (trip.status == TripStatus.DONE && plannedCost != null) {
+                item {
+                    // The estimate snapshot taken at start time, for plan-vs-reality.
+                    Text(
+                        "Planned: ≈ ${formatCurrency(plannedCost, state.settings.currency)}" +
+                            (trip.plannedNights?.let { " · ${if (it == 1) "1 night" else "$it nights"}" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -498,23 +514,32 @@ private fun NowCard(
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onArrived) { Text("✓ Arrived") }
-                if (stop.location != null) {
-                    TextButton(onClick = {
-                        val loc = stop.location
-                        // Hand driving off to the maps app; we never build turn-by-turn.
-                        runCatching {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "geo:${loc.latitude},${loc.longitude}?q=${loc.latitude},${loc.longitude}".toUri(),
-                                ),
-                            )
-                        }
-                    }) { Text("Navigate") }
+            if (stop.state == StopState.DONE) {
+                // Mid-stay: checked in, staying — only the stepper above matters.
+                Text(
+                    "Checked in",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ActiveGreen,
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onArrived) { Text("✓ Arrived") }
+                    if (stop.location != null) {
+                        TextButton(onClick = {
+                            val loc = stop.location
+                            // Hand driving off to the maps app; we never build turn-by-turn.
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        "geo:${loc.latitude},${loc.longitude}?q=${loc.latitude},${loc.longitude}".toUri(),
+                                    ),
+                                )
+                            }
+                        }) { Text("Navigate") }
+                    }
+                    TextButton(onClick = onSkip) { Text("Skip") }
                 }
-                TextButton(onClick = onSkip) { Text("Skip") }
             }
         }
     }

@@ -161,12 +161,71 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `unparseable camping cost saves as zero`() = runTest {
+    fun `unparseable camping cost saves as zero and stays an estimate`() = runTest {
         val vm = newStopViewModel()
         vm.setName("Aire")
         vm.setCampingCost("abc")
         vm.save {}
-        assertEquals(0.0, tripRepository.stops("t1").first().single().campingCostTotal, 1e-9)
+        val stop = tripRepository.stops("t1").first().single()
+        assertEquals(0.0, stop.campingCostTotal, 1e-9)
+        assertFalse(stop.costKnown)
+    }
+
+    @Test
+    fun `switching a free camp to a paid kind drops the known-zero price`() = runTest {
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "Waldrand", kind = StopKind.FREE_CAMP, costKnown = true),
+        )
+        val vm = editViewModel("s1")
+        vm.setKind(StopKind.CAMPSITE)
+        vm.save {}
+        assertFalse(tripRepository.stops("t1").first().single().costKnown)
+    }
+
+    @Test
+    fun `new stops append after the highest order index, gaps included`() = runTest {
+        tripRepository.upsertStop(Stop(id = "a", tripId = "t1", orderIndex = 0))
+        tripRepository.upsertStop(Stop(id = "b", tripId = "t1", orderIndex = 5))
+        val vm = newStopViewModel()
+        vm.setName("New")
+        vm.save {}
+        assertEquals(6, tripRepository.stops("t1").first().single { it.name == "New" }.orderIndex)
+    }
+
+    @Test
+    fun `extending a stay in the editor shifts the downstream planned schedule`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "A", arrivalDate = LocalDate.of(2027, 6, 10), nights = 2, orderIndex = 0),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s2", tripId = "t1", name = "B", arrivalDate = LocalDate.of(2027, 6, 12), nights = 1, orderIndex = 1),
+        )
+        val vm = editViewModel("s1")
+        vm.setNights(4)
+        vm.save {}
+        assertEquals(
+            LocalDate.of(2027, 6, 14),
+            tripRepository.stops("t1").first().single { it.id == "s2" }.arrivalDate,
+        )
+    }
+
+    @Test
+    fun `back-filling a done trip skips the GPS fix and chains the arrival`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(
+                id = "t1", name = "Done", startDate = LocalDate.of(2026, 5, 14),
+                endDate = LocalDate.of(2026, 5, 18), status = TripStatus.DONE,
+            ),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s0", tripId = "t1", arrivalDate = LocalDate.of(2026, 5, 14), nights = 2, orderIndex = 0),
+        )
+        val vm = newStopViewModel()
+        assertFalse(vm.uiState.value.autoLocatePending)
+        assertEquals(LocalDate.of(2026, 5, 16), vm.uiState.value.arrivalDate)
     }
 
     @Test

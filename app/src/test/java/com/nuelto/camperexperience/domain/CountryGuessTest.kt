@@ -34,9 +34,9 @@ class CountryGuessTest {
     }
 
     @Test
-    fun `days in a country sum its stop nights`() {
+    fun `days in a country are its stop nights plus the arrival day`() {
         val zellAmSee = Stop(id = "zs", location = LatLng(47.32, 12.79), nights = 2)
-        assertEquals(5, CountryGuess.daysIn("AT", listOf(innsbruck, zellAmSee, luzern)))
+        assertEquals(6, CountryGuess.daysIn("AT", listOf(innsbruck, zellAmSee, luzern)))
     }
 
     @Test
