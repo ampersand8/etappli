@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -179,5 +180,30 @@ class GooglePlacesTest {
     @Test
     fun `a place with no id still parses, it just cannot be refreshed`() {
         assertEquals("", GooglePlaces.parseDetails("""{"displayName":{"text":"X"},"location":{"latitude":1.0,"longitude":2.0}}""")!!.id)
+    }
+
+    @Test
+    fun `each kind of stop asks Google for its own categories`() {
+        assertEquals(listOf("campground"), GooglePlaces.preferredTypes(StopKind.CAMPSITE))
+        assertEquals(listOf("rv_park", "campground"), GooglePlaces.preferredTypes(StopKind.STELLPLATZ))
+        // Google has no category for wild camping, so aim at what usually is one.
+        assertEquals(listOf("parking", "rest_stop"), GooglePlaces.preferredTypes(StopKind.FREE_CAMP))
+        assertEquals(listOf("tourist_attraction"), GooglePlaces.preferredTypes(StopKind.VISIT))
+    }
+
+    @Test
+    fun `a type filter rides along with the query`() {
+        assertEquals(
+            """{"input":"grimsel","sessionToken":"t","includedPrimaryTypes":["campground"]}""",
+            GooglePlaces.autocompleteBody("grimsel", null, "t", listOf("campground")),
+        )
+        assertEquals(
+            """{"input":"g","sessionToken":"t","includedPrimaryTypes":["rv_park","campground"]}""",
+            GooglePlaces.autocompleteBody("g", null, "t", listOf("rv_park", "campground")),
+        )
+        // No preference, no filter.
+        assertFalse(
+            GooglePlaces.autocompleteBody("g", null, "t").contains("includedPrimaryTypes"),
+        )
     }
 }

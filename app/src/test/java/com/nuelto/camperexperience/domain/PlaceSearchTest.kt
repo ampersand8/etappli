@@ -6,6 +6,7 @@ import com.nuelto.camperexperience.data.model.StopState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaceSearchTest {
@@ -67,4 +68,31 @@ class PlaceSearchTest {
         assertNotEquals(PlaceSuggestion("A", "B", bern), PlaceSuggestion("Z", "B", bern))
     }
 
+    @Test
+    fun `what the user is looking for comes first, without repeats`() {
+        val camp = PlaceSuggestion("Camping Grimselblick", "", id = "a")
+        val pass = PlaceSuggestion("Grimsel Pass", "", id = "b")
+        val lake = PlaceSuggestion("Grimselsee", "", id = "c")
+        assertEquals(
+            listOf(camp, pass, lake),
+            mergePreferred(listOf(camp), listOf(pass, camp, lake), limit = 8),
+        )
+    }
+
+    @Test
+    fun `merging cuts to the limit and falls back to names without ids`() {
+        val many = (1..10).map { PlaceSuggestion("P$it", "", id = "id$it") }
+        assertEquals(5, mergePreferred(emptyList(), many, limit = 5).size)
+
+        val a = PlaceSuggestion("Same", "one")
+        val b = PlaceSuggestion("Same", "two")
+        assertEquals(listOf(a), mergePreferred(listOf(a), listOf(b), limit = 8))
+    }
+
+    @Test
+    fun `nothing preferred leaves the order alone`() {
+        val hits = listOf(PlaceSuggestion("A", "", id = "a"), PlaceSuggestion("B", "", id = "b"))
+        assertEquals(hits, mergePreferred(emptyList(), hits, limit = 8))
+        assertTrue(mergePreferred(emptyList(), emptyList(), limit = 8).isEmpty())
+    }
 }

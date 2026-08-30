@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.ui.map.AllTripsMapScreen
 import com.nuelto.camperexperience.ui.map.LocationPickerScreen
 import com.nuelto.camperexperience.ui.map.LocationSection
@@ -84,7 +85,11 @@ fun AppNavHost() {
                             // Opens on this stop, or failing that near the one before it.
                             val start = viewModel.uiState.value.pickerStart
                             navController.navigate(
-                                LocationPickerRoute(start?.latitude, start?.longitude),
+                                LocationPickerRoute(
+                                    start?.latitude,
+                                    start?.longitude,
+                                    stopEditState.kind.name,
+                                ),
                             )
                         },
                         autoLocate = stopEditState.autoLocatePending,
@@ -107,6 +112,7 @@ fun AppNavHost() {
             val route = backStackEntry.toRoute<LocationPickerRoute>()
             LocationPickerScreen(
                 initial = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null,
+                prefer = route.kind?.let { runCatching { StopKind.valueOf(it) }.getOrNull() },
                 onPicked = { location, place ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set(

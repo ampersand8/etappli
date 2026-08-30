@@ -2,6 +2,7 @@ package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 
 /**
@@ -22,8 +23,12 @@ enum class PlaceSearchStatus { IDLE, SEARCHING, EMPTY, UNAVAILABLE }
 
 /** Swappable geocoder seam — Photon today, another endpoint if it degrades. */
 interface PlaceSearch {
-    /** null = the lookup failed (offline, timeout, junk response); empty = no matches. */
-    suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>?
+    /**
+     * [prefer] is the kind of stop being added, so searching "grimsel" while adding a
+     * campsite puts campsites first. null = no preference. Returns null when the lookup
+     * failed (offline, timeout, junk response); empty = no matches.
+     */
+    suspend fun search(query: String, near: LatLng?, prefer: StopKind?): List<PlaceSuggestion>?
 
     /**
      * Fills in the coordinate of a hit that came back without one. A provider whose
@@ -31,6 +36,18 @@ interface PlaceSearch {
      */
     suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion?
 }
+
+/**
+ * Hits of the kind being looked for first, then everything else, without repeats. Two
+ * hits are the same when their ids match, or their names when they have no id.
+ */
+fun mergePreferred(
+    preferred: List<PlaceSuggestion>,
+    rest: List<PlaceSuggestion>,
+    limit: Int,
+): List<PlaceSuggestion> = (preferred + rest)
+    .distinctBy { it.id.ifBlank { it.name } }
+    .take(limit)
 
 /** Where to open the map for the stop at [orderIndex] that has no location of its own:
  *  the located stop before it, falling back to the trip's last located stop. */

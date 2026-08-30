@@ -4,6 +4,7 @@ import android.content.Context
 import com.nuelto.camperexperience.data.AuthRepository
 import com.nuelto.camperexperience.data.AuthUser
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.location.PlaceNameResolver
@@ -73,9 +74,10 @@ class FakePlaceNameResolver(context: Context) : PlaceNameResolver(context) {
     }
 }
 
-/** Records every (query, bias); [result] decides what comes back (null = lookup failed). */
+/** Records every (query, bias, preference); [result] decides what comes back. */
 class FakePlaceSearch : PlaceSearch {
     val requests = mutableListOf<Pair<String, LatLng?>>()
+    val preferences = mutableListOf<StopKind?>()
     val gates = mutableListOf<CompletableDeferred<Unit>>()
     var gated = false
     var result: List<PlaceSuggestion>? = listOf(
@@ -87,8 +89,13 @@ class FakePlaceSearch : PlaceSearch {
 
     override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? = resolved(suggestion)
 
-    override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? {
+    override suspend fun search(
+        query: String,
+        near: LatLng?,
+        prefer: StopKind?,
+    ): List<PlaceSuggestion>? {
         requests += query to near
+        preferences += prefer
         if (gated) {
             val gate = CompletableDeferred<Unit>()
             gates += gate

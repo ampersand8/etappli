@@ -65,6 +65,10 @@ There is no lint/format tooling configured.
   picker's confirm flow still works on the JVM. Setup: GOOGLE_MAPS_SETUP.md.
 - **Google mode searches via Places (New) Autocomplete** — Text Search resolves "grimsel"
   to one place, autocomplete offers the pass, the lake, the hospice and the hotel.
+  `PlaceSearch.search` takes the **`StopKind` being added**, and both providers run a
+  second, type-filtered pass (Google `includedPrimaryTypes`, Photon `osm_tag`) merged
+  ahead of the open results by `domain/mergePreferred` — searching "grimsel" for a
+  campsite surfaces Camping Grimselblick, which the open query misses entirely.
   Predictions carry no coordinate, so `PlaceSearch.resolve` fetches it via Place Details
   when a hit is chosen, inside the same billed session token. Tapping a POI Google already
   draws (`onPOIClick`) picks it directly — no lookup needed, it arrives with both.

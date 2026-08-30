@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
@@ -34,7 +35,7 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
 
     /** One lookup per pause, never for a fragment. [near] is the current map center, so
      *  hits rank around what you are looking at. */
-    fun setQuery(value: String, near: LatLng?) {
+    fun setQuery(value: String, near: LatLng?, prefer: StopKind? = null) {
         searchJob?.cancel()
         _uiState.update { it.copy(query = value) }
         val query = value.trim()
@@ -48,7 +49,7 @@ class LocationPickerViewModel(private val placeSearch: PlaceSearch? = null) : Vi
         searchJob = viewModelScope.launch {
             delay(DEBOUNCE_MS)
             _uiState.update { it.copy(status = PlaceSearchStatus.SEARCHING) }
-            val found = search.search(query, near)
+            val found = search.search(query, near, prefer)
             _uiState.update {
                 it.copy(
                     results = found.orEmpty(),
