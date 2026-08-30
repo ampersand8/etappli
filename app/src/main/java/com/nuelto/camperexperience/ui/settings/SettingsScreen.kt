@@ -41,6 +41,7 @@ import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.ui.components.DecimalField
 import com.nuelto.camperexperience.ui.components.parseDecimal
+import com.nuelto.camperexperience.ui.map.LocalMapProvider
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -167,12 +168,15 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // ODbL: map tiles and place search both serve OpenStreetMap data.
-            Text(
-                "Maps and place search © OpenStreetMap contributors",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // Attribution follows the data licence, so it follows the map provider.
+            val attribution = LocalMapProvider.current.attribution
+            if (attribution.isNotBlank()) {
+                Text(
+                    attribution,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

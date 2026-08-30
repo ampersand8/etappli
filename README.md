@@ -14,7 +14,8 @@ trips visible on a map.
 - **Fuel estimator** — prefills trip distance from the stops (straight line × road
   factor, both configurable) and computes distance × consumption × price; manual
   fill-ups are just regular expenses.
-- **Maps** (OpenStreetMap via MapLibre + OpenFreeMap, no API key) — all-trips
+- **Maps** (OpenStreetMap via MapLibre + OpenFreeMap, no API key; optionally Google
+  Maps — see [GOOGLE_MAPS_SETUP.md](GOOGLE_MAPS_SETUP.md)) — all-trips
   overview with per-trip colors and route lines, per-trip map on the detail screen,
   tap a marker for trip/stop info.
 - **Locations** via one-shot GPS fix ("I'm here") or the map picker — where you can

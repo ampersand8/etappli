@@ -27,6 +27,17 @@ val webClientId: String = run {
         ?: ""
 }
 
+// Google Maps Platform key. Absent -> the app builds and runs on MapLibre/OpenStreetMap;
+// present -> the Google map provider takes over. Same lookup as webClientId.
+val mapsApiKey: String = run {
+    val props = Properties()
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { stream -> props.load(stream) }
+    props.getProperty("mapsApiKey")
+        ?: (project.findProperty("mapsApiKey") as String?)
+        ?: ""
+}
+
 // Semver: appVersionBase (gradle.properties) is major.minor, patch = git commit count.
 // Shown in Settings via BuildConfig.VERSION_NAME. Falls back to patch 0 without git
 // (e.g. a shallow clone counts fewer commits; CI checks out full history).
@@ -72,6 +83,8 @@ android {
     }
 
     defaultConfig.buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
+    defaultConfig.buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+    defaultConfig.manifestPlaceholders["mapsApiKey"] = mapsApiKey
 
     packaging {
         resources {
@@ -110,6 +123,7 @@ tasks.withType<Test>().configureEach {
 val coverageExcludes = listOf(
     "com/nuelto/camperexperience/BuildConfig*",
     "com/nuelto/camperexperience/FirebaseBackendKt*",
+    "com/nuelto/camperexperience/MapsBackendKt*",
     "com/nuelto/camperexperience/data/FirebaseAuthRepository*",
     "com/nuelto/camperexperience/data/Firestore*",
     "com/nuelto/camperexperience/location/**",
@@ -235,6 +249,9 @@ dependencies {
     // OpenGL runtime — the Vulkan one draws a blank map on emulators (gfxstream).
     runtimeOnly(libs.maplibre.compose.runtime)
     implementation(libs.play.services.location)
+
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

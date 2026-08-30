@@ -55,6 +55,18 @@ There is no lint/format tooling configured.
 - **MapLibre must use the OpenGL runtime** (`maplibre-compose-runtime-opengl-android`,
   `runtimeOnly`): the default Vulkan renderer draws a blank map on emulators.
 - Map style is OpenFreeMap Liberty (`ui/map/TripMap.kt` → `MAP_STYLE_URL`) — free, no API key.
+- **Map provider is a seam** (`ui/map/MapProvider.kt`): what to draw is decided by pure
+  `domain/MapOverlay.kt` (markers, route legs, camera frame — mutation-tested), and a
+  provider renders it. `MapLibreProvider` (OpenFreeMap, no key) is the default;
+  `GoogleMapProvider` takes over when `mapsApiKey` is in local.properties
+  (`MapsBackend.kt`, mirroring FirebaseBackend). **The two switches are independent** —
+  Firebase decides the store, the key decides the map. Tests provide
+  `LocalMapProvider provides PlaceholderMapProvider`, which records camera moves so the
+  picker's confirm flow still works on the JVM. Setup: GOOGLE_MAPS_SETUP.md.
+- **Google Places is deliberately not used for search.** Places SST §14.3 allows caching
+  its coordinates for 30 days only, and this app stores stop coordinates permanently;
+  §14.2 forbids showing Places results on a non-Google map. Both providers therefore
+  search via Photon/OSM.
 - Place search lives **on the picker map** (`ui/map/LocationPickerScreen.kt`), not in the
   stop form: hits land as markers, tapping one names it, and the picker returns that
   place's name alongside the coordinate (`PICKED_PLACE_KEY`) so the editor skips the

@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.ui.theme
 
 import com.nuelto.camperexperience.data.model.StopState
+import com.nuelto.camperexperience.domain.MapAccent
 import com.nuelto.camperexperience.data.model.TripStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -24,5 +25,12 @@ class StatusColorsTest {
         assertEquals(PlannedBlue, stopColor(StopState.PLANNED, isCurrent = false))
         assertEquals(DoneGrey, stopColor(StopState.DONE, isCurrent = false))
         assertEquals(DoneGrey, stopColor(StopState.SKIPPED, isCurrent = false))
+    }
+
+    @Test
+    fun `map accents speak the same colour language`() {
+        assertEquals(PlannedBlue, accentColor(MapAccent.PLANNED))
+        assertEquals(ActiveGreen, accentColor(MapAccent.CURRENT))
+        assertEquals(DoneGrey, accentColor(MapAccent.DONE))
     }
 }

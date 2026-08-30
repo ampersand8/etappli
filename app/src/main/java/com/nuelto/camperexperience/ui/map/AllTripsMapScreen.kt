@@ -37,6 +37,7 @@ import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.TripMapData
 import com.nuelto.camperexperience.domain.CurrentStop
 import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.TripEstimator
