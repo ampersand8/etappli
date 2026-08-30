@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -84,6 +86,8 @@ import com.nuelto.camperexperience.ui.components.DecimalField
 import com.nuelto.camperexperience.ui.components.DateField
 import com.nuelto.camperexperience.ui.components.StatusBadge
 import com.nuelto.camperexperience.ui.components.parseDecimal
+import com.nuelto.camperexperience.ui.components.rememberReorderState
+import com.nuelto.camperexperience.ui.components.reorderable
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
 import com.nuelto.camperexperience.ui.formatTripDates
@@ -124,6 +128,15 @@ fun TripDetailScreen(
     var arrivalPromptStop by remember { mutableStateOf<Stop?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    // Draggable set: planned stops of a live trip. Done and skipped rows — and the
+    // current stop, which is simply where you are — are anchors nothing may cross.
+    val movableStopIds = state.stops
+        .filter { trip?.status != TripStatus.DONE && it.state == StopState.PLANNED && it.id != state.currentStopId }
+        .mapTo(mutableSetOf()) { it.id }
+    val reorder = rememberReorderState(listState, movableStopIds) { from, to ->
+        viewModel.moveStop(from, state.stops.indexOfFirst { it.id == to })
+    }
 
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
 
@@ -232,6 +245,7 @@ fun TripDetailScreen(
         if (trip == null) return@Scaffold
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding).testTag("timeline"),
             contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -339,14 +353,18 @@ fun TripDetailScreen(
                         onSkip = { skipWithUndo(stop) },
                     )
                 } else {
+                    val movable = stop.id in movableStopIds
                     TimelineStopRow(
                         stop = stop,
                         tripStatus = trip.status,
                         settings = state.settings,
+                        movable = movable,
                         onClick = { onEditStop(trip.id, stop.id) },
-                        onMove = { delta -> viewModel.moveStop(stop.id, delta) },
                         onSkip = { skipWithUndo(stop) },
                         onRestore = { viewModel.restore(stop.id) },
+                        modifier = Modifier
+                            .testTag("stop-${stop.id}")
+                            .reorderable(reorder, stop.id, listState, enabled = movable),
                     )
                 }
             }
@@ -550,12 +568,13 @@ private fun TimelineStopRow(
     stop: Stop,
     tripStatus: TripStatus,
     settings: UserSettings,
+    movable: Boolean,
     onClick: () -> Unit,
-    onMove: (Int) -> Unit,
     onSkip: () -> Unit,
     onRestore: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -574,13 +593,13 @@ private fun TimelineStopRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (tripStatus != TripStatus.DONE && stop.state == StopState.PLANNED) {
-                IconButton(onClick = { onMove(-1) }) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
-                }
-                IconButton(onClick = { onMove(1) }) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
-                }
+            if (movable) {
+                // Affordance only — the whole card is the drag target (long-press).
+                Icon(
+                    Icons.Default.DragHandle,
+                    contentDescription = "Drag to reorder",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (tripStatus == TripStatus.ACTIVE && stop.state == StopState.PLANNED) {
                 IconButton(onClick = onSkip) {

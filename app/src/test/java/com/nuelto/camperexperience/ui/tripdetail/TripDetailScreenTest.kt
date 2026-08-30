@@ -1,9 +1,11 @@
 package com.nuelto.camperexperience.ui.tripdetail
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
@@ -372,10 +375,21 @@ class TripDetailScreenTest {
     }
 
     @Test
-    fun `planned stops reorder with the arrows`() {
+    fun `long-press dragging a planned stop past its neighbour reorders the timeline`() {
         seedPlan()
         setContent("p1")
-        compose.onAllNodesWithContentDescription("Move down")[0].performClick()
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("stop-s1"))
+        val row = compose.onNodeWithTag("stop-s1")
+        val height = row.fetchSemanticsNode().size.height.toFloat()
+        // Manual clock: the long press has to time out before the drag is delivered.
+        compose.mainClock.autoAdvance = false
+        row.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(1_000)
+        row.performTouchInput { moveBy(Offset(0f, height * 1.5f)) }
+        compose.mainClock.advanceTimeBy(100)
+        row.performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
         runBlocking {
             assertEquals(listOf("s2", "s1"), tripRepository.stops("p1").first().map { it.id })
         }
