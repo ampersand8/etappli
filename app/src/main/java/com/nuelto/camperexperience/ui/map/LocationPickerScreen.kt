@@ -7,15 +7,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,9 +40,9 @@ import com.nuelto.camperexperience.domain.PlaceSearchStatus
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 
 /**
- * Fullscreen map with a fixed center crosshair; confirming returns the map center.
- * Searching drops the hits on the map as markers — tapping one names it and returns
- * that exact spot, which beats eyeballing the crosshair onto a village.
+ * Search for a place and pick it from the results, the way a maps app works — no
+ * coordinates, no aiming. The hits also show on the map, so a tap there picks the same
+ * thing. For somewhere with no name, press and hold the map to drop a pin.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,13 +72,6 @@ fun LocationPickerScreen(
                 },
             )
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { onPicked(camera.center, null) },
-                icon = { Icon(Icons.Default.Check, contentDescription = null) },
-                text = { Text("Use this spot") },
-            )
-        },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             provider.Canvas(
@@ -90,22 +80,24 @@ fun LocationPickerScreen(
                 routes = emptyList(),
                 modifier = Modifier.fillMaxSize(),
                 onMarkerClick = { _, id -> state.hit(id)?.also(viewModel::select) != null },
+                onLongPress = viewModel::dropPin,
             )
-            Crosshair(Modifier.align(Alignment.Center))
             SearchOverlay(
                 state = state,
                 onQueryChange = { query -> viewModel.setQuery(query, camera.center) },
                 onClear = viewModel::clearSearch,
-                onUseSelected = { onPicked(it.location, it) },
+                onSelect = viewModel::select,
+                onUseSelected = { onPicked(it.location, it.takeIf { p -> p.name.isNotBlank() }) },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }
     }
 }
 
-/** Hits as markers: the tapped one is filled, the rest are hollow rings. */
-private fun LocationPickerUiState.markers(): List<MapMarker> =
-    results.mapIndexed { index, place ->
+/** Hits as markers: the chosen one is filled, the rest are hollow rings. A pin dropped
+ *  by hand is not in the results, so it gets a marker of its own. */
+private fun LocationPickerUiState.markers(): List<MapMarker> {
+    val hits = results.mapIndexed { index, place ->
         MapMarker(
             tripId = SEARCH_MARKERS,
             stopId = index.toString(),
@@ -114,11 +106,17 @@ private fun LocationPickerUiState.markers(): List<MapMarker> =
             hollow = place != selected,
         )
     }
+    val pin = selected?.takeIf { it !in results }?.let {
+        MapMarker(SEARCH_MARKERS, DROPPED_PIN, it.location, MapAccent.PLANNED, hollow = false)
+    }
+    return hits + listOfNotNull(pin)
+}
 
 private fun LocationPickerUiState.hit(markerId: String): PlaceSuggestion? =
     markerId.toIntOrNull()?.let { results.getOrNull(it) }
 
 private const val SEARCH_MARKERS = "search"
+private const val DROPPED_PIN = "pin"
 
 /** Search field, its one-line status, and the card for whichever marker is tapped. */
 @Composable
@@ -126,6 +124,7 @@ private fun SearchOverlay(
     state: LocationPickerUiState,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
+    onSelect: (PlaceSuggestion) -> Unit,
     onUseSelected: (PlaceSuggestion) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -166,7 +165,30 @@ private fun SearchOverlay(
                 )
             }
         }
-        state.selected?.let { selected ->
+        val selected = state.selected
+        if (selected == null) {
+            // The hits, as a list you can read — the markers are only there to show where.
+            state.results.forEach { place ->
+                Card(
+                    onClick = {
+                        keyboard?.hide()
+                        onSelect(place)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(place.name, style = MaterialTheme.typography.titleSmall)
+                        if (place.label.isNotBlank()) {
+                            Text(
+                                place.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
             Card(Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -174,7 +196,11 @@ private fun SearchOverlay(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(selected.name, style = MaterialTheme.typography.titleSmall)
+                        // A dropped pin has no name yet; the editor geocodes one.
+                        Text(
+                            selected.name.ifBlank { "Dropped pin" },
+                            style = MaterialTheme.typography.titleSmall,
+                        )
                         if (selected.label.isNotBlank()) {
                             Text(
                                 selected.label,
@@ -195,25 +221,13 @@ private fun SearchOverlay(
     }
 }
 
-/** Tapping a marker answers "what is this?", so hits themselves need no line. */
+/** The results list speaks for itself, so a hit needs no status line. */
 private fun searchStatusText(state: LocationPickerUiState): String? = when (state.status) {
-    PlaceSearchStatus.IDLE -> null
+    PlaceSearchStatus.IDLE ->
+        "Search, or press and hold the map to drop a pin.".takeIf {
+            state.results.isEmpty() && state.selected == null
+        }
     PlaceSearchStatus.SEARCHING -> "Searching…"
     PlaceSearchStatus.EMPTY -> "Nothing found."
-    PlaceSearchStatus.UNAVAILABLE -> "Search unavailable — pick the spot on the map."
-}
-
-@Composable
-private fun Crosshair(modifier: Modifier = Modifier) {
-    val color = MaterialTheme.colorScheme.primary
-    androidx.compose.foundation.Canvas(modifier.size(36.dp)) {
-        val c = center
-        val r = size.minDimension / 2
-        drawCircle(color = color, radius = r / 3, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
-        drawCircle(color = Color.White, radius = r / 3 + 2f, center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
-        drawLine(color, start = c.copy(y = c.y - r), end = c.copy(y = c.y - r / 2), strokeWidth = 4f)
-        drawLine(color, start = c.copy(y = c.y + r / 2), end = c.copy(y = c.y + r), strokeWidth = 4f)
-        drawLine(color, start = c.copy(x = c.x - r), end = c.copy(x = c.x - r / 2), strokeWidth = 4f)
-        drawLine(color, start = c.copy(x = c.x + r / 2), end = c.copy(x = c.x + r), strokeWidth = 4f)
-    }
+    PlaceSearchStatus.UNAVAILABLE -> "Search unavailable — press and hold the map instead."
 }

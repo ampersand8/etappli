@@ -72,11 +72,13 @@ object GoogleMapProvider : MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
+        onLongPress: ((LatLng) -> Unit)?,
     ) {
         GoogleMap(
             modifier = modifier,
             cameraPositionState = (camera as GoogleCamera).state,
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
+            onMapLongClick = { at -> onLongPress?.invoke(LatLng(at.latitude, at.longitude)) },
         ) {
             routes.forEach { route ->
                 Polyline(

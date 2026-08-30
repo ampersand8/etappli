@@ -63,11 +63,16 @@ object MapLibreProvider : MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
+        onLongPress: ((LatLng) -> Unit)?,
     ) {
         MaplibreMap(
             modifier = modifier,
             baseStyle = BaseStyle.Uri(MAP_STYLE_URL),
             cameraState = (camera as MapLibreCamera).state,
+            onMapLongClick = { position, _ ->
+                onLongPress?.invoke(LatLng(position.latitude, position.longitude))
+                ClickResult.Pass
+            },
         ) {
             routes.forEachIndexed { index, route ->
                 val source = rememberGeoJsonSource(

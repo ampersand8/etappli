@@ -70,6 +70,10 @@ There is no lint/format tooling configured.
   `domain/PlaceCacheSweeper` (run from TripDetailViewModel) refreshes them via Place
   Details or **deletes** them. Coordinates from GPS/crosshair/OSM have no
   `locationCachedAt` and never expire. Details: GOOGLE_MAPS_SETUP.md.
+- The picker is **search-and-choose, not aim**: hits come back as a tappable list (and
+  as markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the
+  user a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than
+  lat/lng when there is no name yet.
 - Place search lives **on the picker map** (`ui/map/LocationPickerScreen.kt`), not in the
   stop form: hits land as markers, tapping one names it, and the picker returns that
   place's name alongside the coordinate (`PICKED_PLACE_KEY`) so the editor skips the

@@ -99,7 +99,7 @@ class AppNavHostTest {
     }
 
     @Test
-    fun `picking a location on the map feeds the stop editor`() {
+    fun `dropping a pin on the map feeds the stop editor`() {
         setContent()
         compose.onNodeWithText("Schwarzwald").performClick()
         compose.onNodeWithContentDescription("Add").performClick()
@@ -108,11 +108,13 @@ class AppNavHostTest {
         compose.onNodeWithText("Pick location").assertIsDisplayed()
         // Search is wired by the real factory; typing into it would hit the network.
         compose.onNodeWithText("Search a place").assertIsDisplayed()
-        compose.onNodeWithText("Use this spot", useUnmergedTree = true).performClick()
-        // Back on the stop editor with the picked map center — the map opened on the
-        // trip's last located stop, so that is what the crosshair sat on.
+        // Press and hold the map (the placeholder stands in for the gesture).
+        compose.onNodeWithTag("map-placeholder").performClick()
+        compose.onNodeWithText("Dropped pin").assertIsDisplayed()
+        compose.onNodeWithText("Use this place").performClick()
+        // Back on the stop editor, holding a place rather than a coordinate.
         compose.onNodeWithText("New stop").assertIsDisplayed()
-        compose.onNodeWithText("47.899, 8.158").assertIsDisplayed()
+        compose.onNodeWithText("Pin on map").assertIsDisplayed()
     }
 
     @Test
