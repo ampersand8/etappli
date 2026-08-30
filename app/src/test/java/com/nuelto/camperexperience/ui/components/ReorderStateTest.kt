@@ -17,6 +17,7 @@ class ReorderStateTest {
         onMove = { from, to ->
             moves += from to to
             order.add(order.indexOf(to), order.removeAt(order.indexOf(from)))
+            from // stop rows keep their key across a move
         },
     )
 

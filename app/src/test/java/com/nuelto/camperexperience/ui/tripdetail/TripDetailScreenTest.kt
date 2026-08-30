@@ -98,6 +98,10 @@ class TripDetailScreenTest {
         )
     }
 
+    private fun arrivalOf(stopId: String) = runBlocking {
+        tripRepository.stops("p1").first().first { it.id == stopId }.arrivalDate
+    }
+
     private fun seedActive() = runBlocking {
         tripRepository.upsertTrip(
             Trip(id = "a1", name = "Unterwegs", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
@@ -378,8 +382,8 @@ class TripDetailScreenTest {
     fun `long-press dragging a planned stop past its neighbour reorders the timeline`() {
         seedPlan()
         setContent("p1")
-        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("stop-s1"))
-        val row = compose.onNodeWithTag("stop-s1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("row-s1"))
+        val row = compose.onNodeWithTag("row-s1")
         val height = row.fetchSemanticsNode().size.height.toFloat()
         // Manual clock: the long press has to time out before the drag is delivered.
         compose.mainClock.autoAdvance = false
@@ -393,6 +397,28 @@ class TripDetailScreenTest {
         runBlocking {
             assertEquals(listOf("s2", "s1"), tripRepository.stops("p1").first().map { it.id })
         }
+    }
+
+    @Test
+    fun `unplanned nights show as a row that can be resized and dropped`() {
+        seedPlan()
+        // s1 leaves on the 12th; push s2 out to the 14th, leaving two nights spare.
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            tripRepository.upsertStop(s2.copy(arrivalDate = LocalDate.of(2027, 6, 14)))
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Nothing planned"))
+        compose.onNodeWithText("Nothing planned").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("One unplanned night more").performClick()
+        assertEquals(LocalDate.of(2027, 6, 15), arrivalOf("s2"))
+        compose.onNodeWithContentDescription("One unplanned night less").performClick()
+        assertEquals(LocalDate.of(2027, 6, 14), arrivalOf("s2"))
+
+        compose.onNodeWithContentDescription("Remove the unplanned nights").performClick()
+        assertEquals(LocalDate.of(2027, 6, 12), arrivalOf("s2")) // straight after s1's stay
+        compose.onAllNodes(hasText("Nothing planned")).assertCountEquals(0)
     }
 
     @Test

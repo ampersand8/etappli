@@ -21,7 +21,10 @@ import com.nuelto.camperexperience.domain.CurrentStop
 import com.nuelto.camperexperience.domain.DateCascade
 import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.FuelEstimator
-import com.nuelto.camperexperience.domain.StopReorder
+import com.nuelto.camperexperience.domain.GapRow
+import com.nuelto.camperexperience.domain.StopRow
+import com.nuelto.camperexperience.domain.Timeline
+import com.nuelto.camperexperience.domain.TimelineRow
 import com.nuelto.camperexperience.domain.TripEstimator
 import com.nuelto.camperexperience.domain.TripStarter
 import com.nuelto.camperexperience.domain.VignetteTable
@@ -40,6 +43,8 @@ import kotlinx.coroutines.sync.withLock
 data class TripDetailUiState(
     val trip: Trip? = null,
     val stops: List<Stop> = emptyList(),
+    // The stops with the unplanned nights between them spelled out.
+    val rows: List<TimelineRow> = emptyList(),
     val expenses: List<Expense> = emptyList(),
     val breakdown: Map<ExpenseType, Double> = emptyMap(),
     // Automatic fuel estimate from driving distance; null once real fuel is logged.
@@ -72,6 +77,7 @@ class TripDetailViewModel(
             TripDetailUiState(
                 trip = trip,
                 stops = stops,
+                rows = Timeline.rows(stops),
                 expenses = expenses,
                 breakdown = CostCalculator.breakdown(stops, expenses),
                 fuelEstimate = FuelEstimator.autoTripFuelCost(stops, expenses, settings),
@@ -180,17 +186,37 @@ class TripDetailViewModel(
     }
 
     /**
-     * Drops a dragged stop at [toIndex]; done stops are anchors it cannot cross.
-     * The plan is re-dated around the new order — the itinerary keeps its start,
-     * its gaps and its length, so only who you visit when changes.
+     * Drops the dragged row at [toIndex] and returns the key it carries afterwards —
+     * a moved gap is renamed after the stop it now sits in front of. The rows the user
+     * sees are the input: a drag has to rearrange what is on screen, not a snapshot
+     * the pending writes have already moved on from.
      */
-    fun moveStop(stopId: String, toIndex: Int) {
+    fun moveRow(key: String, toIndex: Int): String {
+        val rows = Timeline.move(uiState.value.rows, key, toIndex) ?: return key
+        applyRows(rows)
+        return Timeline.keyAt(rows, rows.indexOfFirst { it.key == key })
+    }
+
+    /** Resizes a gap; [nights] of 0 deletes it and pulls the rest of the plan forward. */
+    fun setGapNights(key: String, nights: Int) {
+        applyRows(
+            uiState.value.rows.mapNotNull { row ->
+                when {
+                    row !is GapRow || row.key != key -> row
+                    nights <= 0 -> null
+                    else -> row.copy(nights = nights.coerceAtMost(365))
+                }
+            },
+        )
+    }
+
+    /** Writes a rearranged timeline: the new stop order, then the dates it implies. */
+    private fun applyRows(rows: List<TimelineRow>) {
+        val start = uiState.value.stops.firstOrNull { it.state != StopState.SKIPPED }?.arrivalDate ?: return
         viewModelScope.launch {
             writeLock.withLock {
-                val stops = tripRepository.stops(tripId).first()
-                val ids = StopReorder.move(stops, stopId, toIndex) ?: return@withLock
-                tripRepository.reorderStops(tripId, ids)
-                DateCascade.resequence(stops, ids).forEach { tripRepository.upsertStop(it) }
+                tripRepository.reorderStops(tripId, rows.filterIsInstance<StopRow>().map { it.stop.id })
+                DateCascade.resequence(rows, start).forEach { tripRepository.upsertStop(it) }
             }
         }
     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,11 +33,13 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
@@ -45,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -64,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
@@ -81,6 +86,8 @@ import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
+import com.nuelto.camperexperience.domain.GapRow
+import com.nuelto.camperexperience.domain.StopRow
 import com.nuelto.camperexperience.domain.TripEstimator
 import com.nuelto.camperexperience.ui.components.DecimalField
 import com.nuelto.camperexperience.ui.components.DateField
@@ -129,13 +136,17 @@ fun TripDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    // Draggable set: planned stops of a live trip. Done and skipped rows — and the
-    // current stop, which is simply where you are — are anchors nothing may cross.
-    val movableStopIds = state.stops
-        .filter { trip?.status != TripStatus.DONE && it.state == StopState.PLANNED && it.id != state.currentStopId }
-        .mapTo(mutableSetOf()) { it.id }
-    val reorder = rememberReorderState(listState, movableStopIds) { from, to ->
-        viewModel.moveStop(from, state.stops.indexOfFirst { it.id == to })
+    // Draggable set: rows hanging off a planned stop of a live trip. Done and skipped
+    // rows — and the current stop, which is simply where you are — are anchors.
+    val movableKeys = state.rows
+        .filter {
+            trip?.status != TripStatus.DONE &&
+                it.anchor.state == StopState.PLANNED &&
+                it.anchor.id != state.currentStopId
+        }
+        .mapTo(mutableSetOf()) { it.key }
+    val reorder = rememberReorderState(listState, movableKeys) { from, to ->
+        viewModel.moveRow(from, state.rows.indexOfFirst { it.key == to })
     }
 
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
@@ -339,33 +350,42 @@ fun TripDetailScreen(
                     )
                 }
             }
-            items(state.stops, key = { it.id }) { stop ->
-                if (stop.id == state.currentStopId) {
-                    NowCard(
-                        stop = stop,
-                        settings = state.settings,
-                        onClick = { onEditStop(trip.id, stop.id) },
-                        onChangeNights = { delta -> viewModel.changeNights(stop.id, delta) },
-                        onArrived = {
-                            viewModel.arrived(stop.id)
-                            if (stop.kind != StopKind.VISIT) arrivalPromptStop = stop
-                        },
-                        onSkip = { skipWithUndo(stop) },
+            items(state.rows, key = { it.key }) { row ->
+                val movable = row.key in movableKeys
+                val rowModifier = Modifier
+                    .testTag("row-${row.key}")
+                    .reorderable(reorder, row.key, listState, enabled = movable)
+                when (row) {
+                    is GapRow -> GapCard(
+                        row = row,
+                        editable = movable,
+                        onNights = { nights -> viewModel.setGapNights(row.key, nights) },
+                        modifier = rowModifier,
                     )
-                } else {
-                    val movable = stop.id in movableStopIds
-                    TimelineStopRow(
-                        stop = stop,
-                        tripStatus = trip.status,
-                        settings = state.settings,
-                        movable = movable,
-                        onClick = { onEditStop(trip.id, stop.id) },
-                        onSkip = { skipWithUndo(stop) },
-                        onRestore = { viewModel.restore(stop.id) },
-                        modifier = Modifier
-                            .testTag("stop-${stop.id}")
-                            .reorderable(reorder, stop.id, listState, enabled = movable),
-                    )
+                    is StopRow -> if (row.stop.id == state.currentStopId) {
+                        NowCard(
+                            stop = row.stop,
+                            settings = state.settings,
+                            onClick = { onEditStop(trip.id, row.stop.id) },
+                            onChangeNights = { delta -> viewModel.changeNights(row.stop.id, delta) },
+                            onArrived = {
+                                viewModel.arrived(row.stop.id)
+                                if (row.stop.kind != StopKind.VISIT) arrivalPromptStop = row.stop
+                            },
+                            onSkip = { skipWithUndo(row.stop) },
+                        )
+                    } else {
+                        TimelineStopRow(
+                            stop = row.stop,
+                            tripStatus = trip.status,
+                            settings = state.settings,
+                            movable = movable,
+                            onClick = { onEditStop(trip.id, row.stop.id) },
+                            onSkip = { skipWithUndo(row.stop) },
+                            onRestore = { viewModel.restore(row.stop.id) },
+                            modifier = rowModifier,
+                        )
+                    }
                 }
             }
 
@@ -557,6 +577,52 @@ private fun NowCard(
                         }) { Text("Navigate") }
                     }
                     TextButton(onClick = onSkip) { Text("Skip") }
+                }
+            }
+        }
+    }
+}
+
+/** Nights nobody planned: resize them, drop them, or drag them elsewhere in the plan. */
+@Composable
+private fun GapCard(
+    row: GapRow,
+    editable: Boolean,
+    onNights: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedCard(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = Color.Transparent),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Spacer(Modifier.size(12.dp)) // where a stop would carry its dot
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Nothing planned",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "${formatDate(row.from)} · " + if (row.nights == 1) "1 night" else "${row.nights} nights",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (editable) {
+                IconButton(onClick = { onNights(row.nights - 1) }) {
+                    Icon(Icons.Default.Remove, contentDescription = "One unplanned night less")
+                }
+                IconButton(onClick = { onNights(row.nights + 1) }) {
+                    Icon(Icons.Default.Add, contentDescription = "One unplanned night more")
+                }
+                IconButton(onClick = { onNights(0) }) {
+                    Icon(Icons.Default.Close, contentDescription = "Remove the unplanned nights")
                 }
             }
         }

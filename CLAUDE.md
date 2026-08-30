@@ -87,14 +87,15 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   (PLANNED/DONE/SKIPPED — skipped stops stay in the record but count toward nothing).
   Legacy Firestore docs derive status from endDate (`legacyTripStatus`) — never PLANNED.
   Start-tour/plan-again copies go through `domain/TripStarter` (composed over the
-  TripRepository interface — no dual-repo logic); reordering through
-  `TripRepository.reorderStops`, driven by long-press drag on the timeline
-  (`ui/components/Reorderable.kt` gesture + `ReorderState` math, order rules in
-  `domain/StopReorder` — DONE stops are anchors nothing may cross). A reorder re-dates
-  the plan (`DateCascade.resequence`: nights and per-position gaps are kept, so the trip
-  keeps its start and length); nights/arrival changes shift downstream planned dates
-  (`DateCascade.shift`). Color language
-  everywhere (lists, timeline, maps):
+  TripRepository interface — no dual-repo logic). The timeline is a list of
+  `domain/Timeline` rows: stops plus a **GapRow per run of unplanned nights**, derived
+  from the dates and never stored. Any row can be long-press dragged
+  (`ui/components/Reorderable.kt` gesture + `ReorderState` math; `Timeline.move` rules —
+  DONE stops are anchors nothing may cross, gaps stay between two stops), and gaps are
+  resizable/deletable. Every such edit writes `reorderStops` + `DateCascade.resequence`,
+  which re-dates the plan from the row order (a pure reorder keeps the trip's start and
+  length); nights/arrival changes instead shift downstream dates (`DateCascade.shift`).
+  Color language everywhere (lists, timeline, maps):
   **blue = planned, green = active/current, grey = done** (`ui/theme/StatusColors.kt`).
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore

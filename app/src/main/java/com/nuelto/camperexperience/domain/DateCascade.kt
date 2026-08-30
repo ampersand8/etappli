@@ -23,35 +23,39 @@ object DateCascade {
         }
 
     /**
-     * Re-dates a plan after a reorder — [orderedIds] is the new order, [stops] the
-     * stops as they stood. Every stop keeps its nights and every position keeps the
-     * empty days in front of it, so the trip still starts and ends on the same days;
-     * only who you visit when changes. DONE stops anchor the chain and are never
-     * rewritten, SKIPPED stops sit outside it. Returns the stops whose arrival moved,
-     * carrying their new orderIndex; the caller upserts exactly those.
+     * Re-dates a plan from the timeline [rows] in their new order, starting the day
+     * the plan starts ([start]). Gap rows spend their nights, every stop keeps its
+     * own, and consecutive gaps merge — so a reorder that only shuffles rows leaves
+     * the trip as long as it was. DONE stops anchor the chain and are never rewritten,
+     * SKIPPED stops sit outside it. Returns the stops whose arrival moved, carrying
+     * their new orderIndex; the caller upserts exactly those.
      */
-    fun resequence(stops: List<Stop>, orderedIds: List<String>): List<Stop> {
-        val before = stops.sortedBy { it.orderIndex }.filterNot { it.state == StopState.SKIPPED }
-        if (before.isEmpty()) return emptyList()
-        val gaps = before.mapIndexed { i, stop ->
-            if (i == 0) 0L else ChronoUnit.DAYS.between(departure(before[i - 1]), stop.arrivalDate).coerceAtLeast(0)
-        }
-        val byId = stops.associateBy { it.id }
-        var cursor = before.first().arrivalDate
-        return orderedIds.mapNotNull(byId::get).filterNot { it.state == StopState.SKIPPED }
-            .mapIndexedNotNull { i, stop ->
-                if (stop.state == StopState.DONE) {
-                    cursor = departure(stop)
-                    return@mapIndexedNotNull null
-                }
-                val arrival = cursor.plusDays(gaps[i])
-                cursor = arrival.plusDays(stop.nights.toLong())
-                if (arrival == stop.arrivalDate) {
-                    null
-                } else {
-                    stop.copy(arrivalDate = arrival, orderIndex = orderedIds.indexOf(stop.id))
+    fun resequence(rows: List<TimelineRow>, start: LocalDate): List<Stop> {
+        val changed = mutableListOf<Stop>()
+        var cursor = start
+        var gap = 0L
+        var order = 0
+        for (row in rows) {
+            if (row is GapRow) {
+                gap += row.nights
+                continue
+            }
+            val stop = (row as StopRow).stop
+            val index = order++
+            when (stop.state) {
+                StopState.SKIPPED -> continue
+                StopState.DONE -> cursor = departure(stop)
+                StopState.PLANNED -> {
+                    val arrival = cursor.plusDays(gap)
+                    cursor = arrival.plusDays(stop.nights.toLong())
+                    if (arrival != stop.arrivalDate) {
+                        changed += stop.copy(arrivalDate = arrival, orderIndex = index)
+                    }
                 }
             }
+            gap = 0
+        }
+        return changed
     }
 
     private fun departure(stop: Stop): LocalDate = stop.arrivalDate.plusDays(stop.nights.toLong())

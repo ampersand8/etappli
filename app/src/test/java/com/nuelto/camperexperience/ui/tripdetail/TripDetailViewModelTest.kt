@@ -248,17 +248,17 @@ class TripDetailViewModelTest {
     }
 
     @Test
-    fun `a dropped stop lands on its index but never crosses a done stop`() = runTest {
+    fun `a dropped row lands on its index but never crosses a done stop`() = runTest {
         seedTrip(status = TripStatus.ACTIVE)
         val vm = hotViewModel()
-        vm.moveStop("s2", 0)
+        assertEquals("s2", vm.moveRow("s2", 0))
         assertEquals(listOf("s2", "s1"), stops().map { it.id })
-        vm.moveStop("s2", 0) // already there — no-op
+        vm.moveRow("s2", 0) // already there — no-op
         assertEquals(listOf("s2", "s1"), stops().map { it.id })
-        vm.moveStop("s2", 1)
+        vm.moveRow("s2", 1)
         assertEquals(listOf("s1", "s2"), stops().map { it.id })
         tripRepository.upsertStop(stops().first { it.id == "s1" }.copy(state = StopState.DONE))
-        vm.moveStop("s2", 0) // would cross a done stop — clamped back
+        vm.moveRow("s2", 0) // would cross a done stop — clamped back
         assertEquals(listOf("s1", "s2"), stops().map { it.id })
     }
 
@@ -266,10 +266,47 @@ class TripDetailViewModelTest {
     fun `reordering re-dates the plan around the new order`() = runTest {
         seedTrip(status = TripStatus.PLANNED)
         val vm = hotViewModel()
-        vm.moveStop("s2", 0)
+        vm.moveRow("s2", 0)
         assertEquals(listOf("s2", "s1"), stops().map { it.id })
         assertEquals(LocalDate.of(2026, 7, 1), stops()[0].arrivalDate) // trip still starts Jul 1
         assertEquals(LocalDate.of(2026, 7, 2), stops()[1].arrivalDate) // after B's single night
+    }
+
+    @Test
+    fun `unplanned nights can be resized, dropped and dragged along the plan`() = runTest {
+        seedTrip(status = TripStatus.PLANNED)
+        // Push B two days out: A leaves Jul 3, B arrives Jul 5.
+        tripRepository.upsertStop(stops().first { it.id == "s2" }.copy(arrivalDate = LocalDate.of(2026, 7, 5)))
+        val vm = hotViewModel()
+        assertEquals(listOf("s1", "gap-s2", "s2"), vm.uiState.value.rows.map { it.key })
+
+        vm.setGapNights("gap-s2", 3)
+        assertEquals(LocalDate.of(2026, 7, 6), stops().first { it.id == "s2" }.arrivalDate)
+
+        // Dragging the nights in front of the first stop is refused; the plan holds.
+        vm.moveRow("gap-s2", 0)
+        assertEquals(LocalDate.of(2026, 7, 6), stops().first { it.id == "s2" }.arrivalDate)
+
+        vm.setGapNights("gap-s2", 0)
+        assertEquals(LocalDate.of(2026, 7, 3), stops().first { it.id == "s2" }.arrivalDate)
+        assertEquals(listOf("s1", "s2"), vm.uiState.value.rows.map { it.key })
+    }
+
+    @Test
+    fun `a gap dragged past a stop is renamed after the stop it lands in front of`() = runTest {
+        tripRepository.upsertTrip(Trip(id = "t1", name = "P", startDate = LocalDate.of(2026, 7, 1)))
+        listOf(
+            Stop(id = "a", tripId = "t1", orderIndex = 0, arrivalDate = LocalDate.of(2026, 7, 1)),
+            Stop(id = "b", tripId = "t1", orderIndex = 1, arrivalDate = LocalDate.of(2026, 7, 4)),
+            Stop(id = "c", tripId = "t1", orderIndex = 2, arrivalDate = LocalDate.of(2026, 7, 5)),
+        ).forEach { tripRepository.upsertStop(it) }
+        val vm = hotViewModel()
+        assertEquals(listOf("a", "gap-b", "b", "c"), vm.uiState.value.rows.map { it.key })
+
+        assertEquals("gap-c", vm.moveRow("gap-b", 2))
+        assertEquals(listOf("a", "b", "gap-c", "c"), vm.uiState.value.rows.map { it.key })
+        assertEquals(LocalDate.of(2026, 7, 2), stops().first { it.id == "b" }.arrivalDate)
+        assertEquals(LocalDate.of(2026, 7, 5), stops().first { it.id == "c" }.arrivalDate) // trip still ends the 5th
     }
 
     @Test
@@ -318,7 +355,8 @@ class TripDetailViewModelTest {
         vm.arrived("nope")
         vm.setStopPrice("nope", 1.0)
         vm.skip("nope")
-        vm.moveStop("nope", 1)
+        vm.moveRow("nope", 1)
+        vm.setGapNights("nope", 2)
         assertEquals(listOf("s1", "s2"), stops().map { it.id })
         assertFalse(stops().any { it.state != StopState.PLANNED })
     }
