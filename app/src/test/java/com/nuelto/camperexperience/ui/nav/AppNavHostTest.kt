@@ -93,6 +93,8 @@ class AppNavHostTest {
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
         compose.onNodeWithText("New stop").assertIsDisplayed()
         compose.onNodeWithText("  Pick on map").assertIsDisplayed()
+        // Search is wired by the real factory; typing into it would hit the network.
+        compose.onNodeWithText("Search a place").assertIsDisplayed()
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Camping Kirnbergsee").assertIsDisplayed()
     }

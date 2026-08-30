@@ -11,10 +11,14 @@ import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
+import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.testutil.FakePlaceNameResolver
+import com.nuelto.camperexperience.testutil.FakePlaceSearch
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,6 +28,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class StopEditViewModelTest {
 
@@ -33,19 +38,22 @@ class StopEditViewModelTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val settingsRepository = InMemorySettingsRepository()
     private val resolver = FakePlaceNameResolver(ApplicationProvider.getApplicationContext())
+    private val search = FakePlaceSearch()
 
-    private fun newStopViewModel() = StopEditViewModel(
+    private fun newStopViewModel(placeSearch: FakePlaceSearch? = null) = StopEditViewModel(
         SavedStateHandle(mapOf("tripId" to "t1")),
         tripRepository,
         settingsRepository,
         resolver,
+        placeSearch,
     )
 
-    private fun editViewModel(stopId: String) = StopEditViewModel(
+    private fun editViewModel(stopId: String, placeSearch: FakePlaceSearch? = null) = StopEditViewModel(
         SavedStateHandle(mapOf("tripId" to "t1", "stopId" to stopId)),
         tripRepository,
         settingsRepository,
         resolver,
+        placeSearch,
     )
 
     @Test
@@ -278,11 +286,161 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `works without a place name resolver`() {
+    fun `works without a place name resolver or a place search`() = runTest {
         val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository, settingsRepository)
         vm.setLocation(LatLng(46.0, 7.0))
         assertNull(vm.uiState.value.locationName)
         assertEquals("46.0, 7.0", vm.uiState.value.locationLabel)
+
+        assertFalse(vm.uiState.value.searchEnabled)
+        vm.setPlaceQuery("Lauterbrunnen")
+        advanceTimeBy(1_000)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.searchStatus)
+        assertTrue(vm.uiState.value.suggestions.isEmpty())
+    }
+
+    @Test
+    fun `typing debounces into a single search`() = runTest {
+        val vm = newStopViewModel(search)
+        assertTrue(vm.uiState.value.searchEnabled)
+        vm.setPlaceQuery("Lau")
+        vm.setPlaceQuery("Laut")
+        vm.setPlaceQuery("Lauter")
+        advanceTimeBy(299)
+        assertTrue(search.requests.isEmpty())
+        advanceTimeBy(2)
+        assertEquals(listOf("Lauter"), search.requests.map { it.first })
+        assertEquals("Lauterbrunnen", vm.uiState.value.suggestions.single().name)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.searchStatus)
+        assertEquals("Lauter", vm.uiState.value.placeQuery)
+    }
+
+    @Test
+    fun `a query under three characters searches nothing and drops stale hits`() = runTest {
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Lauter")
+        advanceTimeBy(301)
+        assertEquals(1, vm.uiState.value.suggestions.size)
+
+        vm.setPlaceQuery("  La  ")
+        advanceTimeBy(1_000)
+        assertEquals(1, search.requests.size)
+        assertTrue(vm.uiState.value.suggestions.isEmpty())
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.searchStatus)
+    }
+
+    @Test
+    fun `the status is searching in flight and empty when nothing matches`() = runTest {
+        search.gated = true
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Nirgendwo")
+        advanceTimeBy(301)
+        assertEquals(PlaceSearchStatus.SEARCHING, vm.uiState.value.searchStatus)
+        search.result = emptyList()
+        search.gates.single().complete(Unit)
+        assertEquals(PlaceSearchStatus.EMPTY, vm.uiState.value.searchStatus)
+        assertTrue(vm.uiState.value.suggestions.isEmpty())
+    }
+
+    @Test
+    fun `a failed lookup reads as unavailable and clears the list`() = runTest {
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Lauter")
+        advanceTimeBy(301)
+        assertEquals(1, vm.uiState.value.suggestions.size)
+
+        search.result = null
+        vm.setPlaceQuery("Grindelwald")
+        advanceTimeBy(301)
+        assertEquals(PlaceSearchStatus.UNAVAILABLE, vm.uiState.value.searchStatus)
+        assertTrue(vm.uiState.value.suggestions.isEmpty())
+    }
+
+    @Test
+    fun `picking a suggestion sets location and name without reverse geocoding`() = runTest {
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Lauter")
+        advanceTimeBy(301)
+        vm.pickSuggestion(vm.uiState.value.suggestions.single())
+        val state = vm.uiState.value
+        assertEquals(LatLng(46.5939, 7.90780), state.location)
+        assertEquals("Lauterbrunnen", state.name)
+        assertEquals("Bern, Switzerland", state.locationName)
+        assertEquals("", state.placeQuery)
+        assertTrue(state.suggestions.isEmpty())
+        assertEquals(PlaceSearchStatus.IDLE, state.searchStatus)
+        assertTrue(resolver.requests.isEmpty())
+    }
+
+    @Test
+    fun `picking never overwrites a name typed by hand`() {
+        val vm = newStopViewModel(search)
+        vm.setName("Grandma's driveway")
+        vm.pickSuggestion(PlaceSuggestion("Lauterbrunnen", "Bern", LatLng(46.6, 7.9)))
+        assertEquals("Grandma's driveway", vm.uiState.value.name)
+        assertEquals("Bern", vm.uiState.value.locationName)
+    }
+
+    @Test
+    fun `a suggestion without an address label labels itself`() {
+        val vm = newStopViewModel(search)
+        vm.pickSuggestion(PlaceSuggestion("Matterhorn", "", LatLng(45.97, 7.65)))
+        assertEquals("Matterhorn", vm.uiState.value.locationName)
+    }
+
+    @Test
+    fun `moving a picked stop renames it again`() {
+        val vm = newStopViewModel(search)
+        vm.pickSuggestion(PlaceSuggestion("Lauterbrunnen", "Bern", LatLng(46.6, 7.9)))
+        vm.setLocation(LatLng(47.0, 7.0))
+        assertEquals("Place@47.0", vm.uiState.value.name)
+    }
+
+    @Test
+    fun `clearing cancels a pending search and empties the field`() = runTest {
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Lauter")
+        vm.clearSearch()
+        advanceTimeBy(1_000)
+        assertTrue(search.requests.isEmpty())
+        assertEquals("", vm.uiState.value.placeQuery)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.searchStatus)
+    }
+
+    @Test
+    fun `an unasked-for GPS fix never displaces a location already chosen`() {
+        val vm = newStopViewModel(search)
+        vm.setAutoLocation(LatLng(46.0, 7.0))
+        assertEquals(LatLng(46.0, 7.0), vm.uiState.value.location)
+
+        vm.pickSuggestion(PlaceSuggestion("Lauterbrunnen", "Bern", LatLng(46.6, 7.9)))
+        vm.setAutoLocation(LatLng(48.0, 9.0))
+        assertEquals(LatLng(46.6, 7.9), vm.uiState.value.location)
+    }
+
+    @Test
+    fun `a new stop searches around the trip's last stop, then around its own spot`() = runTest {
+        tripRepository.upsertStop(Stop(id = "a", tripId = "t1", orderIndex = 0, location = LatLng(46.95, 7.45)))
+        tripRepository.upsertStop(Stop(id = "b", tripId = "t1", orderIndex = 1, location = LatLng(46.32, 7.99)))
+        val vm = newStopViewModel(search)
+        vm.setPlaceQuery("Camping")
+        advanceTimeBy(301)
+        assertEquals(LatLng(46.32, 7.99), search.requests.single().second)
+
+        vm.setLocation(LatLng(48.0, 9.0))
+        vm.setPlaceQuery("Stellplatz")
+        advanceTimeBy(301)
+        assertEquals(LatLng(48.0, 9.0), search.requests.last().second)
+    }
+
+    @Test
+    fun `editing a stop searches around the one before it`() = runTest {
+        tripRepository.upsertStop(Stop(id = "a", tripId = "t1", orderIndex = 0, location = LatLng(46.95, 7.45)))
+        tripRepository.upsertStop(Stop(id = "b", tripId = "t1", name = "B", orderIndex = 1))
+        val vm = editViewModel("b", search)
+        vm.setPlaceQuery("Camping")
+        advanceTimeBy(301)
+        assertEquals(LatLng(46.95, 7.45), search.requests.single().second)
     }
 
     @Test

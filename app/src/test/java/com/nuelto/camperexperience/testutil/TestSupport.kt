@@ -4,6 +4,8 @@ import android.content.Context
 import com.nuelto.camperexperience.data.AuthRepository
 import com.nuelto.camperexperience.data.AuthUser
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.location.PlaceNameResolver
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -68,5 +70,25 @@ class FakePlaceNameResolver(context: Context) : PlaceNameResolver(context) {
             gate.await()
         }
         return result(location)
+    }
+}
+
+/** Records every (query, bias); [result] decides what comes back (null = lookup failed). */
+class FakePlaceSearch : PlaceSearch {
+    val requests = mutableListOf<Pair<String, LatLng?>>()
+    val gates = mutableListOf<CompletableDeferred<Unit>>()
+    var gated = false
+    var result: List<PlaceSuggestion>? = listOf(
+        PlaceSuggestion("Lauterbrunnen", "Bern, Switzerland", LatLng(46.5939043, 7.9078016)),
+    )
+
+    override suspend fun search(query: String, near: LatLng?): List<PlaceSuggestion>? {
+        requests += query to near
+        if (gated) {
+            val gate = CompletableDeferred<Unit>()
+            gates += gate
+            gate.await()
+        }
+        return result
     }
 }
