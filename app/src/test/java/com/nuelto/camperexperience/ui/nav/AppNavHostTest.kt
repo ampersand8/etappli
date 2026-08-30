@@ -93,8 +93,6 @@ class AppNavHostTest {
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
         compose.onNodeWithText("New stop").assertIsDisplayed()
         compose.onNodeWithText("  Pick on map").assertIsDisplayed()
-        // Search is wired by the real factory; typing into it would hit the network.
-        compose.onNodeWithText("Search a place").assertIsDisplayed()
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Camping Kirnbergsee").assertIsDisplayed()
     }
@@ -107,10 +105,13 @@ class AppNavHostTest {
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
         compose.onNodeWithText("  Pick on map").performClick()
         compose.onNodeWithText("Pick location").assertIsDisplayed()
+        // Search is wired by the real factory; typing into it would hit the network.
+        compose.onNodeWithText("Search a place").assertIsDisplayed()
         compose.onNodeWithText("Use this spot", useUnmergedTree = true).performClick()
-        // Back on the stop editor with the picked map center as location.
+        // Back on the stop editor with the picked map center — the map opened on the
+        // trip's last located stop, so that is what the crosshair sat on.
         compose.onNodeWithText("New stop").assertIsDisplayed()
-        compose.onNodeWithText("46.8, 8.2").assertIsDisplayed()
+        compose.onNodeWithText("47.899, 8.158").assertIsDisplayed()
     }
 
     @Test

@@ -24,39 +24,39 @@ class PlaceSearchTest {
     )
 
     @Test
-    fun `the bias is the located stop right before the one being edited`() {
-        assertEquals(thun, searchBias(stops, orderIndex = 2))
+    fun `the map opens on the located stop right before the one being edited`() {
+        assertEquals(thun, nearestLocated(stops, orderIndex = 2))
     }
 
     @Test
-    fun `a stop does not bias itself`() {
-        assertEquals(bern, searchBias(stops, orderIndex = 1))
+    fun `a stop is not its own fallback`() {
+        assertEquals(bern, nearestLocated(stops, orderIndex = 1))
     }
 
     @Test
-    fun `a new stop at the end is biased by the trip's last stop`() {
-        assertEquals(brig, searchBias(stops, orderIndex = Int.MAX_VALUE))
+    fun `a new stop at the end falls back to the trip's last stop`() {
+        assertEquals(brig, nearestLocated(stops, orderIndex = Int.MAX_VALUE))
     }
 
     @Test
     fun `editing the first stop falls back to the last located stop`() {
-        assertEquals(brig, searchBias(stops, orderIndex = 0))
+        assertEquals(brig, nearestLocated(stops, orderIndex = 0))
     }
 
     @Test
-    fun `skipped stops and stops without a location never bias`() {
+    fun `skipped stops and stops without a location are never the fallback`() {
         val messy = listOf(
             stop("a", 0, bern),
             stop("b", 1, thun, state = StopState.SKIPPED),
             stop("c", 2, null),
         )
-        assertEquals(bern, searchBias(messy, orderIndex = Int.MAX_VALUE))
+        assertEquals(bern, nearestLocated(messy, orderIndex = Int.MAX_VALUE))
     }
 
     @Test
-    fun `a trip without a single coordinate has no bias`() {
-        assertNull(searchBias(listOf(stop("a", 0, null)), orderIndex = 1))
-        assertNull(searchBias(emptyList(), orderIndex = 1))
+    fun `a trip without a single coordinate has no fallback`() {
+        assertNull(nearestLocated(listOf(stop("a", 0, null)), orderIndex = 1))
+        assertNull(nearestLocated(emptyList(), orderIndex = 1))
     }
 
     @Test

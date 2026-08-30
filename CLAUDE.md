@@ -55,13 +55,17 @@ There is no lint/format tooling configured.
 - **MapLibre must use the OpenGL runtime** (`maplibre-compose-runtime-opengl-android`,
   `runtimeOnly`): the default Vulkan renderer draws a blank map on emulators.
 - Map style is OpenFreeMap Liberty (`ui/map/TripMap.kt` → `MAP_STYLE_URL`) — free, no API key.
-- Place search is Photon (`photon.komoot.io`) — free, no API key, the app's only outbound
-  HTTP call. `domain/Photon.kt` is pure (URL + lenient GeoJSON parse, mutation-tested),
-  `location/PhotonPlaceSearch.kt` is a bare `HttpURLConnection` wrapper behind the
-  `domain/PlaceSearch` interface (hence coverage-excluded). **`lang` only accepts
-  default/de/en/fr** — anything else is a 400, so `Photon.language` clamps it. Fair-use
-  only: debounced 300 ms, min 3 chars, one lookup per pause. Any failure returns null and
-  the editor says so; "I'm here" and "Pick on map" stay the primary paths.
+- Place search lives **on the picker map** (`ui/map/LocationPickerScreen.kt`), not in the
+  stop form: hits land as markers, tapping one names it, and the picker returns that
+  place's name alongside the coordinate (`PICKED_PLACE_KEY`) so the editor skips the
+  reverse geocode. Backend is Photon (`photon.komoot.io`) — free, no API key, the app's
+  only outbound HTTP call. `domain/Photon.kt` is pure (URL + lenient GeoJSON parse,
+  mutation-tested); `location/PhotonPlaceSearch.kt` is a bare `HttpURLConnection` wrapper
+  behind the `domain/PlaceSearch` interface. **`lang` only accepts default/de/en/fr** —
+  anything else is a 400, so `Photon.language` clamps it. Fair-use only: debounced 300 ms,
+  min 3 chars, biased to the map centre. `ui/map/**` is coverage-excluded, so
+  `LocationPickerViewModel` earns its keep through pitest instead — it is in the target
+  lists. Any failure just says so; the crosshair keeps working offline.
 - Firebase is **conditionally applied**: the google-services plugin only activates if
   `app/google-services.json` exists (it's gitignored). Without it the app builds in
   local-only mode with seeded in-memory data. `webClientId` (Google Sign-In) is read from

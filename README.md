@@ -17,9 +17,9 @@ trips visible on a map.
 - **Maps** (OpenStreetMap via MapLibre + OpenFreeMap, no API key) — all-trips
   overview with per-trip colors and route lines, per-trip map on the detail screen,
   tap a marker for trip/stop info.
-- **Locations** via type-ahead place search (Photon/OpenStreetMap, no API key),
-  one-shot GPS fix ("I'm here"), or map picker with crosshair. Search is additive:
-  offline, the other two still work.
+- **Locations** via one-shot GPS fix ("I'm here") or the map picker — where you can
+  also search for a place by name (Photon/OpenStreetMap, no API key) and pick the hit
+  that sits in the right spot. Offline, the crosshair still works.
 - **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).
   Until Firebase is configured the app runs in local demo mode — see
   [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
