@@ -90,8 +90,10 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   TripRepository interface — no dual-repo logic); reordering through
   `TripRepository.reorderStops`, driven by long-press drag on the timeline
   (`ui/components/Reorderable.kt` gesture + `ReorderState` math, order rules in
-  `domain/StopReorder` — DONE stops are anchors nothing may cross); nights/arrival
-  changes shift downstream planned dates via `domain/DateCascade`. Color language
+  `domain/StopReorder` — DONE stops are anchors nothing may cross). A reorder re-dates
+  the plan (`DateCascade.resequence`: nights and per-position gaps are kept, so the trip
+  keeps its start and length); nights/arrival changes shift downstream planned dates
+  (`DateCascade.shift`). Color language
   everywhere (lists, timeline, maps):
   **blue = planned, green = active/current, grey = done** (`ui/theme/StatusColors.kt`).
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
