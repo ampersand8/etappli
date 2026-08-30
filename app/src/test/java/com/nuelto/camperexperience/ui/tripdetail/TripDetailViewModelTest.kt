@@ -248,17 +248,17 @@ class TripDetailViewModelTest {
     }
 
     @Test
-    fun `move stop swaps neighbors but never crosses a done stop or the edges`() = runTest {
+    fun `a dropped stop lands on its index but never crosses a done stop`() = runTest {
         seedTrip(status = TripStatus.ACTIVE)
         val vm = hotViewModel()
-        vm.moveStop("s2", -1)
+        vm.moveStop("s2", 0)
         assertEquals(listOf("s2", "s1"), stops().map { it.id })
-        vm.moveStop("s2", -1) // top edge — no-op
+        vm.moveStop("s2", 0) // already there — no-op
         assertEquals(listOf("s2", "s1"), stops().map { it.id })
         vm.moveStop("s2", 1)
         assertEquals(listOf("s1", "s2"), stops().map { it.id })
         tripRepository.upsertStop(stops().first { it.id == "s1" }.copy(state = StopState.DONE))
-        vm.moveStop("s2", -1) // would cross a done stop — locked
+        vm.moveStop("s2", 0) // would cross a done stop — clamped back
         assertEquals(listOf("s1", "s2"), stops().map { it.id })
     }
 

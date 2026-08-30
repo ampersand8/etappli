@@ -21,6 +21,7 @@ import com.nuelto.camperexperience.domain.CurrentStop
 import com.nuelto.camperexperience.domain.DateCascade
 import com.nuelto.camperexperience.domain.EstimateBreakdown
 import com.nuelto.camperexperience.domain.FuelEstimator
+import com.nuelto.camperexperience.domain.StopReorder
 import com.nuelto.camperexperience.domain.TripEstimator
 import com.nuelto.camperexperience.domain.TripStarter
 import com.nuelto.camperexperience.domain.VignetteTable
@@ -178,17 +179,12 @@ class TripDetailViewModel(
         DateCascade.shift(stops, orderIndex, days).forEach { tripRepository.upsertStop(it) }
     }
 
-    /** Swaps the stop with its neighbor; done stops are locked in place. */
-    fun moveStop(stopId: String, delta: Int) {
+    /** Drops a dragged stop at [toIndex]; done stops are anchors it cannot cross. */
+    fun moveStop(stopId: String, toIndex: Int) {
         viewModelScope.launch {
             writeLock.withLock {
-                val ordered = tripRepository.stops(tripId).first().sortedBy { it.orderIndex }
-                val from = ordered.indexOfFirst { it.id == stopId }
-                val to = from + delta
-                if (from < 0 || to < 0 || to > ordered.lastIndex) return@withLock
-                if (ordered[from].state == StopState.DONE || ordered[to].state == StopState.DONE) return@withLock
-                val ids = ordered.map { it.id }.toMutableList()
-                ids[from] = ids[to].also { ids[to] = ids[from] }
+                val stops = tripRepository.stops(tripId).first()
+                val ids = StopReorder.move(stops, stopId, toIndex) ?: return@withLock
                 tripRepository.reorderStops(tripId, ids)
             }
         }

@@ -88,8 +88,11 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   Legacy Firestore docs derive status from endDate (`legacyTripStatus`) — never PLANNED.
   Start-tour/plan-again copies go through `domain/TripStarter` (composed over the
   TripRepository interface — no dual-repo logic); reordering through
-  `TripRepository.reorderStops`; nights/arrival changes shift downstream planned dates
-  via `domain/DateCascade`. Color language everywhere (lists, timeline, maps):
+  `TripRepository.reorderStops`, driven by long-press drag on the timeline
+  (`ui/components/Reorderable.kt` gesture + `ReorderState` math, order rules in
+  `domain/StopReorder` — DONE stops are anchors nothing may cross); nights/arrival
+  changes shift downstream planned dates via `domain/DateCascade`. Color language
+  everywhere (lists, timeline, maps):
   **blue = planned, green = active/current, grey = done** (`ui/theme/StatusColors.kt`).
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
