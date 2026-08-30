@@ -14,13 +14,13 @@ trips visible on a map.
 - **Fuel estimator** — prefills trip distance from the stops (straight line × road
   factor, both configurable) and computes distance × consumption × price; manual
   fill-ups are just regular expenses.
-- **Maps** (OpenStreetMap via MapLibre + OpenFreeMap, no API key; optionally Google
-  Maps — see [GOOGLE_MAPS_SETUP.md](GOOGLE_MAPS_SETUP.md)) — all-trips
-  overview with per-trip colors and route lines, per-trip map on the detail screen,
-  tap a marker for trip/stop info.
-- **Locations** via one-shot GPS fix ("I'm here") or the map picker — where you can
-  also search for a place by name (Photon/OpenStreetMap, no API key) and pick the hit
-  that sits in the right spot. Offline, the crosshair still works.
+- **Maps** (Google Maps — needs an API key, see
+  [GOOGLE_MAPS_SETUP.md](GOOGLE_MAPS_SETUP.md)) — all-trips overview with per-trip
+  colors and route lines, per-trip map on the detail screen, tap a marker for
+  trip/stop info.
+- **Locations** via one-shot GPS fix ("I'm here") or the map picker — search a place
+  by name and choose from the results, tap a POI Google already shows, or press and
+  hold to drop a pin. Results favour whatever kind of stop you're adding.
 - **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).
   Until Firebase is configured the app runs in local demo mode — see
   [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
@@ -28,7 +28,7 @@ trips visible on a map.
 ## Stack
 
 Kotlin · Jetpack Compose (Material 3) · MVVM + repository, hand-rolled DI ·
-Compose Navigation (type-safe routes) · MapLibre Compose · Firebase Auth/Firestore.
+Compose Navigation (type-safe routes) · Google Maps Compose + Places · Firebase Auth/Firestore.
 
 ## Build & run
 

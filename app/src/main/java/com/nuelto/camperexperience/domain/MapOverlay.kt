@@ -47,8 +47,8 @@ data class TripMapData(
 
 /**
  * Turns trips into the markers, route legs and camera frame a map should draw, in the
- * lifecycle colour language. Pure — MapLibre and Google Maps both render the same specs,
- * so the rules live here where they can be tested rather than in either renderer.
+ * lifecycle colour language. Pure, so the rules live here where they can be tested
+ * rather than inside a renderer that needs a GL surface to run.
  */
 object MapOverlay {
 

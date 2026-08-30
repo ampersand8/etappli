@@ -27,8 +27,8 @@ val webClientId: String = run {
         ?: ""
 }
 
-// Google Maps Platform key. Absent -> the app builds and runs on MapLibre/OpenStreetMap;
-// present -> the Google map provider takes over. Same lookup as webClientId.
+// Google Maps Platform key. Absent -> the app builds and runs, but has no map;
+// present -> maps and place search work. Same lookup as webClientId.
 val mapsApiKey: String = run {
     val props = Properties()
     val f = rootProject.file("local.properties")
@@ -106,7 +106,7 @@ kotlin {
 }
 
 // Coverage gate: 100% line coverage on everything that can run on the JVM. Excluded:
-// code needing a real device/backend (MapLibre GL surface, Play services location,
+// code needing a real device/backend (the Maps SDK surface, Play services location,
 // Firebase/Firestore, Credential Manager) — that's covered by the emulator workflow.
 jacoco {
     toolVersion = "0.8.13"
@@ -245,9 +245,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    implementation(libs.maplibre.compose)
-    // OpenGL runtime — the Vulkan one draws a blank map on emulators (gfxstream).
-    runtimeOnly(libs.maplibre.compose.runtime)
     implementation(libs.play.services.location)
 
     implementation(libs.maps.compose)
