@@ -39,10 +39,9 @@ import com.google.android.gms.maps.model.LatLng as GmsLatLng
 private fun LatLng.gms() = GmsLatLng(latitude, longitude)
 
 /**
- * Google Maps, active only when a `mapsApiKey` is configured (see MapsBackend). Search
- * is Google Places, which is why it may only exist here: the Places terms forbid showing
- * that content alongside a non-Google map. Coordinates it returns are on a 30-day
- * retention clock — see domain/PlaceCache.
+ * The app's map, active when a `mapsApiKey` is configured (see MapsBackend). Search is
+ * Google Places; the coordinates it returns are on a 30-day retention clock — see
+ * domain/PlaceCache.
  */
 object GoogleMapProvider : MapProvider {
 
@@ -123,7 +122,7 @@ object GoogleMapProvider : MapProvider {
 private fun markerState(marker: MapMarker): MarkerState =
     rememberMarkerState(key = marker.stopId, position = marker.at.gms())
 
-/** The same dot the MapLibre CircleLayer draws: filled, or hollow for a visit. */
+/** A stop: filled, or hollow for a visit. */
 @Composable
 private fun Dot(color: Color, hollow: Boolean) {
     Box(

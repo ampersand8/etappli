@@ -1,7 +1,7 @@
-# Google Maps setup (optional)
+# Google Maps setup
 
-Without a key the app runs on MapLibre + OpenFreeMap with Photon search, exactly as
-before. Add a key and both the map and place search switch to Google.
+The app needs a Google Maps Platform key. Without one it still builds, installs and runs
+— trips, stops, costs, GPS — but there is no map and no place search.
 
 ## Console steps
 
@@ -32,8 +32,8 @@ That prints the package and SHA-1 the SDK actually presented — compare it with
 console has. Note the Firebase console registration does **not** carry over; this is a
 separate credential.
 
-CI never sees a key (`local.properties` is gitignored), so CI only ever exercises the
-MapLibre path. The Google path is emulator/device-only.
+CI never sees a key (`local.properties` is gitignored). Tests render through
+`PlaceholderMapProvider`, so they pass regardless; the real map is emulator/device-only.
 
 ## The 30-day coordinate rule
 
@@ -59,9 +59,8 @@ app is next opened online. Trips shorter than a month are unaffected during and 
 after the trip; older trips need one online visit to redraw. That is the trade this
 design accepts — the alternative was not storing Google coordinates at all.
 
-§14.2 also forbids showing Places results "in conjunction with a non-Google map", which
-is why `GooglePlacesSearch` is reachable only from `GoogleMapProvider`. In MapLibre mode
-search stays on Photon/OSM.
+§14.2 also forbids showing Places results "in conjunction with a non-Google map" — moot
+now that Google is the only map, but it is why search and map cannot be mixed providers.
 
 ## Known gap
 

@@ -12,8 +12,8 @@ import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.testutil.FakeAuthRepository
 import com.nuelto.camperexperience.ui.map.LocalMapProvider
-import com.nuelto.camperexperience.ui.map.MapLibreProvider
 import com.nuelto.camperexperience.ui.map.MapProvider
+import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -112,17 +112,16 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun `shows the app version, and no attribution line when the map has none`() {
+    fun `shows the app version, and no attribution line when there is no map`() {
         setContent()
         compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
-        compose.onNodeWithText(MapLibreProvider.attribution).assertDoesNotExist()
+        compose.onNodeWithText("Map data and places © Google").assertDoesNotExist()
     }
 
     @Test
     fun `attribution follows the map provider`() {
-        setContent(provider = MapLibreProvider)
-        compose.onNodeWithText("Maps and place search © OpenStreetMap contributors").assertIsDisplayed()
-        assertEquals("Maps and place search © OpenStreetMap contributors", MapLibreProvider.attribution)
+        setContent(provider = AttributedMapProvider)
+        compose.onNodeWithText("Map data and places © Google").assertIsDisplayed()
     }
 
     @Test
@@ -131,4 +130,9 @@ class SettingsScreenTest {
         compose.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("back"), events)
     }
+}
+
+/** Stands in for the Google provider, which cannot be composed under Robolectric. */
+private object AttributedMapProvider : MapProvider by PlaceholderMapProvider {
+    override val attribution = "Map data and places © Google"
 }

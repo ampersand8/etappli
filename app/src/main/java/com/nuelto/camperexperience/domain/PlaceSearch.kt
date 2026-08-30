@@ -21,7 +21,7 @@ data class PlaceSuggestion(
 /** Search feedback; IDLE also covers "results are showing" and "nothing typed yet". */
 enum class PlaceSearchStatus { IDLE, SEARCHING, EMPTY, UNAVAILABLE }
 
-/** Swappable geocoder seam — Photon today, another endpoint if it degrades. */
+/** Swappable geocoder seam — Google Places today, another endpoint if it degrades. */
 interface PlaceSearch {
     /**
      * [prefer] is the kind of stop being added, so searching "grimsel" while adding a

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Personal Android app (single user: Simon) for tracking camper trips: multi-stop trips with
 per-stop nights/camping costs, trip-level expenses (fuel, road tax, other), a fuel-cost
-estimator, and MapLibre/OpenStreetMap views of all trips. Kotlin + Jetpack Compose,
+estimator, and Google Maps views of all trips. Kotlin + Jetpack Compose,
 single `:app` module. Default currency is CHF (user preference).
 
 **Keep code and docs short and concise.** This matters a lot: minimal prose, no
@@ -52,50 +52,34 @@ There is no lint/format tooling configured.
   needs Kotlin ≥ 2.4 metadata while every AGP release bundles built-in Kotlin 2.2.10.
   Both opt-outs die in AGP 10 (expected late 2026): when an AGP with built-in Kotlin ≥ 2.4
   exists, remove the two properties and the `org.jetbrains.kotlin.android` plugin.
-- **MapLibre must use the OpenGL runtime** (`maplibre-compose-runtime-opengl-android`,
-  `runtimeOnly`): the default Vulkan renderer draws a blank map on emulators.
-- Map style is OpenFreeMap Liberty (`ui/map/TripMap.kt` → `MAP_STYLE_URL`) — free, no API key.
-- **Map provider is a seam** (`ui/map/MapProvider.kt`): what to draw is decided by pure
-  `domain/MapOverlay.kt` (markers, route legs, camera frame — mutation-tested), and a
-  provider renders it. `MapLibreProvider` (OpenFreeMap, no key) is the default;
-  `GoogleMapProvider` takes over when `mapsApiKey` is in local.properties
-  (`MapsBackend.kt`, mirroring FirebaseBackend). **The two switches are independent** —
-  Firebase decides the store, the key decides the map. Tests provide
-  `LocalMapProvider provides PlaceholderMapProvider`, which records camera moves so the
-  picker's confirm flow still works on the JVM. Setup: GOOGLE_MAPS_SETUP.md.
-- **Google mode searches via Places (New) Autocomplete** — Text Search resolves "grimsel"
-  to one place, autocomplete offers the pass, the lake, the hospice and the hotel.
-  `PlaceSearch.search` takes the **`StopKind` being added**, and both providers run a
-  second, type-filtered pass (Google `includedPrimaryTypes`, Photon `osm_tag`) merged
-  ahead of the open results by `domain/mergePreferred` — searching "grimsel" for a
-  campsite surfaces Camping Grimselblick, which the open query misses entirely.
+- **Maps and place search are Google**, wired up when `mapsApiKey` is in local.properties
+  (`MapsBackend.kt`, mirroring FirebaseBackend). Without a key the app runs with no map —
+  the two switches are independent: Firebase decides the store, the key decides the map.
+  Setup: GOOGLE_MAPS_SETUP.md.
+- **`ui/map/MapProvider.kt` is still a seam**, and earns its keep: what to draw is decided
+  by pure `domain/MapOverlay.kt` (markers, route legs, camera frame — mutation-tested),
+  and `PlaceholderMapProvider` implements the same interface for JVM tests, recording
+  camera moves so the picker's confirm flow runs end to end without a GL surface. Tests
+  provide `LocalMapProvider provides PlaceholderMapProvider`.
+- **Search is Places (New) Autocomplete** — Text Search resolves "grimsel" to one place,
+  autocomplete offers the pass, the lake, the hospice and the hotel. `PlaceSearch.search`
+  takes the **`StopKind` being added** and runs a second, `includedPrimaryTypes`-filtered
+  pass merged ahead of the open results by `domain/mergePreferred`; searching "grimsel"
+  for a campsite surfaces Camping Grimselblick, which the open query misses entirely.
   Predictions carry no coordinate, so `PlaceSearch.resolve` fetches it via Place Details
   when a hit is chosen, inside the same billed session token. Tapping a POI Google already
-  draws (`onPOIClick`) picks it directly — no lookup needed, it arrives with both.
-  (`domain/GooglePlaces.kt` pure, `location/GooglePlacesSearch.kt` the HTTP calls);
-  MapLibre mode stays on Photon —
-  Places SST §14.2 forbids showing Places results on a non-Google map. §14.3 caps caching
-  a Places coordinate at 30 days, so such stops carry `placeId` + `locationCachedAt`, and
-  `domain/PlaceCacheSweeper` (run from TripDetailViewModel) refreshes them via Place
-  Details or **deletes** them. Coordinates from GPS/crosshair/OSM have no
-  `locationCachedAt` and never expire. Details: GOOGLE_MAPS_SETUP.md.
+  draws (`onPOIClick`) picks it directly — it arrives with both id and coordinate.
+- **Places coordinates expire.** SST §14.3 caps caching one at 30 days, so such stops carry
+  `placeId` + `locationCachedAt`, and `domain/PlaceCacheSweeper` (run from
+  TripDetailViewModel) refreshes them via Place Details or **deletes** them. Coordinates
+  from GPS or a dropped pin have no `locationCachedAt` and never expire. With OSM gone
+  there is no non-expiring search source, so this path is not optional.
 - A stop that came from Google keeps its place id, so `domain/MapsUri` can link back to
   the real place — "Open in Maps" and "Share" in the stop editor's location section.
-- The picker is **search-and-choose, not aim**: hits come back as a tappable list (and
-  as markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the
-  user a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than
-  lat/lng when there is no name yet.
-- Place search lives **on the picker map** (`ui/map/LocationPickerScreen.kt`), not in the
-  stop form: hits land as markers, tapping one names it, and the picker returns that
-  place's name alongside the coordinate (`PICKED_PLACE_KEY`) so the editor skips the
-  reverse geocode. Backend is Photon (`photon.komoot.io`) — free, no API key, the app's
-  only outbound HTTP call. `domain/Photon.kt` is pure (URL + lenient GeoJSON parse,
-  mutation-tested); `location/PhotonPlaceSearch.kt` is a bare `HttpURLConnection` wrapper
-  behind the `domain/PlaceSearch` interface. **`lang` only accepts default/de/en/fr** —
-  anything else is a 400, so `Photon.language` clamps it. Fair-use only: debounced 300 ms,
-  min 3 chars, biased to the map centre. `ui/map/**` is coverage-excluded, so
-  `LocationPickerViewModel` earns its keep through pitest instead — it is in the target
-  lists. Any failure just says so; the crosshair keeps working offline.
+- The picker is **search-and-choose, not aim**: hits come back as a tappable list (and as
+  markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the user
+  a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than lat/lng
+  when there is no name yet.
 - Firebase is **conditionally applied**: the google-services plugin only activates if
   `app/google-services.json` exists (it's gitignored). Without it the app builds in
   local-only mode with seeded in-memory data. `webClientId` (Google Sign-In) is read from
@@ -173,8 +157,8 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
 
 UI tests run on the JVM: Robolectric + Compose test APIs (`robolectric.properties`
 pins sdk/graphics/screen). `TestCamperApp` forces the in-memory container regardless
-of a local google-services.json; `LocalMapEnabled provides false` swaps MapLibre for
-a placeholder (`ui/map/TripMap.kt`). Fakes live in `testutil/`.
+of a local google-services.json; `LocalMapProvider provides PlaceholderMapProvider`
+swaps the Maps SDK for a stand-in (`ui/map/MapProvider.kt`). Fakes live in `testutil/`.
 
 - **Screen tests**: `createComposeRule` + `@RunWith(AndroidJUnit4::class)` +
   `@Config(application = TestCamperApp::class)`; construct the ViewModel directly with

@@ -26,10 +26,10 @@ interface MapCamera {
 }
 
 /**
- * The map surface, behind one seam so the app can be pointed at a different provider.
- * MapLibre/OpenFreeMap is the default; Google Maps takes over when an API key is
- * configured. Everything provider-specific — SDK types, style URLs, attribution, and
- * the matching place search — lives behind here.
+ * The map surface, behind one seam. Google Maps implements it when an API key is
+ * configured; PlaceholderMapProvider stands in otherwise, and in JVM tests. Everything
+ * provider-specific — SDK types, attribution, the matching place search — lives behind
+ * here, which is what keeps every screen testable without a GL surface.
  */
 interface MapProvider {
     /** Shown in Settings; the data licence follows the provider. */
