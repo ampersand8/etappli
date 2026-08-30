@@ -61,8 +61,15 @@ fun AppNavHost() {
                 .collectAsStateWithLifecycle()
             LaunchedEffect(picked) {
                 picked?.let { (lat, lon) ->
-                    viewModel.setLocation(LatLng(lat, lon))
+                    // A place searched on the map comes back named; a crosshair pick doesn't.
+                    val place = backStackEntry.savedStateHandle.get<Array<String>>(PICKED_PLACE_KEY)
+                    viewModel.setPickedLocation(
+                        LatLng(lat, lon),
+                        place?.getOrNull(0).orEmpty(),
+                        place?.getOrNull(1).orEmpty(),
+                    )
                     backStackEntry.savedStateHandle[PICKED_LOCATION_KEY] = null
+                    backStackEntry.savedStateHandle[PICKED_PLACE_KEY] = null
                 }
             }
             val stopEditState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,9 +80,10 @@ fun AppNavHost() {
                     LocationSection(
                         onLocationChange = viewModel::setLocation,
                         onPickOnMap = {
-                            val location = viewModel.uiState.value.location
+                            // Opens on this stop, or failing that near the one before it.
+                            val start = viewModel.uiState.value.pickerStart
                             navController.navigate(
-                                LocationPickerRoute(location?.latitude, location?.longitude),
+                                LocationPickerRoute(start?.latitude, start?.longitude),
                             )
                         },
                         autoLocate = stopEditState.autoLocatePending,
@@ -97,11 +105,11 @@ fun AppNavHost() {
             val route = backStackEntry.toRoute<LocationPickerRoute>()
             LocationPickerScreen(
                 initial = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null,
-                onPicked = { location ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set(
-                        PICKED_LOCATION_KEY,
-                        doubleArrayOf(location.latitude, location.longitude),
-                    )
+                onPicked = { location, place ->
+                    navController.previousBackStackEntry?.savedStateHandle?.apply {
+                        set(PICKED_PLACE_KEY, arrayOf(place?.name.orEmpty(), place?.label.orEmpty()))
+                        set(PICKED_LOCATION_KEY, doubleArrayOf(location.latitude, location.longitude))
+                    }
                     navController.popBackStack()
                 },
                 onCancel = { navController.popBackStack() },
@@ -114,6 +122,7 @@ fun AppNavHost() {
 }
 
 private const val PICKED_LOCATION_KEY = "picked_location"
+private const val PICKED_PLACE_KEY = "picked_place"
 
 private operator fun DoubleArray.component1() = this[0]
 
