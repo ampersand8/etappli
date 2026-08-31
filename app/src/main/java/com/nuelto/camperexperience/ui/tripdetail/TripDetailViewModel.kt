@@ -86,11 +86,12 @@ class TripDetailViewModel(
         placeCacheSweeper?.let { sweeper -> viewModelScope.launch { sweeper.sweep(tripId) } }
         routeRefresher?.let { refresher ->
             viewModelScope.launch {
-                // Re-route when the drives themselves change — a stop added, moved,
-                // skipped or re-pinned. Writing the legs back does not change that list,
-                // so this settles instead of chasing its own writes.
+                // Re-run when the pins themselves change — a stop added, moved, skipped
+                // or re-pinned. Every located stop, not just the drives: a lone stop has
+                // no drive but still has a height. Writing legs and heights back does not
+                // change this list, so it settles instead of chasing its own writes.
                 tripRepository.stops(tripId)
-                    .map { stops -> RouteCache.drives(stops).map { (from, to) -> from.location to to.location } }
+                    .map { stops -> RouteCache.routed(stops).map { it.location } }
                     .distinctUntilChanged()
                     .collect { refresher.refresh(tripId) }
             }

@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.domain
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopElevation
 import com.nuelto.camperexperience.data.model.StopLeg
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -175,7 +176,8 @@ class RouteRefresherTest {
         }.refresh("t1", today)
 
         assertEquals(1, result.fetched)
-        assertEquals(listOf(Polyline.decode(geometry)), sampled)
+        // Both stops' own heights, then the leg's sampled geometry.
+        assertEquals(listOf(listOf(here, there), Polyline.decode(geometry)), sampled)
         val drive = stop("b").leg!!
         assertEquals(151, drive.ascentMeters)
         assertEquals(50, drive.descentMeters)
@@ -207,7 +209,8 @@ class RouteRefresherTest {
         }.refresh("t1", today)
 
         assertEquals(1, result.fetched)
-        assertTrue(sampled.isEmpty())
+        // Only the two stops' own heights — nothing to sample along an empty polyline.
+        assertEquals(listOf(listOf(here, there)), sampled)
         val drive = stop("b").leg!!
         assertEquals(500, drive.distanceMeters)
         assertNull(drive.ascentMeters)
@@ -344,6 +347,62 @@ class RouteRefresherTest {
 
         assertEquals(300, stop("b").leg!!.ascentMeters)
         assertEquals(150, stop("b").leg!!.descentMeters)
+    }
+
+    @Test
+    fun `every located stop gets its own height, in one call`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", location = null, index = 2)
+
+        val result = refresher(heights = { listOf(1469.4, 492.6) }) {
+            listOf(RoutedLeg(geometry, 1_000, 60))
+        }.refresh("t1", today)
+
+        assertEquals(2, result.elevated)
+        assertEquals(1469, Elevation.ofStop(stop("a")))
+        assertEquals(493, Elevation.ofStop(stop("b")))
+        // No pin, no height to ask for.
+        assertNull(stop("c").elevation)
+        // One call for both stops, not one each.
+        assertEquals(listOf(here, there), sampled.first())
+    }
+
+    @Test
+    fun `a height already measured where the stop sits is not fetched again`() = runTest {
+        addStop("a", here, index = 0)
+        repository.upsertStop(stop("a").copy(elevation = StopElevation(here, 1200)))
+
+        val result = refresher(heights = { listOf(999.0) }) { null }.refresh("t1", today)
+
+        assertEquals(0, result.elevated)
+        assertEquals(1200, Elevation.ofStop(stop("a")))
+        assertTrue(sampled.isEmpty())
+    }
+
+    @Test
+    fun `moving the pin re-measures the height`() = runTest {
+        addStop("a", there, index = 0)
+        repository.upsertStop(stop("a").copy(elevation = StopElevation(here, 1200)))
+
+        refresher(heights = { listOf(640.0) }) { null }.refresh("t1", today)
+
+        assertEquals(640, Elevation.ofStop(stop("a")))
+    }
+
+    @Test
+    fun `an unreachable elevation service leaves the heights alone`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+
+        val result = refresher(heights = { null }) {
+            listOf(RoutedLeg(geometry, 1_000, 60))
+        }.refresh("t1", today)
+
+        assertEquals(0, result.elevated)
+        assertNull(stop("a").elevation)
+        // The route still landed: a missing height is not a failed refresh.
+        assertEquals(1, result.fetched)
     }
 
 }

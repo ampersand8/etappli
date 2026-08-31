@@ -88,6 +88,7 @@ import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.TripMapData
+import com.nuelto.camperexperience.domain.Elevation
 import com.nuelto.camperexperience.domain.GapRow
 import com.nuelto.camperexperience.domain.StopRow
 import com.nuelto.camperexperience.domain.TripEstimator
@@ -531,7 +532,11 @@ private fun NowCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stop.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stop.name + altitudeSuffix(stop),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 if (stop.kind != StopKind.VISIT) {
                     Text(
                         stopPriceText(stop, TripStatus.ACTIVE, settings),
@@ -723,7 +728,7 @@ private fun StopDot(stop: Stop, tripStatus: TripStatus) {
 
 private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String {
     val date = formatDate(stop.arrivalDate)
-    return when {
+    val meta = when {
         stop.state == StopState.SKIPPED -> "skipped"
         stop.kind == StopKind.VISIT -> "$date · visit"
         else -> {
@@ -731,7 +736,12 @@ private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSetti
             "$date · $nights · ${stopPriceText(stop, tripStatus, settings)}"
         }
     }
+    return meta + altitudeSuffix(stop)
 }
+
+/** How high the place is, the way a Swiss village sign gives it. */
+private fun altitudeSuffix(stop: Stop): String =
+    Elevation.ofStop(stop)?.let { " · $it m" }.orEmpty()
 
 /** An unpriced stay on a live trip shows what the default rate would charge. */
 private fun stopPriceText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String =

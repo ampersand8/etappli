@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -25,6 +26,7 @@ import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopElevation
 import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
@@ -633,4 +635,33 @@ class TripDetailScreenTest {
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
         compose.onAllNodes(hasText("\u2192", substring = true)).assertCountEquals(0)
     }
+    @Test
+    fun `a stop shows how high it sits`() {
+        seedPlan()
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            tripRepository.upsertStop(
+                s2.copy(elevation = StopElevation(LatLng(46.16, 8.79), 1469)),
+            )
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
+        compose.onNodeWithText("1469 m", substring = true, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a height measured somewhere else is not shown`() {
+        seedPlan()
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            // Pin moved since the height was measured.
+            tripRepository.upsertStop(
+                s2.copy(elevation = StopElevation(LatLng(46.99, 8.01), 1469)),
+            )
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
+        compose.onAllNodesWithText("1469 m", substring = true).assertCountEquals(0)
+    }
+
 }

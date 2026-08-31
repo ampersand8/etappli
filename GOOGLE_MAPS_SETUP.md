@@ -48,11 +48,15 @@ between stops, and distance to straight line × the road factor in Settings.
 
 ## Elevation is not Google
 
-The climb figure that feeds the fuel estimate comes from Open-Meteo (Copernicus DEM
-GLO-90), not Google's Elevation API. Google's policies forbid caching or storing elevation
-results at all, and a per-leg climb that has to be re-fetched to draw a list is no use.
-Open-Meteo needs no key; the Copernicus licence asks for attribution, which is the second
-half of the line at the bottom of Settings.
+Heights come from Open-Meteo (Copernicus DEM GLO-90), not Google's Elevation API, whose
+policies forbid caching or storing results at all — and a height that has to be re-fetched
+to draw a list is no use. Open-Meteo needs no key; the Copernicus licence asks for
+attribution, which is the second half of the line at the bottom of Settings.
+
+A DEM gives ground level, which is the road only where the road is on the ground. Through
+a tunnel it returns the mountain above, so the per-leg climb clamps every step to a grade
+a road could actually hold before summing it. The stop's own height needs none of that —
+one point, no accumulation — which is why it is the number worth showing.
 
 A new key can take a few minutes to activate. A grey map is almost always a key problem:
 

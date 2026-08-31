@@ -64,9 +64,16 @@ There is no lint/format tooling configured.
   key's API restrictions. Note Places and Routes are called as plain web services, so an
   Android *application* restriction would break both unless `X-Android-Package`/
   `X-Android-Cert` headers are added. Everything degrades to straight lines without a key.
-- **Elevation is not Google**: its Elevation API forbids storing results, so climb comes
-  from Open-Meteo (Copernicus DEM) via `domain/Elevation` — sampled by distance along the
-  polyline, then a hysteresis filter so DEM noise does not read as ascent.
+- **Elevation is not Google**: its Elevation API forbids storing results, so height comes
+  from Open-Meteo (Copernicus DEM) via `domain/Elevation`. Two different numbers:
+  `Stop.elevation` is **how high the stop is**, one point, stable, and the only one shown
+  (beside the name, the way a village sign gives it); per-leg ascent/descent is a costing
+  input for the fuel estimate and is deliberately **never displayed** — next to a place
+  name it reads as that place's altitude. Cumulative ascent does not converge (sample a
+  215 km route 16× finer and a 10 m threshold grows it 47%) and the DEM reports the
+  mountain over a tunnel, so `profile` first clamps each step to `MAX_ROAD_GRADE` and then
+  applies `MIN_RISE_M` hysteresis — 6% across the same range. Treat it as an order of
+  magnitude, never a measurement.
 - **Maps and place search are Google**, wired up when `mapsApiKey` is in local.properties
   (`MapsBackend.kt`, mirroring FirebaseBackend). Without a key the app runs with no map —
   the two switches are independent: Firebase decides the store, the key decides the map.

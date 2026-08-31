@@ -11,6 +11,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopElevation
 import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
@@ -92,6 +93,9 @@ class FirestoreTripRepository(
         "placeId" to placeId,
         "locationCachedAt" to locationCachedAt?.toEpochDay(),
         "leg" to leg?.toMap(),
+        "elevation" to elevation?.let {
+            mapOf("at" to GeoPoint(it.at.latitude, it.at.longitude), "meters" to it.meters)
+        },
     )
 
     private fun StopLeg.toMap() = mapOf(
@@ -140,6 +144,10 @@ class FirestoreTripRepository(
         placeId = getString("placeId"),
         locationCachedAt = getLong("locationCachedAt")?.let { LocalDate.ofEpochDay(it) },
         leg = (get("leg") as? Map<*, *>)?.toStopLeg(),
+        elevation = (get("elevation") as? Map<*, *>)?.let { stored ->
+            val at = stored["at"] as? GeoPoint ?: return@let null
+            StopElevation(LatLng(at.latitude, at.longitude), (stored["meters"] as? Number)?.toInt() ?: 0)
+        },
     )
 
     private fun Expense.toMap() = mapOf(

@@ -39,6 +39,13 @@ enum class StopKind { CAMPSITE, STELLPLATZ, FREE_CAMP, VISIT }
 enum class StopState { PLANNED, DONE, SKIPPED }
 
 /**
+ * How high the stop sits above sea level. [at] is the coordinate it was measured for, so
+ * moving the pin invalidates it by comparison. Copernicus is open data, so unlike a Places
+ * coordinate this never expires.
+ */
+data class StopElevation(val at: LatLng = LatLng(0.0, 0.0), val meters: Int = 0)
+
+/**
  * The drive from the previous stop, as Google routed it. [from]/[to] are the stop
  * coordinates the route was computed between, so a reorder or a moved pin invalidates
  * the leg by simple comparison rather than by hoping something remembered to clear it.
@@ -85,6 +92,7 @@ data class Stop(
     // The drive that arrives here, from the stop before it. Null on the first stop of a
     // trip, and until the route has been fetched.
     val leg: StopLeg? = null,
+    val elevation: StopElevation? = null,
 )
 
 enum class ExpenseType {
