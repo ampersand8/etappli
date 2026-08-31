@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.domain
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopElevation
 import com.nuelto.camperexperience.data.model.StopLeg
 import java.time.LocalDate
 import kotlin.math.roundToInt
@@ -34,12 +35,15 @@ class RouteRefresher(
     suspend fun refresh(tripId: String, today: LocalDate = LocalDate.now()): Result {
         val stops = tripRepository.stops(tripId).first()
         val cleared = clearStale(tripId, stops, today)
-        if (!RouteCache.needsFetch(stops, today)) return Result(fetched = 0, cleared = cleared)
+        val elevated = fillElevations(tripId, stops)
+        if (!RouteCache.needsFetch(stops, today)) {
+            return Result(fetched = 0, cleared = cleared, elevated = elevated)
+        }
 
         val routed = RouteCache.routed(stops)
         // Safe: routed() keeps only stops that have a location.
         val legs = fetchAll(routed.map { it.location!! })
-            ?: return Result(fetched = 0, cleared = cleared)
+            ?: return Result(fetched = 0, cleared = cleared, elevated = elevated)
 
         var fetched = 0
         routed.zipWithNext().forEachIndexed { index, (from, to) ->
@@ -59,7 +63,26 @@ class RouteRefresher(
             )
             if (write(tripId, to.id) { it.copy(leg = leg.keepingClimbOf(it.leg)) }) fetched++
         }
-        return Result(fetched = fetched, cleared = cleared)
+        return Result(fetched = fetched, cleared = cleared, elevated = elevated)
+    }
+
+    /**
+     * How high each stop sits, in one call for the whole trip. Independent of routing: a
+     * lone stop has no drive but still has a height, and the DEM is free and open, so
+     * there is no reason to make it wait for a billed route.
+     */
+    private suspend fun fillElevations(tripId: String, stops: List<Stop>): Int {
+        val due = stops.filter { it.location != null && Elevation.ofStop(it) == null }
+        if (due.isEmpty()) return 0
+        val points = due.mapNotNull { it.location }.take(Elevation.MAX_SAMPLES)
+        val measured = heights(points) ?: return 0
+        if (measured.size != points.size) return 0
+        var elevated = 0
+        due.take(points.size).forEachIndexed { index, stop ->
+            val elevation = StopElevation(points[index], measured[index].roundToInt())
+            if (write(tripId, stop.id) { it.copy(elevation = elevation) }) elevated++
+        }
+        return elevated
     }
 
     /**
@@ -113,10 +136,10 @@ class RouteRefresher(
         val samples = Elevation.sample(Polyline.decode(polyline))
         if (samples.size < 2) return null
         val measured = heights(samples) ?: return null
-        return if (measured.size != samples.size) null else Elevation.profile(measured)
+        return if (measured.size != samples.size) null else Elevation.profile(samples, measured)
     }
 
-    data class Result(val fetched: Int, val cleared: Int) {
-        val touched: Boolean get() = fetched > 0 || cleared > 0
+    data class Result(val fetched: Int, val cleared: Int, val elevated: Int = 0) {
+        val touched: Boolean get() = fetched > 0 || cleared > 0 || elevated > 0
     }
 }

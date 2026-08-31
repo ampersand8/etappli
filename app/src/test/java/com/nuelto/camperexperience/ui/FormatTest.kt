@@ -135,14 +135,9 @@ class FormatTest {
     }
 
     @Test
-    fun `the climb is mentioned from 200 m up, never below`() {
-        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 199)))
-        assertEquals("10 km · 12 min · ↑ 200 m", formatDrive(leg(10_000, 700, 200)))
-        assertEquals("10 km · 12 min · ↑ 1450 m", formatDrive(leg(10_000, 700, 1450)))
-    }
-
-    @Test
-    fun `an unknown climb is left out`() {
+    fun `the drive is distance and time only, never the climb`() {
+        // Cumulative ascent beside a place name reads as the height of the place.
+        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 1450)))
         assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, null)))
     }
 }

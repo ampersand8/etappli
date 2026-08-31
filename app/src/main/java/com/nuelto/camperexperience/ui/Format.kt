@@ -45,13 +45,9 @@ fun formatDuration(seconds: Int): String {
 }
 
 /**
- * The drive that arrives at a stop: "124 km · 1 h 45 min", plus the climb when there is
- * enough of it to be worth a driver's attention.
+ * The drive that arrives at a stop: "124 km · 1 h 45 min". Deliberately not the leg's
+ * climb — cumulative ascent next to a place name reads as the height of the place, which
+ * is a different number and the one people actually want.
  */
-fun formatDrive(leg: StopLeg): String {
-    val climb = leg.ascentMeters?.takeIf { it >= CLIMB_WORTH_MENTIONING_M }?.let { " · ↑ $it m" }
-    return "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}" +
-        climb.orEmpty()
-}
-
-private const val CLIMB_WORTH_MENTIONING_M = 200
+fun formatDrive(leg: StopLeg): String =
+    "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"

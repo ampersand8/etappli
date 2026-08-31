@@ -1,6 +1,7 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.Stop
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -27,11 +28,23 @@ object Elevation {
     const val MAX_SAMPLES = 100
 
     /**
-     * Below this, a rise is DEM noise rather than a hill. Without it, summing every
-     * upward step inflates cumulative ascent badly — the error compounds over hundreds
-     * of samples and always in the same direction.
+     * Below this, a rise is road undulation rather than a climb. It has to be this large:
+     * cumulative ascent does not converge — sample the same 215 km route 16× more finely
+     * and a 10 m threshold grows the total by 47%. At 50 m, with [MAX_ROAD_GRADE], the
+     * same range of densities moves it by 6%.
+     *
+     * Undulation is also already inside the user's measured l/100km, so charging for it
+     * would count it twice. Only sustained climbs are new information.
      */
-    const val MIN_RISE_M = 10.0
+    const val MIN_RISE_M = 50.0
+
+    /**
+     * Steepest average grade a road sustains between two samples. Anything above it is
+     * the DEM describing terrain rather than tarmac — a tunnel reports the mountain over
+     * it, which on one Swiss route showed a road passing through 2876 m, several hundred
+     * metres above the highest pass in the country.
+     */
+    const val MAX_ROAD_GRADE = 0.08
 
     fun url(points: List<LatLng>): String =
         "$BASE_URL?latitude=${points.joinToString(",") { it.latitude.toString() }}" +
@@ -75,27 +88,46 @@ object Elevation {
     }
 
     /**
-     * Cumulative ascent and descent, with a hysteresis filter: a move only counts once it
-     * passes [minRise], and then becomes the new reference. That is what separates a real
-     * climb from the sampling noise sitting on top of it.
+     * Cumulative ascent and descent along [points] at [heights], in two passes:
+     *
+     * 1. Clamp each step to what [MAX_ROAD_GRADE] allows over the distance covered, which
+     *    flattens the phantom peaks the DEM puts over tunnels and deep cuttings.
+     * 2. Hysteresis: a move counts only once it passes [minRise], and then becomes the new
+     *    reference — so undulation does not accumulate.
+     *
+     * Both are needed. Neither alone gives a figure that survives a change of sampling
+     * density, and this one is only stable to about 6%: treat it as an order of magnitude
+     * for costing a climb, never as a measurement.
      */
-    fun profile(heights: List<Double>, minRise: Double = MIN_RISE_M): Climb {
+    fun profile(
+        points: List<LatLng>,
+        heights: List<Double>,
+        minRise: Double = MIN_RISE_M,
+    ): Climb {
         var anchor = heights.firstOrNull() ?: return Climb(0.0, 0.0)
+        var road = anchor
         var ascent = 0.0
         var descent = 0.0
-        heights.forEach { height ->
-            val delta = height - anchor
+        heights.forEachIndexed { index, height ->
+            if (index > 0) {
+                val limit = MAX_ROAD_GRADE * GeoUtils.haversineKm(points[index - 1], points[index]) * 1000
+                road = height.coerceIn(road - limit, road + limit)
+            }
+            val delta = road - anchor
             when {
                 delta >= minRise -> {
                     ascent += delta
-                    anchor = height
+                    anchor = road
                 }
                 delta <= -minRise -> {
                     descent -= delta
-                    anchor = height
+                    anchor = road
                 }
             }
         }
         return Climb(ascent, descent)
     }
+
+    /** A stop's own height, when it was measured where the stop currently sits. */
+    fun ofStop(stop: Stop): Int? = stop.elevation?.takeIf { it.at == stop.location }?.meters
 }
