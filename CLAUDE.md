@@ -221,6 +221,14 @@ Multi-file change recipes live in `.claude/skills/`: **new-screen** (route + scr
 ViewModel + tests), **add-model-field** (model + Firestore mapping + UI + tests),
 **app-review** (pre-commit invariant checklist).
 
+**Edge-to-edge**: `enableEdgeToEdge()` + targetSdk 36, so the app draws under the system
+bars. Screens get it free by applying the `Scaffold` padding (they all do), but a
+**`bottomBar` slot does not** — Scaffold places it flush with the window, so it needs its
+own `windowInsetsPadding` (inside the Surface, so the background still fills the gesture
+area). Same for `ModalBottomSheet` content: `navigationBarsPadding()` on the scrollable
+column, or the Save button lands under the navigation bar. Robolectric renders no system
+bars, so neither the tests nor `ScreenshotsTest` can catch this — check on a device.
+
 ## Verification expectations
 
 Logic/UI changes: `./gradlew test :app:coverageVerify` (+ `:app:pitest` for domain/

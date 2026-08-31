@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.ui.tripdetail
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -64,6 +65,9 @@ fun ExpenseEditSheet(
         Column(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
+                // The sheet reaches the window edge; its Save button must not sit under
+                // the navigation bar. A no-op where the sheet already consumed the inset.
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
