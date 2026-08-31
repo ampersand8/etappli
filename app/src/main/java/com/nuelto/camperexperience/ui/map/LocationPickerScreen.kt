@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -100,6 +102,7 @@ fun LocationPickerScreen(
                 onQueryChange = { query -> viewModel.setQuery(query, camera.center, prefer) },
                 onClear = viewModel::clearSearch,
                 onSelect = viewModel::select,
+                onDeselect = viewModel::clearSelection,
                 onUseSelected = { place ->
                     place.location?.let { onPicked(it, place.takeIf { p -> p.name.isNotBlank() }) }
                 },
@@ -143,6 +146,7 @@ private fun SearchOverlay(
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
     onSelect: (PlaceSuggestion) -> Unit,
+    onDeselect: () -> Unit,
     onUseSelected: (PlaceSuggestion) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -214,6 +218,7 @@ private fun SearchOverlay(
                     keyboard?.hide()
                     onUseSelected(selected)
                 },
+                onDismiss = onDeselect.takeIf { state.results.isNotEmpty() },
             )
         }
     }
@@ -233,6 +238,7 @@ private fun ChosenPlaceCard(
     place: PlaceSuggestion,
     photo: ImageBitmap?,
     onUse: () -> Unit,
+    onDismiss: (() -> Unit)?,
 ) {
     val details = place.details
     Card(Modifier.fillMaxWidth()) {
@@ -273,8 +279,13 @@ private fun ChosenPlaceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Button(onClick = onUse, enabled = place.location != null) {
-                    Text("Use this place")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onUse, enabled = place.location != null) {
+                        Text("Use this place")
+                    }
+                    onDismiss?.let {
+                        TextButton(onClick = it) { Text("Back to results") }
+                    }
                 }
             }
         }

@@ -74,6 +74,9 @@ class LocationPickerViewModel(
         }
     }
 
+    /** Back to the results, keeping the query — the card is otherwise a dead end. */
+    fun clearSelection() = _uiState.update { it.copy(selected = null, photo = null) }
+
     fun clearSearch() {
         searchJob?.cancel()
         _uiState.value = LocationPickerUiState()
@@ -84,6 +87,8 @@ class LocationPickerViewModel(
      * a tapped POI knows only the former, so choosing either needs a second lookup.
      */
     fun select(place: PlaceSuggestion) {
+        // A search still in flight would otherwise land and clear the choice.
+        searchJob?.cancel()
         _uiState.update {
             it.copy(
                 selected = place,
@@ -122,8 +127,11 @@ class LocationPickerViewModel(
     }
 
     /** Press and hold on the map. No name — the editor reverse-geocodes one. */
-    fun dropPin(at: LatLng) = _uiState.update {
-        it.copy(selected = PlaceSuggestion(name = "", label = "", location = at), photo = null)
+    fun dropPin(at: LatLng) {
+        searchJob?.cancel()
+        _uiState.update {
+            it.copy(selected = PlaceSuggestion(name = "", label = "", location = at), photo = null)
+        }
     }
 
     companion object {

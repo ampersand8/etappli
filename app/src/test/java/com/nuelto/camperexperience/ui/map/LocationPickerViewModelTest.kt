@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -284,5 +285,49 @@ class LocationPickerViewModelTest {
         vm.setQuery("grimsel again", bern)
         advanceTimeBy(301)
         assertEquals(listOf(StopKind.STELLPLATZ, null), search.preferences)
+    }
+
+    @Test
+    fun `a search still in flight does not wipe the place you just chose`() = runTest {
+        search.gated = true
+        val vm = viewModel()
+        vm.setQuery("grimsel", bern)
+        advanceTimeBy(301)
+
+        // Choose something (a tapped POI) before the search answers.
+        vm.select(PlaceSuggestion("Aire", "", LatLng(46.5, 8.3), "ChIJ9", PlaceDetails(rating = 4.0)))
+        assertEquals("Aire", vm.uiState.value.selected?.name)
+
+        search.gates.single().complete(Unit)
+        advanceTimeBy(1_000)
+        assertEquals("Aire", vm.uiState.value.selected?.name)
+    }
+
+    @Test
+    fun `a dropped pin survives a search landing behind it`() = runTest {
+        search.gated = true
+        val vm = viewModel()
+        vm.setQuery("grimsel", bern)
+        advanceTimeBy(301)
+
+        vm.dropPin(LatLng(46.5, 7.9))
+        search.gates.single().complete(Unit)
+        advanceTimeBy(1_000)
+        assertEquals(LatLng(46.5, 7.9), vm.uiState.value.selected?.location)
+    }
+
+    @Test
+    fun `going back to the results keeps the query`() = runTest {
+        val vm = viewModel()
+        vm.setQuery("Lauter", bern)
+        advanceTimeBy(301)
+        vm.select(vm.uiState.value.results.single())
+        assertNotNull(vm.uiState.value.selected)
+
+        vm.clearSelection()
+        assertNull(vm.uiState.value.selected)
+        assertNull(vm.uiState.value.photo)
+        assertEquals("Lauter", vm.uiState.value.query)
+        assertEquals(1, vm.uiState.value.results.size)
     }
 }

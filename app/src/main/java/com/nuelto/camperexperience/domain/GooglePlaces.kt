@@ -9,9 +9,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Google Places API (New), Text Search — chosen over Autocomplete because it returns
- * coordinates with the hit, which is what the picker needs to drop markers. Pure request
- * building and lenient parsing; the HTTP call is location/GooglePlacesSearch.
+ * Google Places API (New): Autocomplete for the hits, Place Details for the one that is
+ * chosen. Autocomplete because Text Search resolves a query to a single place — "grimsel"
+ * should offer the pass, the lake and the hospice, not pick one. Pure request building
+ * and lenient parsing; the HTTP calls are location/GooglePlacesSearch.
  */
 object GooglePlaces {
 

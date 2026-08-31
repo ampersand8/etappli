@@ -21,11 +21,22 @@ object PlaceCache {
         return !today.isBefore(cachedAt.plusDays(RETENTION_DAYS))
     }
 
-    /** Stops whose coordinate is past its retention and needs refreshing or deleting. */
-    fun expired(stops: List<Stop>, today: LocalDate): List<Stop> =
-        stops.filter { isExpired(it, today) }
+    /** A stop whose coordinate was deleted but whose place id can still fetch it back. */
+    fun awaitingRefresh(stop: Stop): Boolean =
+        stop.location == null && !stop.placeId.isNullOrBlank()
 
-    /** Drops the coordinate, keeping the place id so it can be fetched again. */
+    /**
+     * Stops the sweeper has work for: past retention, or already emptied by a sweep that
+     * could not reach Google. The second half matters — a refresh can fail simply because
+     * there was no signal, and without it such a stop would never be retried.
+     */
+    fun expired(stops: List<Stop>, today: LocalDate): List<Stop> =
+        stops.filter { isExpired(it, today) || awaitingRefresh(it) }
+
+    /**
+     * Drops the coordinate as §14.3 requires, keeping the place id — which the terms
+     * allow indefinitely — so a later sweep can fetch the coordinate back.
+     */
     fun forget(stop: Stop): Stop = stop.copy(location = null, locationCachedAt = null)
 
     /** Records a freshly fetched Places coordinate against today. */

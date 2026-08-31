@@ -21,7 +21,7 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import com.google.maps.android.compose.rememberUpdatedMarkerState
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.domain.MapFrame
 import com.nuelto.camperexperience.domain.MapMarker
@@ -120,9 +120,11 @@ object GoogleMapProvider : MapProvider {
     }
 }
 
+// rememberMarkerState saves with no inputs, so a marker would keep its first position
+// even after the stop moved; rememberUpdatedMarkerState follows the data.
 @Composable
 private fun markerState(marker: MapMarker): MarkerState =
-    rememberMarkerState(key = marker.stopId, position = marker.at.gms())
+    rememberUpdatedMarkerState(marker.at.gms())
 
 /** A stop: filled, or hollow for a visit. */
 @Composable
