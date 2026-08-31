@@ -4,6 +4,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopElevation
 import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
@@ -145,66 +146,79 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 id = "demo-p1", tripId = provence.id, name = "Camping de la Durance",
                 location = LatLng(44.0966, 6.2358), arrivalDate = LocalDate.of(2025, 9, 12),
                 nights = 3, campingCostTotal = 84.0, orderIndex = 0,
+                elevation = StopElevation(LatLng(44.0966, 6.2358), 449),
             ),
             Stop(
                 id = "demo-p2", tripId = provence.id, name = "Gorges du Verdon",
                 location = LatLng(43.7497, 6.3286), arrivalDate = LocalDate.of(2025, 9, 15),
                 nights = 4, campingCostTotal = 128.0, orderIndex = 1,
+                elevation = StopElevation(LatLng(43.7497, 6.3286), 782),
             ),
             Stop(
                 id = "demo-p3", tripId = provence.id, name = "Aire de Cassis",
                 location = LatLng(43.2140, 5.5396), arrivalDate = LocalDate.of(2025, 9, 19),
                 nights = 2, campingCostTotal = 30.0, orderIndex = 2,
+                elevation = StopElevation(LatLng(43.214, 5.5396), 17),
             ),
             Stop(
                 id = "demo-b1", tripId = blackForest.id, name = "Camping Kirnbergsee",
                 location = LatLng(47.9203, 8.3752), arrivalDate = LocalDate.of(2026, 5, 14),
                 nights = 2, campingCostTotal = 56.0, orderIndex = 0,
+                elevation = StopElevation(LatLng(47.9203, 8.3752), 780),
             ),
             Stop(
                 id = "demo-b2", tripId = blackForest.id, name = "Titisee",
                 location = LatLng(47.8990, 8.1580), arrivalDate = LocalDate.of(2026, 5, 16),
                 nights = 2, campingCostTotal = 64.0, orderIndex = 1,
+                elevation = StopElevation(LatLng(47.899, 8.158), 858),
             ),
             Stop(
                 id = "demo-j1", tripId = jura.id, name = "Camping Lido Luzern",
                 location = LatLng(47.0410, 8.3370), arrivalDate = LocalDate.of(2027, 6, 10),
                 nights = 2, orderIndex = 0, costKnown = false,
+                elevation = StopElevation(LatLng(47.041, 8.337), 434),
             ),
             Stop(
                 id = "demo-j2", tripId = jura.id, name = "Aareschlucht",
                 location = LatLng(46.7226, 8.2231), arrivalDate = LocalDate.of(2027, 6, 12),
                 nights = 0, orderIndex = 1, kind = StopKind.VISIT,
+                elevation = StopElevation(LatLng(46.7226, 8.2231), 600),
             ),
             Stop(
                 id = "demo-j3", tripId = jura.id, name = "Stellplatz Airolo",
                 location = LatLng(46.5285, 8.6120), arrivalDate = LocalDate.of(2027, 6, 12),
                 nights = 1, orderIndex = 2, kind = StopKind.STELLPLATZ, costKnown = false,
+                elevation = StopElevation(LatLng(46.5285, 8.612), 1175),
             ),
             Stop(
                 id = "demo-j4", tripId = jura.id, name = "Camping Delta Locarno",
                 location = LatLng(46.1591, 8.7853), arrivalDate = LocalDate.of(2027, 6, 13),
                 nights = 3, campingCostTotal = 186.0, orderIndex = 3,
+                elevation = StopElevation(LatLng(46.1591, 8.7853), 199),
             ),
             Stop(
                 id = "demo-v1", tripId = vierwald.id, name = "Camping Seefeld Sarnen",
                 location = LatLng(46.8709, 8.2492), arrivalDate = LocalDate.now().minusDays(1),
                 nights = 2, campingCostTotal = 84.0, orderIndex = 0, state = StopState.DONE,
+                elevation = StopElevation(LatLng(46.8709, 8.2492), 473),
             ),
             Stop(
                 id = "demo-v2", tripId = vierwald.id, name = "Rütli",
                 location = LatLng(46.9690, 8.5990), arrivalDate = LocalDate.now().plusDays(1),
                 nights = 0, orderIndex = 1, kind = StopKind.VISIT,
+                elevation = StopElevation(LatLng(46.969, 8.599), 451),
             ),
             Stop(
                 id = "demo-v3", tripId = vierwald.id, name = "Stellplatz Brunnen",
                 location = LatLng(46.9930, 8.6060), arrivalDate = LocalDate.now().plusDays(1),
                 nights = 1, orderIndex = 2, kind = StopKind.STELLPLATZ, costKnown = false,
+                elevation = StopElevation(LatLng(46.993, 8.606), 439),
             ),
             Stop(
                 id = "demo-v4", tripId = vierwald.id, name = "Camping Buochs",
                 location = LatLng(46.9740, 8.4230), arrivalDate = LocalDate.now().plusDays(2),
                 nights = 2, orderIndex = 3, costKnown = false,
+                elevation = StopElevation(LatLng(46.974, 8.423), 435),
             ),
         )
         expensesFlow.value = listOf(

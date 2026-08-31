@@ -156,6 +156,9 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   length); nights/arrival changes instead shift downstream dates (`DateCascade.shift`).
   Color language everywhere (lists, timeline, maps):
   **blue = planned, green = active/current, grey = done** (`ui/theme/StatusColors.kt`).
+  In the timeline a stop's icon carries both axes at once: the **shape** is the kind
+  (tent / RV hookup / forest / camera) and the **tint** is that status color. Its height
+  above sea level rides to the right of the name as a small mountain badge.
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
   from `Source.CACHE` (which includes pending writes, so it works offline). Any new

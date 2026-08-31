@@ -3,7 +3,6 @@ package com.nuelto.camperexperience.ui.tripdetail
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,13 +19,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Terrain
+import androidx.compose.material.icons.filled.RvHookup
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Forest
+import androidx.compose.material.icons.filled.Festival
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -69,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
@@ -101,6 +105,7 @@ import com.nuelto.camperexperience.ui.components.reorderable
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
 import com.nuelto.camperexperience.ui.formatDrive
+import com.nuelto.camperexperience.ui.tripedit.displayName
 import com.nuelto.camperexperience.ui.formatTripDates
 import com.nuelto.camperexperience.ui.map.TripMap
 import com.nuelto.camperexperience.ui.theme.ActiveGreen
@@ -529,14 +534,25 @@ private fun NowCard(
             DriveLine(leg)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    stop.name + altitudeSuffix(stop),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                StopDot(stop, TripStatus.ACTIVE)
+                // Weighted, so the price stays pinned to the right edge; the name inside
+                // is not, so the height badge sits against the name rather than drifting.
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        stop.name,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    ElevationBadge(stop)
+                }
                 if (stop.kind != StopKind.VISIT) {
                     Text(
                         stopPriceText(stop, TripStatus.ACTIVE, settings),
@@ -661,11 +677,20 @@ private fun TimelineStopRow(
             StopDot(stop, tripStatus)
             Column(Modifier.weight(1f)) {
                 DriveLine(leg)
-                Text(
-                    stop.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    textDecoration = if (stop.state == StopState.SKIPPED) TextDecoration.LineThrough else null,
-                )
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        stop.name,
+                        // fill = false so the height sits against the name, not out at
+                        // the far edge; unweighted, the badge keeps its width first.
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleSmall,
+                        textDecoration = if (stop.state == StopState.SKIPPED) TextDecoration.LineThrough else null,
+                    )
+                    ElevationBadge(stop)
+                }
                 Text(
                     stopMetaText(stop, tripStatus, settings),
                     style = MaterialTheme.typography.bodyMedium,
@@ -708,7 +733,10 @@ private fun DriveLine(leg: StopLeg?) {
     )
 }
 
-/** Blue = upcoming, green = current, grey = done/skipped; visits are hollow. */
+/**
+ * What the spot is, in the lifecycle colour: blue = upcoming, green = current,
+ * grey = done/skipped. Shape says the kind, colour says where it is in the trip.
+ */
 @Composable
 private fun StopDot(stop: Stop, tripStatus: TripStatus) {
     val color = if (tripStatus == TripStatus.DONE) {
@@ -716,19 +744,46 @@ private fun StopDot(stop: Stop, tripStatus: TripStatus) {
     } else {
         stopColor(stop.state, isCurrent = false)
     }
-    val dot = Modifier.size(12.dp).clip(CircleShape)
-    Box(
-        if (stop.kind == StopKind.VISIT) {
-            dot.border(2.dp, color, CircleShape)
-        } else {
-            dot.background(color)
-        },
+    Icon(
+        kindIcon(stop.kind),
+        contentDescription = stop.kind.displayName,
+        modifier = Modifier.size(18.dp),
+        tint = color,
     )
+}
+
+private fun kindIcon(kind: StopKind): ImageVector = when (kind) {
+    StopKind.CAMPSITE -> Icons.Default.Festival
+    StopKind.STELLPLATZ -> Icons.Default.RvHookup
+    StopKind.FREE_CAMP -> Icons.Default.Forest
+    StopKind.VISIT -> Icons.Default.PhotoCamera
+}
+
+/** How high the place is — a mountain, because "1469 m" alone reads as a distance. */
+@Composable
+private fun ElevationBadge(stop: Stop) {
+    val meters = Elevation.ofStop(stop) ?: return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            Icons.Default.Terrain,
+            contentDescription = "Height above sea level",
+            modifier = Modifier.size(13.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "$meters m",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String {
     val date = formatDate(stop.arrivalDate)
-    val meta = when {
+    return when {
         stop.state == StopState.SKIPPED -> "skipped"
         stop.kind == StopKind.VISIT -> "$date · visit"
         else -> {
@@ -736,12 +791,7 @@ private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSetti
             "$date · $nights · ${stopPriceText(stop, tripStatus, settings)}"
         }
     }
-    return meta + altitudeSuffix(stop)
 }
-
-/** How high the place is, the way a Swiss village sign gives it. */
-private fun altitudeSuffix(stop: Stop): String =
-    Elevation.ofStop(stop)?.let { " · $it m" }.orEmpty()
 
 /** An unpriced stay on a live trip shows what the default rate would charge. */
 private fun stopPriceText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String =

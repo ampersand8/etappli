@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import com.nuelto.camperexperience.ui.tripedit.displayName
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -662,6 +664,43 @@ class TripDetailScreenTest {
         setContent("p1")
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
         compose.onAllNodesWithText("1469 m", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `each kind of spot gets its own icon beside the name`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(id = "k1", name = "Kinds", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+            )
+            StopKind.entries.forEachIndexed { index, kind ->
+                tripRepository.upsertStop(
+                    Stop(
+                        id = "k-$kind", tripId = "k1", name = kind.name, orderIndex = index,
+                        kind = kind, nights = if (kind == StopKind.VISIT) 0 else 1,
+                        location = LatLng(47.0 + index, 8.0),
+                        arrivalDate = LocalDate.of(2027, 6, 10 + index),
+                    ),
+                )
+            }
+        }
+        setContent("k1")
+        StopKind.entries.forEach { kind ->
+            compose.onNodeWithTag("timeline").performScrollToNode(hasText(kind.name))
+            compose.onAllNodesWithContentDescription(kind.displayName).onFirst().assertExists()
+        }
+    }
+
+    @Test
+    fun `the height carries an icon that says what it is`() {
+        seedPlan()
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            tripRepository.upsertStop(s2.copy(elevation = StopElevation(LatLng(46.16, 8.79), 1469)))
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
+        compose.onNodeWithContentDescription("Height above sea level", useUnmergedTree = true)
+            .assertExists()
     }
 
 }
