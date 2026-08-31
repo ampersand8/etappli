@@ -5,8 +5,10 @@ import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import java.text.NumberFormat
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.time.temporal.ChronoUnit
 import java.util.Currency
 import kotlin.math.roundToInt
 
@@ -52,6 +54,29 @@ fun formatDuration(seconds: Int): String {
 fun formatDrive(leg: StopLeg): String =
     "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"
 
-/** The live drive to the stop you are heading for: "47 km · 55 min from here". */
-fun formatDriveFromHere(distanceMeters: Int, durationSeconds: Int): String =
-    "${formatDistance(distanceMeters)} · ${formatDuration(durationSeconds)} from here"
+private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+
+/**
+ * When you get there if you set off now. Names the day too once the drive crosses
+ * midnight — "arrive 04:12" on its own would read as four hours ago.
+ */
+fun formatArrival(durationSeconds: Int, now: LocalDateTime): String {
+    // Rounded to the minute exactly as formatDuration rounds, or the same line would say
+    // "2 min" and then an arrival one minute earlier than that.
+    val arrival = now.plusMinutes((durationSeconds / 60.0).roundToInt().toLong())
+    val days = ChronoUnit.DAYS.between(now.toLocalDate(), arrival.toLocalDate())
+    val day = when (days) {
+        0L -> ""
+        1L -> " tomorrow"
+        else -> " on ${formatDate(arrival.toLocalDate())}"
+    }
+    return "arrive ${arrival.format(timeFormatter)}$day"
+}
+
+/**
+ * The live drive to the stop you are heading for, and when it gets you there:
+ * "47 km · 55 min from here · arrive 16:42".
+ */
+fun formatDriveFromHere(distanceMeters: Int, durationSeconds: Int, now: LocalDateTime): String =
+    "${formatDistance(distanceMeters)} · ${formatDuration(durationSeconds)} from here · " +
+        formatArrival(durationSeconds, now)

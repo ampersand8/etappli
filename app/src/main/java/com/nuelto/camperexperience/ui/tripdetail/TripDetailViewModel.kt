@@ -121,6 +121,12 @@ class TripDetailViewModel(
             liveDrive,
         ) { trip, stops, expenses, settings, fromHere ->
             val planning = trip != null && trip.status != TripStatus.DONE
+            val currentId = if (trip?.status == TripStatus.ACTIVE) {
+                CurrentStop.of(stops, LocalDate.now())
+            } else {
+                null
+            }
+            val current = stops.find { it.id == currentId }
             TripDetailUiState(
                 trip = trip,
                 stops = stops,
@@ -129,13 +135,11 @@ class TripDetailViewModel(
                 breakdown = CostCalculator.breakdown(stops, expenses),
                 fuelEstimate = FuelEstimator.autoTripFuelCost(stops, expenses, settings),
                 estimate = if (planning) TripEstimator.estimate(stops, expenses, settings) else null,
-                currentStopId = if (trip?.status == TripStatus.ACTIVE) {
-                    CurrentStop.of(stops, LocalDate.now())
-                } else {
-                    null
-                },
+                currentStopId = currentId,
                 drives = RouteCache.byStop(stops),
-                driveFromHere = fromHere,
+                // Once you have checked in you are there, so how far away it is stops
+                // being a question — whatever the last fix said.
+                driveFromHere = fromHere?.takeIf { current?.state != StopState.DONE },
                 vignetteSuggestions = if (planning) vignetteSuggestions(stops, expenses) else emptyList(),
                 settings = settings,
                 loading = false,
@@ -152,7 +156,10 @@ class TripDetailViewModel(
      */
     fun refreshDriveFromHere() {
         val state = uiState.value
-        val target = state.stops.find { it.id == state.currentStopId }?.location ?: return
+        val stop = state.stops.find { it.id == state.currentStopId } ?: return
+        // No route is worth buying for somewhere you have already arrived.
+        if (stop.state == StopState.DONE) return
+        val target = stop.location ?: return
         if (locating) return
         locating = true
         viewModelScope.launch {
