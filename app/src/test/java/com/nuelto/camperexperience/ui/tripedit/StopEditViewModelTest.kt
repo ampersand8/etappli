@@ -153,11 +153,31 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `save without a name is refused`() = runTest {
+    fun `save without a name or a place is refused`() = runTest {
         var saved = false
         newStopViewModel().save { saved = true }
         assertFalse(saved)
         assertTrue(tripRepository.stops("t1").first().isEmpty())
+    }
+
+    @Test
+    fun `a pin nothing can name saves under its kind`() = runTest {
+        // No resolver, no field on a new stop: the kind is all the name there is.
+        val vm = StopEditViewModel(SavedStateHandle(mapOf("tripId" to "t1")), tripRepository, settingsRepository)
+        vm.setLocation(LatLng(46.0, 7.0))
+        assertTrue(vm.uiState.value.canSave)
+        vm.setKind(StopKind.FREE_CAMP)
+        vm.save {}
+        assertEquals("Free camp", tripRepository.stops("t1").first().single().name)
+    }
+
+    @Test
+    fun `clearing the name of an existing stop falls back to the place`() = runTest {
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", name = "Camp", location = LatLng(46.0, 7.0)))
+        val vm = editViewModel("s1")
+        vm.setName("  ")
+        vm.save {}
+        assertEquals("Place@46.0", tripRepository.stops("t1").first().single().name)
     }
 
     @Test
@@ -180,6 +200,67 @@ class StopEditViewModelTest {
         vm.setKind(StopKind.CAMPSITE)
         vm.save {}
         assertFalse(tripRepository.stops("t1").first().single().costKnown)
+    }
+
+    private fun insertViewModel(before: String) = StopEditViewModel(
+        SavedStateHandle(mapOf("tripId" to "t1", "insertBefore" to before)),
+        tripRepository,
+        settingsRepository,
+        resolver,
+    )
+
+    @Test
+    fun `a stop inserted in front of another takes its slot and pushes the plan back`() = runTest {
+        tripRepository.upsertStop(
+            Stop(id = "a", tripId = "t1", name = "A", orderIndex = 0, nights = 2, arrivalDate = LocalDate.of(2027, 6, 10)),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "b", tripId = "t1", name = "B", orderIndex = 1, nights = 1, arrivalDate = LocalDate.of(2027, 6, 12)),
+        )
+        val vm = insertViewModel("b")
+        // It arrives the day A leaves, and no GPS fix is asked for.
+        assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate)
+        assertFalse(vm.uiState.value.autoLocatePending)
+        vm.setName("Between")
+        vm.setNights(2)
+        vm.save {}
+        val stops = tripRepository.stops("t1").first().sortedBy { it.orderIndex }
+        assertEquals(listOf("A", "Between", "B"), stops.map { it.name })
+        assertEquals(LocalDate.of(2027, 6, 14), stops.last().arrivalDate) // pushed back two nights
+    }
+
+    @Test
+    fun `a stop inserted in front of unplanned nights starts on the first of them`() = runTest {
+        tripRepository.upsertStop(
+            Stop(id = "a", tripId = "t1", name = "A", orderIndex = 0, nights = 2, arrivalDate = LocalDate.of(2027, 6, 10)),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "b", tripId = "t1", name = "B", orderIndex = 1, nights = 1, arrivalDate = LocalDate.of(2027, 6, 15)),
+        )
+        val vm = insertViewModel("gap-b")
+        assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate)
+        vm.setName("Between")
+        vm.setNights(1)
+        vm.save {}
+        val stops = tripRepository.stops("t1").first().sortedBy { it.orderIndex }
+        assertEquals(listOf("A", "Between", "B"), stops.map { it.name })
+        // The three empty nights survive the insert, now after it.
+        assertEquals(LocalDate.of(2027, 6, 16), stops.last().arrivalDate)
+    }
+
+    @Test
+    fun `a stop inserted in front of a row that is gone just appends`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "a", tripId = "t1", name = "A", orderIndex = 0, nights = 2, arrivalDate = LocalDate.of(2027, 6, 10)),
+        )
+        val vm = insertViewModel("gone")
+        assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate) // chained off A
+        vm.setName("Last")
+        vm.save {}
+        assertEquals(listOf("A", "Last"), tripRepository.stops("t1").first().sortedBy { it.orderIndex }.map { it.name })
     }
 
     @Test

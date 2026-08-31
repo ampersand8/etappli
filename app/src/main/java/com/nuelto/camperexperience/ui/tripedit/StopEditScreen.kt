@@ -95,13 +95,20 @@ fun StopEditScreen(
                     )
                 }
             }
-            OutlinedTextField(
-                value = state.name,
-                onValueChange = viewModel::setName,
-                label = { Text(if (state.isStay) "Campsite / place" else "Place") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (state.isNew) {
+                // The place you pick names the stop — nothing to type. Blank until then.
+                if (state.name.isNotBlank()) {
+                    Text(state.name, style = MaterialTheme.typography.headlineSmall)
+                }
+            } else {
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = viewModel::setName,
+                    label = { Text(if (state.isStay) "Campsite / place" else "Place") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             DateField(
                 label = "Arrival",
                 date = state.arrivalDate,

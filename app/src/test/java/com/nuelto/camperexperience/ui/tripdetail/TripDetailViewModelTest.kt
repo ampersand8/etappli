@@ -299,6 +299,19 @@ class TripDetailViewModelTest {
     }
 
     @Test
+    fun `an unplanned night inserted in front of a stop moves the rest of the plan back`() = runTest {
+        seedTrip(status = TripStatus.PLANNED)
+        val vm = hotViewModel()
+        vm.insertGap("s2")
+        assertEquals(LocalDate.of(2026, 7, 1), stops().first { it.id == "s1" }.arrivalDate) // untouched
+        assertEquals(LocalDate.of(2026, 7, 4), stops().first { it.id == "s2" }.arrivalDate)
+        assertEquals(listOf("s1", "gap-s2", "s2"), vm.uiState.value.rows.map { it.key })
+        // A row that is no longer there cannot be inserted in front of.
+        vm.insertGap("gone")
+        assertEquals(LocalDate.of(2026, 7, 4), stops().first { it.id == "s2" }.arrivalDate)
+    }
+
+    @Test
     fun `a gap dragged past a stop is renamed after the stop it lands in front of`() = runTest {
         tripRepository.upsertTrip(Trip(id = "t1", name = "P", startDate = LocalDate.of(2026, 7, 1)))
         listOf(

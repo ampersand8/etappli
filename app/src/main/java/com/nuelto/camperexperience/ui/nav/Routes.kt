@@ -11,8 +11,9 @@ data class TripDetailRoute(val tripId: String)
 @Serializable
 data class TripEditRoute(val tripId: String? = null, val planned: Boolean = false)
 
+/** [insertBefore] is the timeline row key a new stop goes in front of; null appends. */
 @Serializable
-data class StopEditRoute(val tripId: String, val stopId: String? = null)
+data class StopEditRoute(val tripId: String, val stopId: String? = null, val insertBefore: String? = null)
 
 @Serializable
 data class AllTripsMapRoute(val tripId: String? = null)

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -38,9 +39,11 @@ class StopEditScreenTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val events = mutableListOf<String>()
 
+    private lateinit var viewModel: StopEditViewModel
+
     private fun setContent(stopId: String? = null, withLocationSection: Boolean = false) {
         val args = if (stopId == null) mapOf("tripId" to "t1") else mapOf("tripId" to "t1", "stopId" to stopId)
-        val viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, InMemorySettingsRepository(), null)
+        viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, InMemorySettingsRepository(), null)
         compose.setContent {
             if (withLocationSection) {
                 StopEditScreen(
@@ -68,7 +71,10 @@ class StopEditScreenTest {
         compose.onNodeWithContentDescription("Fewer nights").performClick()
         compose.onNodeWithText("1").assertIsDisplayed()
 
-        compose.onNodeWithText("Campsite / place").performTextInput("Aire")
+        // Nothing to type: the picked place is the name, shown where the field used to be.
+        compose.onNodeWithText("Campsite / place").assertDoesNotExist()
+        compose.runOnIdle { viewModel.setPickedLocation(LatLng(46.5, 7.5), "Aire", "Route 1") }
+        compose.onNodeWithText("Aire").assertIsDisplayed()
         compose.onNodeWithText("Camping cost (total for stay)").performTextInput("25")
         compose.onNodeWithText("Save").performClick()
         assertEquals(listOf("back"), events)
@@ -101,6 +107,18 @@ class StopEditScreenTest {
     }
 
     @Test
+    fun `an existing stop can still be renamed`() {
+        runBlocking { tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", name = "Camp")) }
+        setContent("s1")
+        compose.onNodeWithText("Campsite / place").performTextClearance()
+        compose.onNodeWithText("Campsite / place").performTextInput("Grandma's driveway")
+        compose.onNodeWithText("Save").performClick()
+        runBlocking {
+            assertEquals("Grandma's driveway", tripRepository.stops("t1").first().single().name)
+        }
+    }
+
+    @Test
     fun `cancel navigates back`() {
         setContent()
         compose.onNodeWithContentDescription("Cancel").performClick()
@@ -113,7 +131,7 @@ class StopEditScreenTest {
         compose.onNodeWithText("Visit").performClick()
         compose.onNodeWithText("Nights").assertDoesNotExist()
         compose.onNodeWithText("Camping cost (total for stay)").assertDoesNotExist()
-        compose.onNodeWithText("Place").performTextInput("Aareschlucht")
+        compose.runOnIdle { viewModel.setPickedLocation(LatLng(46.7, 8.2), "Aareschlucht", "Meiringen") }
         compose.onNodeWithText("Save").performClick()
         runBlocking {
             val stop = tripRepository.stops("t1").first().single()

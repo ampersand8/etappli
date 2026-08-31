@@ -18,6 +18,7 @@ import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.domain.DateCascade
 import com.nuelto.camperexperience.domain.MapsUri
+import com.nuelto.camperexperience.domain.Timeline
 import com.nuelto.camperexperience.domain.nearestLocated
 import com.nuelto.camperexperience.location.PlaceNameResolver
 import com.nuelto.camperexperience.ui.components.parseDecimal
@@ -49,7 +50,8 @@ data class StopEditUiState(
     val placeId: String? = null,
     val locationCachedAt: LocalDate? = null,
 ) {
-    val canSave: Boolean get() = name.isNotBlank()
+    // A new stop has no name field: somewhere to be is enough, [savedName] finds it a name.
+    val canSave: Boolean get() = name.isNotBlank() || location != null
     /** Nights and a price only make sense where you actually stay. */
     val isStay: Boolean get() = kind.isStay
     val pickerStart: LatLng? get() = location ?: nearbyLocation
@@ -64,6 +66,10 @@ data class StopEditUiState(
             ?: "Not set"
 }
 
+/** A pin nothing could name still needs one: the place if we know it, else the kind. */
+private fun StopEditUiState.savedName(): String =
+    name.trim().ifBlank { locationName ?: kind.displayName }
+
 class StopEditViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
@@ -75,6 +81,8 @@ class StopEditViewModel(
     val tripId: String get() = route.tripId
     private var existing: Stop? = null
     private var tripStatus: TripStatus? = null
+    // Order index a stop inserted between two rows takes over; null when it appends.
+    private var insertAt: Int? = null
 
     // Last name we auto-filled from reverse geocoding or a suggestion; anything else was
     // typed by the user and must never be overwritten.
@@ -92,9 +100,17 @@ class StopEditViewModel(
             val stops = tripRepository.stops(route.tripId).first()
 
             if (route.stopId == null) {
-                // A new stop lands at the end, so the whole trip is "before" it.
-                _uiState.update { it.copy(nearbyLocation = nearestLocated(stops, Int.MAX_VALUE)) }
-                if (trip == null || trip.status == TripStatus.ACTIVE) {
+                // Inserted in front of a row, or — with no key — landing at the end,
+                // where the whole trip is "before" it.
+                val at = route.insertBefore?.let { Timeline.insertion(Timeline.rows(stops), it) }
+                insertAt = at?.orderIndex
+                _uiState.update {
+                    it.copy(nearbyLocation = nearestLocated(stops, at?.orderIndex ?: Int.MAX_VALUE))
+                }
+                if (at != null) {
+                    // The slot says which day this starts on; no GPS fix improves on that.
+                    _uiState.update { it.copy(arrivalDate = at.date) }
+                } else if (trip == null || trip.status == TripStatus.ACTIVE) {
                     // Logging where you are: immediately try a GPS fix.
                     _uiState.update { it.copy(autoLocatePending = true) }
                 } else {
@@ -229,7 +245,7 @@ class StopEditViewModel(
                     (old != null && old.costKnown && old.campingCostTotal == 0.0 && old.kind == state.kind)
                 tripRepository.upsertStop(
                     base.copy(
-                        name = state.name.trim(),
+                        name = state.savedName(),
                         arrivalDate = state.arrivalDate,
                         nights = nights,
                         campingCostTotal = if (state.isStay) parsed ?: 0.0 else 0.0,
@@ -241,14 +257,15 @@ class StopEditViewModel(
                         locationCachedAt = state.locationCachedAt,
                     ),
                 )
+                // An inserted stay pushes the rest of the plan back by the nights it takes.
+                insertAt?.let { at -> shiftAfter(at, nights.toLong()) }
                 // A moved departure shifts the downstream planned schedule along.
                 if (old != null) {
                     val days = ChronoUnit.DAYS.between(
                         old.arrivalDate.plusDays(old.nights.toLong()),
                         state.arrivalDate.plusDays(nights.toLong()),
                     )
-                    DateCascade.shift(tripRepository.stops(route.tripId).first(), old.orderIndex, days)
-                        .forEach { tripRepository.upsertStop(it) }
+                    shiftAfter(old.orderIndex, days)
                 }
                 onSaved()
             } finally {
@@ -257,21 +274,34 @@ class StopEditViewModel(
         }
     }
 
+    private suspend fun shiftAfter(orderIndex: Int, days: Long) {
+        DateCascade.shift(tripRepository.stops(route.tripId).first(), orderIndex, days)
+            .forEach { tripRepository.upsertStop(it) }
+    }
+
     /**
-     * New stops append — except mid-trip with check-ins, where a spontaneous stop
-     * slots in right after the last done stop (upcoming stops move down one).
+     * New stops append — except when one is inserted in front of a row, and mid-trip
+     * with check-ins, where a spontaneous stop slots in right after the last done stop.
+     * Either way the stops from there on move down one.
      */
     private suspend fun newOrderIndex(): Int {
         val stops = tripRepository.stops(route.tripId).first()
+        insertAt?.let { at ->
+            shoveDown(stops, at)
+            return at
+        }
         val lastDone = stops.filter { it.state == StopState.DONE }.maxOfOrNull { it.orderIndex }
         if (tripStatus != TripStatus.ACTIVE || lastDone == null) {
             return (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1
         }
-        val insertAt = lastDone + 1
-        stops.filter { it.orderIndex >= insertAt }.forEach {
-            tripRepository.upsertStop(it.copy(orderIndex = it.orderIndex + 1))
-        }
-        return insertAt
+        val at = lastDone + 1
+        shoveDown(stops, at)
+        return at
+    }
+
+    private suspend fun shoveDown(stops: List<Stop>, from: Int) {
+        stops.filter { it.orderIndex >= from }
+            .forEach { tripRepository.upsertStop(it.copy(orderIndex = it.orderIndex + 1)) }
     }
 
     fun delete(onDeleted: () -> Unit) {

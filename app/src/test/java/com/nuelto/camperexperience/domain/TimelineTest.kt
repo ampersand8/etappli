@@ -36,6 +36,20 @@ class TimelineTest {
     }
 
     @Test
+    fun `an insertion takes the place and the first day of the row it lands in front of`() {
+        val stops = listOf(
+            stop("a", 0, base, nights = 2), // leaves the 3rd
+            stop("b", 1, base.plusDays(4)), // arrives the 5th
+        )
+        val rows = Timeline.rows(stops)
+        // In front of the empty nights: the day after A leaves, taking B's index.
+        assertEquals(Insertion(1, base.plusDays(2)), Timeline.insertion(rows, "gap-b"))
+        // In front of B itself: after those nights have been spent.
+        assertEquals(Insertion(1, base.plusDays(4)), Timeline.insertion(rows, "b"))
+        assertNull(Timeline.insertion(rows, "gone"))
+    }
+
+    @Test
     fun `back-to-back and overlapping stops leave no gap`() {
         val stops = listOf(
             stop("a", 0, base, nights = 2),

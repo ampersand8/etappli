@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -57,6 +58,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
@@ -144,7 +147,8 @@ val ExpenseType.displayName: String
 fun TripDetailScreen(
     onBack: () -> Unit,
     onEditTrip: (String) -> Unit,
-    onAddStop: (String) -> Unit,
+    // The row key a new stop goes in front of, or null to add it at the end.
+    onAddStop: (tripId: String, insertBefore: String?) -> Unit,
     onEditStop: (String, String) -> Unit,
     onOpenTripMap: (String) -> Unit,
     onOpenTrip: (String) -> Unit,
@@ -270,7 +274,7 @@ fun TripDetailScreen(
                             ExtendedFloatingActionButton(
                                 onClick = {
                                     fabMenuExpanded = false
-                                    onAddStop(trip.id)
+                                    onAddStop(trip.id, null)
                                 },
                                 icon = { Icon(Icons.Default.Place, contentDescription = null) },
                                 text = { Text("Stop") },
@@ -395,11 +399,22 @@ fun TripDetailScreen(
                     )
                 }
             }
-            items(state.rows, key = { it.key }) { row ->
+            itemsIndexed(state.rows, key = { _, row -> row.key }) { index, row ->
                 val movable = row.key in movableKeys
                 val rowModifier = Modifier
                     .testTag("row-${row.key}")
                     .reorderable(reorder, row.key, listState, enabled = movable)
+                // A slot between two rows only: a plan starts at its first stop, and the
+                // FAB adds to the end. Where a row cannot be moved it cannot be pushed
+                // back either — nothing goes in front of what has already happened.
+                // (A lazy item may emit several rows; these stack.)
+                if (index > 0 && movable) {
+                    InsertSlot(
+                        onStop = { onAddStop(trip.id, row.key) },
+                        onNothingPlanned = { viewModel.insertGap(row.key) },
+                        modifier = Modifier.testTag("insert-${row.key}"),
+                    )
+                }
                 when (row) {
                     is GapRow -> GapCard(
                         row = row,
@@ -689,6 +704,48 @@ private fun NowCard(
 }
 
 /** Nights nobody planned: resize them, drop them, or drag them elsewhere in the plan. */
+/**
+ * The "+" between two rows. What goes in the slot is either a stop or nights you
+ * leave unplanned; either way the rest of the plan moves back by the nights it takes.
+ */
+@Composable
+private fun InsertSlot(
+    onStop: () -> Unit,
+    onNothingPlanned: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        // Its own gap to the row below: lazy items space themselves, their contents don't.
+        modifier = modifier.fillMaxWidth().padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HorizontalDivider(Modifier.weight(1f))
+        Box {
+            IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Insert here",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                DropdownMenuItem(
+                    text = { Text("Stop") },
+                    onClick = { open = false; onStop() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Nothing planned") },
+                    onClick = { open = false; onNothingPlanned() },
+                )
+            }
+        }
+        HorizontalDivider(Modifier.weight(1f))
+    }
+}
+
 @Composable
 private fun GapCard(
     row: GapRow,
