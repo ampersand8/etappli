@@ -30,7 +30,7 @@ object TripEstimator {
     fun nightlyRate(kind: StopKind, settings: UserSettings): Double = when (kind) {
         StopKind.CAMPSITE -> settings.campsitePerNight
         StopKind.STELLPLATZ -> settings.stellplatzPerNight
-        StopKind.FREE_CAMP, StopKind.VISIT -> 0.0
+        StopKind.FREE_CAMP, StopKind.VISIT, StopKind.HOME -> 0.0
     }
 
     fun estimate(stops: List<Stop>, expenses: List<Expense>, settings: UserSettings): EstimateBreakdown {

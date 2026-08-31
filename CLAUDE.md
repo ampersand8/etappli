@@ -151,7 +151,8 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   (`allStops()`/`allExpenses()`) combine per-trip listeners instead.
 - **Trip lifecycle**: `Trip.status` PLANNED → ACTIVE → DONE; one Timeline screen
   (TripDetail) serves all three with status-gated affordances. Stops carry `kind`
-  (CAMPSITE/STELLPLATZ/FREE_CAMP/VISIT — visits are zero-cost route points) and `state`
+  (CAMPSITE/STELLPLATZ/FREE_CAMP/VISIT/HOME — visits and home are zero-cost route points;
+  everything nights- or price-related keys off `StopKind.isStay`, never off naming VISIT) and `state`
   (PLANNED/DONE/SKIPPED — skipped stops stay in the record but count toward nothing).
   Legacy Firestore docs derive status from endDate (`legacyTripStatus`) — never PLANNED.
   Start-tour/plan-again copies go through `domain/TripStarter` (composed over the
@@ -190,6 +191,12 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   road tax and other expenses. Vignette suggestions come from `domain/CountryGuess`
   (offline bounding boxes, confirm-only) + `domain/VignetteTable` — **refresh the table's
   prices yearly with the `appVersionBase` bump**.
+- **Home** is a `UserSettings` pin (`homeName`/`homeLocation`) picked in Settings through
+  the same injected `LocationSection` the stop editor uses. A new *plan* opens with it as
+  its first stop (`domain/HomeStop`) — a real Stop of kind HOME, not a special case, so
+  the timeline, map, distance and fuel all count it without knowing what home is. It is
+  editable and deletable like any other stop; HOME is hidden from the kind chips so a
+  second one cannot be made by hand.
 - **Navigation** (`ui/nav/`): type-safe kotlinx-serialization routes. The location picker
   returns its result through the **previous** back-stack entry's `SavedStateHandle` under
   `PICKED_LOCATION_KEY` (a `DoubleArray`); `AppNavHost` observes it and feeds

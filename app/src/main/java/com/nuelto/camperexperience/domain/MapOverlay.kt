@@ -2,7 +2,7 @@ package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
-import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.isStay
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
@@ -10,7 +10,7 @@ import com.nuelto.camperexperience.data.model.TripStatus
 /** The app's colour language, provider-agnostic: blue = planned, green = current, grey = done. */
 enum class MapAccent { PLANNED, CURRENT, DONE }
 
-/** Visits render hollow — they are route points, not stays. */
+/** Visits and home render hollow — they are route points, not stays. */
 data class MapMarker(
     val tripId: String,
     val stopId: String,
@@ -60,7 +60,7 @@ object MapOverlay {
                     stopId = stop.id,
                     at = it,
                     accent = entry.accent(stop),
-                    hollow = stop.kind == StopKind.VISIT,
+                    hollow = !stop.kind.isStay,
                 )
             }
         }

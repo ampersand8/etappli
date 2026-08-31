@@ -15,6 +15,7 @@ import com.nuelto.camperexperience.ui.map.AllTripsMapScreen
 import com.nuelto.camperexperience.ui.map.LocationPickerScreen
 import com.nuelto.camperexperience.ui.map.LocationSection
 import com.nuelto.camperexperience.ui.settings.SettingsScreen
+import com.nuelto.camperexperience.ui.settings.SettingsViewModel
 import com.nuelto.camperexperience.ui.tripdetail.TripDetailScreen
 import com.nuelto.camperexperience.ui.tripedit.StopEditScreen
 import com.nuelto.camperexperience.ui.tripedit.StopEditViewModel
@@ -126,8 +127,40 @@ fun AppNavHost() {
                 onCancel = { navController.popBackStack() },
             )
         }
-        composable<SettingsRoute> {
-            SettingsScreen(onBack = { navController.popBackStack() })
+        composable<SettingsRoute> { backStackEntry ->
+            val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
+            // Home comes back from the picker the same way a stop's location does.
+            val picked by backStackEntry.savedStateHandle
+                .getStateFlow<DoubleArray?>(PICKED_LOCATION_KEY, null)
+                .collectAsStateWithLifecycle()
+            LaunchedEffect(picked) {
+                picked?.let { (lat, lon) ->
+                    val place = backStackEntry.savedStateHandle.get<Array<String>>(PICKED_PLACE_KEY)
+                    viewModel.setHome(LatLng(lat, lon), place?.getOrNull(0).orEmpty())
+                    backStackEntry.savedStateHandle[PICKED_LOCATION_KEY] = null
+                    backStackEntry.savedStateHandle[PICKED_PLACE_KEY] = null
+                }
+            }
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                viewModel = viewModel,
+                locationSection = {
+                    LocationSection(
+                        onLocationChange = { viewModel.setHome(it) },
+                        onPickOnMap = {
+                            val start = settings?.homeLocation
+                            navController.navigate(
+                                LocationPickerRoute(
+                                    start?.latitude,
+                                    start?.longitude,
+                                    StopKind.HOME.name,
+                                ),
+                            )
+                        },
+                    )
+                },
+            )
         }
     }
 }

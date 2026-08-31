@@ -21,6 +21,8 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
+import com.nuelto.camperexperience.data.model.LatLng
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -33,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.camperexperience.BuildConfig
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.AuthRepository
@@ -60,6 +61,26 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.update(settings) }
     }
 
+    /** Sets home from the picker or a GPS fix; an unnamed pick keeps the name it had. */
+    fun setHome(location: LatLng, name: String = "") {
+        val current = settings.value ?: return
+        viewModelScope.launch {
+            settingsRepository.update(
+                current.copy(
+                    homeLocation = location,
+                    homeName = name.ifBlank { current.homeName },
+                ),
+            )
+        }
+    }
+
+    fun clearHome() {
+        val current = settings.value ?: return
+        viewModelScope.launch {
+            settingsRepository.update(current.copy(homeLocation = null, homeName = ""))
+        }
+    }
+
     fun signOut() {
         authRepository?.signOut()
     }
@@ -77,7 +98,12 @@ private val commonCurrencies = listOf("CHF", "EUR", "USD", "GBP", "NOK", "SEK", 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
+    // No factory default: the nav layer owns the instance to feed it picker results,
+    // the same reason StopEditScreen has none.
+    viewModel: SettingsViewModel,
+    // Injected by the nav layer, exactly as the stop editor's is: GPS, search and
+    // pick-on-map all live behind the map provider.
+    locationSection: @Composable () -> Unit = {},
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
@@ -106,6 +132,25 @@ fun SettingsScreen(
                 selected = current.currency,
                 onSelect = { viewModel.update(current.copy(currency = it)) },
             )
+
+            Text("Home", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = current.homeName,
+                onValueChange = { viewModel.update(current.copy(homeName = it)) },
+                label = { Text("Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                current.homeLocation?.let { "Set — new plans start here." }
+                    ?: "Not set. Pick it below and new plans will start from it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            locationSection()
+            if (current.homeLocation != null) {
+                TextButton(onClick = viewModel::clearHome) { Text("Clear home") }
+            }
 
             Text("Fuel estimator defaults", style = MaterialTheme.typography.titleMedium)
             NumberSetting(

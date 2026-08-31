@@ -12,6 +12,7 @@ import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.isStay
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
@@ -49,7 +50,8 @@ data class StopEditUiState(
     val locationCachedAt: LocalDate? = null,
 ) {
     val canSave: Boolean get() = name.isNotBlank()
-    val isVisit: Boolean get() = kind == StopKind.VISIT
+    /** Nights and a price only make sense where you actually stay. */
+    val isStay: Boolean get() = kind.isStay
     val pickerStart: LatLng? get() = location ?: nearbyLocation
 
     /** Google Maps link for this stop — the place itself when it came from Google. */
@@ -139,8 +141,8 @@ class StopEditViewModel(
 
     fun setKind(value: StopKind) = _uiState.update {
         when {
-            value == StopKind.VISIT -> it.copy(kind = value, nights = 0, campingCost = "")
-            it.isVisit -> it.copy(kind = value, nights = 1)
+            !value.isStay -> it.copy(kind = value, nights = 0, campingCost = "")
+            !it.isStay -> it.copy(kind = value, nights = 1)
             else -> it.copy(kind = value)
         }
     }
@@ -219,18 +221,18 @@ class StopEditViewModel(
                 val old = existing
                 val base = old ?: Stop(tripId = route.tripId, orderIndex = newOrderIndex())
                 val parsed = parseDecimal(state.campingCost)
-                val nights = if (state.isVisit) 0 else state.nights
+                val nights = if (state.isStay) state.nights else 0
                 // No parseable price means "estimate at the kind's default rate" —
                 // except kinds free by nature, and unchanged legacy known-zero stops.
                 val costKnown = parsed != null ||
-                    state.kind == StopKind.FREE_CAMP || state.isVisit ||
+                    state.kind == StopKind.FREE_CAMP || !state.isStay ||
                     (old != null && old.costKnown && old.campingCostTotal == 0.0 && old.kind == state.kind)
                 tripRepository.upsertStop(
                     base.copy(
                         name = state.name.trim(),
                         arrivalDate = state.arrivalDate,
                         nights = nights,
-                        campingCostTotal = if (state.isVisit) 0.0 else parsed ?: 0.0,
+                        campingCostTotal = if (state.isStay) parsed ?: 0.0 else 0.0,
                         location = state.location,
                         notes = state.notes.trim(),
                         kind = state.kind,

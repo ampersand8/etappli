@@ -46,6 +46,7 @@ import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import com.nuelto.camperexperience.ui.map.LocalMapProvider
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
+import com.nuelto.camperexperience.ui.formatDate
 import com.nuelto.camperexperience.ui.formatDriveFromHere
 import java.time.LocalDateTime
 import java.time.LocalDate
@@ -855,6 +856,30 @@ class TripDetailScreenTest {
         setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
         compose.onAllNodesWithText("Show distance from here").assertCountEquals(0)
+    }
+
+    @Test
+    fun `the home stop reads as the start, with a home icon`() {
+        runBlocking {
+            tripRepository.upsertTrip(
+                Trip(id = "h1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
+            )
+            tripRepository.upsertStop(
+                Stop(
+                    id = "home", tripId = "h1", name = "Luzern", orderIndex = 0, nights = 0,
+                    kind = StopKind.HOME, location = LatLng(47.05, 8.31),
+                    arrivalDate = LocalDate.of(2027, 6, 10),
+                ),
+            )
+        }
+        setContent("h1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Luzern"))
+        compose.onAllNodesWithContentDescription("Home").onFirst().assertExists()
+        // The row's own line: the start date and nothing about nights or a price.
+        compose.onNodeWithText(
+            "${formatDate(LocalDate.of(2027, 6, 10))} · start",
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
     }
 
 }

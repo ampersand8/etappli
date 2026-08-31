@@ -31,8 +31,18 @@ data class Trip(
     val plannedNights: Int? = null,
 )
 
-/** Site type for pricing defaults; VISIT = drive-through waypoint (no nights, no cost). */
-enum class StopKind { CAMPSITE, STELLPLATZ, FREE_CAMP, VISIT }
+/**
+ * Site type for pricing defaults. VISIT is a drive-through waypoint and HOME is where the
+ * trip starts from — neither is a night, and neither costs anything.
+ */
+enum class StopKind { CAMPSITE, STELLPLATZ, FREE_CAMP, VISIT, HOME }
+
+/**
+ * True for the kinds you sleep and pay at. Everything nights- or price-related keys off
+ * this rather than naming VISIT, so HOME could be added without hunting down the checks.
+ */
+val StopKind.isStay: Boolean
+    get() = this == StopKind.CAMPSITE || this == StopKind.STELLPLATZ || this == StopKind.FREE_CAMP
 
 /** The stop's own position in the timeline. SKIPPED stops stay in the record but
  *  are excluded from route distance, nights, and cost math. */
@@ -123,6 +133,10 @@ data class UserSettings(
     // Laden weight, for the climb term of the fuel estimate. 3.5 t is the usual limit a
     // camper is built to sit under.
     val vehicleMassKg: Double = 3500.0,
+    // Where trips start from. A new plan opens with this as its first stop; null until it
+    // has been set, and then plans simply start at whatever you add first.
+    val homeName: String = "",
+    val homeLocation: LatLng? = null,
     // Default per-night camping estimates, used while a stop's price isn't known yet.
     val campsitePerNight: Double = 45.0,
     val stellplatzPerNight: Double = 15.0,

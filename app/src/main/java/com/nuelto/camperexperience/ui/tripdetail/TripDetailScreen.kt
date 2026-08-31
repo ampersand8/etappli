@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material.icons.filled.RvHookup
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Forest
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Festival
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -101,6 +102,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.isStay
 import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
@@ -420,7 +422,7 @@ fun TripDetailScreen(
                             onChangeNights = { delta -> viewModel.changeNights(row.stop.id, delta) },
                             onArrived = {
                                 viewModel.arrived(row.stop.id)
-                                if (row.stop.kind != StopKind.VISIT) arrivalPromptStop = row.stop
+                                if (row.stop.kind.isStay) arrivalPromptStop = row.stop
                             },
                             onSkip = { skipWithUndo(row.stop) },
                         )
@@ -579,7 +581,7 @@ private fun NowCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                if (stop.kind == StopKind.VISIT) "NEXT" else "TONIGHT",
+                if (stop.kind.isStay) "TONIGHT" else "NEXT",
                 style = MaterialTheme.typography.labelSmall,
                 color = ActiveGreen,
                 fontWeight = FontWeight.Bold,
@@ -629,14 +631,14 @@ private fun NowCard(
                     )
                     ElevationBadge(stop)
                 }
-                if (stop.kind != StopKind.VISIT) {
+                if (stop.kind.isStay) {
                     Text(
                         stopPriceText(stop, TripStatus.ACTIVE, settings),
                         style = MaterialTheme.typography.titleSmall,
                     )
                 }
             }
-            if (stop.kind != StopKind.VISIT) {
+            if (stop.kind.isStay) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         "${formatDate(stop.arrivalDate)} ·",
@@ -833,6 +835,7 @@ private fun kindIcon(kind: StopKind): ImageVector = when (kind) {
     StopKind.STELLPLATZ -> Icons.Default.RvHookup
     StopKind.FREE_CAMP -> Icons.Default.Forest
     StopKind.VISIT -> Icons.Default.PhotoCamera
+    StopKind.HOME -> Icons.Default.Home
 }
 
 /** How high the place is — a mountain, because "1469 m" alone reads as a distance. */
@@ -861,6 +864,7 @@ private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSetti
     val date = formatDate(stop.arrivalDate)
     return when {
         stop.state == StopState.SKIPPED -> "skipped"
+        stop.kind == StopKind.HOME -> "$date · start"
         stop.kind == StopKind.VISIT -> "$date · visit"
         else -> {
             val nights = if (stop.nights == 1) "1 night" else "${stop.nights} nights"
