@@ -64,6 +64,11 @@ There is no lint/format tooling configured.
   key's API restrictions. Note Places and Routes are called as plain web services, so an
   Android *application* restriction would break both unless `X-Android-Package`/
   `X-Android-Cert` headers are added. Everything degrades to straight lines without a key.
+- **"How far from here"**: on an ACTIVE trip the NowCard replaces the planned leg with a
+  live route from the current GPS fix to the stop you are heading for (`domain/DriveFromHere`
+  + `LiveDrive` rules, `MapProvider.drive`). Never stored — it is true for one fix.
+  `LiveDrive` throttles it: no refetch under 2 km of movement, and nothing shown once you
+  are within 150 m. The permission is asked for on tap, never on opening a trip.
 - **Elevation is not Google**: its Elevation API forbids storing results, so height comes
   from Open-Meteo (Copernicus DEM) via `domain/Elevation`. Two different numbers:
   `Stop.elevation` is **how high the stop is**, one point, stable, and the only one shown

@@ -2,6 +2,16 @@ package com.nuelto.camperexperience.ui.tripdetail
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
+import android.Manifest
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
+import com.nuelto.camperexperience.domain.RoutedLeg
+import org.robolectric.Shadows.shadowOf
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
@@ -132,14 +142,24 @@ class TripDetailScreenTest {
         )
     }
 
-    private fun setContent(tripId: String = "t1") {
-        val viewModel = TripDetailViewModel(
+    private fun setContent(
+        tripId: String = "t1",
+        viewModel: TripDetailViewModel = TripDetailViewModel(
             SavedStateHandle(mapOf("tripId" to tripId)),
             tripRepository,
             settingsRepository,
-        )
+        ),
+        // Answers any permission request with this, so the grant flow can be driven.
+        permissionAnswer: Boolean? = null,
+    ) {
+        val registryOwner = object : ActivityResultRegistryOwner {
+            override val activityResultRegistry = answeringRegistry(permissionAnswer ?: false)
+        }
         compose.setContent {
-            CompositionLocalProvider(LocalMapProvider provides PlaceholderMapProvider) {
+            CompositionLocalProvider(
+                LocalMapProvider provides PlaceholderMapProvider,
+                LocalActivityResultRegistryOwner provides registryOwner,
+            ) {
                 TripDetailScreen(
                     onBack = { events += "back" },
                     onEditTrip = { events += "edit:$it" },
@@ -701,6 +721,98 @@ class TripDetailScreenTest {
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
         compose.onNodeWithContentDescription("Height above sea level", useUnmergedTree = true)
             .assertExists()
+    }
+
+    // --- distance from here ------------------------------------------------------------
+
+    private fun grantLocation() {
+        shadowOf(ApplicationProvider.getApplicationContext<Application>())
+            .grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    private fun locatingViewModel(fix: LatLng?, leg: RoutedLeg?) = TripDetailViewModel(
+        SavedStateHandle(mapOf("tripId" to "a1")),
+        tripRepository,
+        settingsRepository,
+        currentLocation = { fix },
+        drive = { _, _ -> leg },
+    )
+
+    @Test
+    fun `tonight's stop shows how far it is from where you are`() {
+        seedActive()
+        grantLocation()
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("47 km · 55 min from here", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `without the location permission it offers to find out`() {
+        seedActive()
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodesWithText("from here", substring = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun `with permission but no fix the planned drive stays`() {
+        seedActive()
+        grantLocation()
+        runBlocking {
+            val cur = tripRepository.stops("a1").first().first { it.id == "cur" }
+            tripRepository.upsertStop(
+                cur.copy(
+                    leg = StopLeg(
+                        from = LatLng(46.9, 8.5), to = LatLng(46.16, 8.79),
+                        distanceMeters = 124_000, durationSeconds = 6_300,
+                    ),
+                ),
+            )
+        }
+        setContent("a1", locatingViewModel(fix = null, leg = null))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onAllNodesWithText("from here", substring = true).assertCountEquals(0)
+    }
+
+    /** A registry that answers a permission request immediately, without a system dialog. */
+    @Suppress("UNCHECKED_CAST")
+    private fun answeringRegistry(granted: Boolean) = object : ActivityResultRegistry() {
+        override fun <I, O> onLaunch(
+            requestCode: Int,
+            contract: ActivityResultContract<I, O>,
+            input: I,
+            options: ActivityOptionsCompat?,
+        ) {
+            dispatchResult(requestCode, granted as O)
+        }
+    }
+
+    @Test
+    fun `granting the permission fills the distance in`() {
+        seedActive()
+        setContent(
+            "a1",
+            locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
+            permissionAnswer = true,
+        )
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("47 km · 55 min from here", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `refusing the permission leaves the offer standing`() {
+        seedActive()
+        setContent(
+            "a1",
+            locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
+            permissionAnswer = false,
+        )
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
+        compose.onAllNodesWithText("47 km", substring = true).assertCountEquals(0)
     }
 
 }

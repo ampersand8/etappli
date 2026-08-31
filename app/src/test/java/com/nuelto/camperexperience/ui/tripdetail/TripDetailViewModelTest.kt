@@ -514,4 +514,106 @@ class TripDetailViewModelTest {
         }
         assertNull(stops().first { it.id == "s2" }.leg)
     }
+    // --- distance from here ------------------------------------------------------------
+
+    private val hereFix = LatLng(46.8709, 8.2492)
+
+    /** An ACTIVE trip whose current stop is [target]. */
+    private suspend fun seedOnTheRoad(target: LatLng = LatLng(46.1591, 8.7853)) {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "On the road", startDate = LocalDate.now(), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "s1", tripId = "t1", name = "Tonight", orderIndex = 0, location = target,
+                arrivalDate = LocalDate.now(), nights = 1,
+            ),
+        )
+    }
+
+    private fun locatingViewModel(
+        fix: suspend () -> LatLng?,
+        drive: suspend (LatLng, LatLng) -> RoutedLeg?,
+    ) = TripDetailViewModel(
+        SavedStateHandle(mapOf("tripId" to "t1")),
+        tripRepository,
+        settingsRepository,
+        currentLocation = fix,
+        drive = drive,
+    )
+
+    @Test
+    fun `the drive from here is routed from the current fix to tonight's stop`() = runTest {
+        val target = LatLng(46.1591, 8.7853)
+        seedOnTheRoad(target)
+        val asked = mutableListOf<Pair<LatLng, LatLng>>()
+        val vm = locatingViewModel({ hereFix }) { from, to ->
+            asked += from to to
+            RoutedLeg("", 90_000, 5_400)
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+
+        assertEquals(listOf(hereFix to target), asked)
+        val live = vm.uiState.value.driveFromHere!!
+        assertEquals(hereFix, live.from)
+        assertEquals(target, live.to)
+        assertEquals(90_000, live.distanceMeters)
+        assertEquals(5_400, live.durationSeconds)
+    }
+
+    @Test
+    fun `standing at the stop shows no distance and spends no route`() = runTest {
+        val target = LatLng(46.1591, 8.7853)
+        seedOnTheRoad(target)
+        var calls = 0
+        // 50 m away: inside LiveDrive.ARRIVED_WITHIN_METERS.
+        val nearly = LatLng(target.latitude + 50 / 111_195.0, target.longitude)
+        val vm = locatingViewModel({ nearly }) { _, _ -> calls++; RoutedLeg("", 1, 1) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+
+        assertNull(vm.uiState.value.driveFromHere)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `a second fix in the same place does not spend another route`() = runTest {
+        seedOnTheRoad()
+        var calls = 0
+        val vm = locatingViewModel({ hereFix }) { _, _ -> calls++; RoutedLeg("", 90_000, 5_400) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+        vm.refreshDriveFromHere()
+
+        assertEquals(1, calls)
+        assertEquals(90_000, vm.uiState.value.driveFromHere!!.distanceMeters)
+    }
+
+    @Test
+    fun `no fix and no route both leave the card alone`() = runTest {
+        seedOnTheRoad()
+        val noFix = locatingViewModel({ null }) { _, _ -> RoutedLeg("", 1, 1) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { noFix.uiState.collect { } }
+        noFix.refreshDriveFromHere()
+        assertNull(noFix.uiState.value.driveFromHere)
+
+        val noRoute = locatingViewModel({ hereFix }) { _, _ -> null }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { noRoute.uiState.collect { } }
+        noRoute.refreshDriveFromHere()
+        assertNull(noRoute.uiState.value.driveFromHere)
+    }
+
+    @Test
+    fun `a trip with nowhere to drive to asks for nothing`() = runTest {
+        seedTrip(TripStatus.DONE)
+        var fixes = 0
+        val vm = locatingViewModel({ fixes++; hereFix }) { _, _ -> RoutedLeg("", 1, 1) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+
+        assertEquals(0, fixes)
+        assertNull(vm.uiState.value.driveFromHere)
+    }
+
 }
