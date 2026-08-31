@@ -4,7 +4,10 @@ import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -107,9 +110,95 @@ class PlaceCacheSweeperTest {
     }
 
     @Test
-    fun `a stop knows for itself when it is due`() {
-        val stale = Stop(id = "s", tripId = "t1", location = here, locationCachedAt = today.minusDays(40))
-        assertTrue(stale.needsPlaceRefresh(today))
-        assertFalse(stale.copy(locationCachedAt = null).needsPlaceRefresh(today))
+    fun `a coordinate lost to a failed refresh is retried on the next sweep`() = runTest {
+        addStop("stale", today.minusDays(40))
+        // Offline: the coordinate must go, per the terms.
+        assertEquals(1, sweeper().sweep("t1", today).cleared)
+        assertNull(stop("stale").location)
+
+        // Back online a day later, the stop is picked up again and comes back.
+        asked.clear()
+        val result = sweeper { PlaceSuggestion("K", "", there, id = it) }
+            .sweep("t1", today.plusDays(1))
+        assertEquals(1, result.refreshed)
+        assertEquals(listOf("ChIJstale"), asked)
+        assertEquals(there, stop("stale").location)
+        assertEquals(today.plusDays(1), stop("stale").locationCachedAt)
+    }
+
+    @Test
+    fun `a stop emptied with no place id is not swept forever`() = runTest {
+        addStop("own", null, placeId = null, location = null)
+        assertFalse(sweeper().sweep("t1", today).touched)
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `an edit made while a refresh is in flight is not reverted`() = runTest {
+        addStop("stale", today.minusDays(40))
+        val gate = CompletableDeferred<Unit>()
+        val sweeping = launch {
+            PlaceCacheSweeper(repository) { gate.await(); PlaceSuggestion("K", "", there, id = it) }
+                .sweep("t1", today)
+        }
+        runCurrent()
+
+        // The user renames the stop and adds a night while the lookup is out.
+        repository.upsertStop(stop("stale").copy(name = "Renamed", nights = 4))
+        gate.complete(Unit)
+        sweeping.join()
+
+        val swept = stop("stale")
+        assertEquals("Renamed", swept.name)
+        assertEquals(4, swept.nights)
+        // and the refresh still landed
+        assertEquals(there, swept.location)
+    }
+
+    @Test
+    fun `a stop the user relocated mid-sweep is left alone`() = runTest {
+        addStop("stale", today.minusDays(40))
+        val gate = CompletableDeferred<Unit>()
+        val sweeping = launch {
+            PlaceCacheSweeper(repository) { gate.await(); null }.sweep("t1", today)
+        }
+        runCurrent()
+
+        // Picked somewhere fresh while the (doomed) lookup was out: nothing to clear.
+        repository.upsertStop(stop("stale").copy(location = there, locationCachedAt = today))
+        gate.complete(Unit)
+        sweeping.join()
+
+        assertEquals(there, stop("stale").location)
+        assertEquals(today, stop("stale").locationCachedAt)
+    }
+
+    @Test
+    fun `a stop deleted mid-sweep is simply skipped`() = runTest {
+        addStop("stale", today.minusDays(40))
+        val gate = CompletableDeferred<Unit>()
+        val sweeping = launch {
+            PlaceCacheSweeper(repository) { gate.await(); PlaceSuggestion("K", "", there, id = it) }
+                .sweep("t1", today)
+        }
+        runCurrent()
+
+        repository.deleteStop("t1", "stale")
+        gate.complete(Unit)
+        sweeping.join()
+        assertTrue(repository.stops("t1").first().isEmpty())
+    }
+
+    @Test
+    fun `a still-unreachable stop is left as it is, not cleared twice`() = runTest {
+        addStop("stale", today.minusDays(40))
+        assertEquals(1, sweeper().sweep("t1", today).cleared)
+
+        // Offline again: it is already empty, so there is nothing to do.
+        val second = sweeper().sweep("t1", today.plusDays(1))
+        assertEquals(0, second.cleared)
+        assertEquals(0, second.refreshed)
+        assertNull(stop("stale").location)
+        assertEquals("ChIJstale", stop("stale").placeId)
     }
 }

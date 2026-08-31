@@ -1,7 +1,6 @@
 package com.nuelto.camperexperience.domain
 
 import com.nuelto.camperexperience.data.TripRepository
-import com.nuelto.camperexperience.data.model.Stop
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 
@@ -20,18 +19,25 @@ class PlaceCacheSweeper(
 
     /** Returns how many stops were refreshed and how many were cleared. */
     suspend fun sweep(tripId: String, today: LocalDate = LocalDate.now()): Result {
-        val expired = PlaceCache.expired(tripRepository.stops(tripId).first(), today)
+        val due = PlaceCache.expired(tripRepository.stops(tripId).first(), today)
         var refreshed = 0
         var cleared = 0
-        expired.forEach { stop ->
-            val place = stop.placeId?.let { refresh(it) }
+        due.forEach { stale ->
+            val place = stale.placeId?.let { refresh(it) }
+            // A refresh is a network round trip, so the stop may have been edited while
+            // it was in flight. Re-read before writing, or the edit is silently reverted
+            // — upsertStop replaces the whole document.
+            val current = tripRepository.stops(tripId).first().find { it.id == stale.id }
+                ?: return@forEach
             tripRepository.upsertStop(
-                if (place == null) {
+                if (place?.location == null) {
+                    // Only count, and only write, if there is still something to clear.
+                    if (!PlaceCache.isExpired(current, today)) return@forEach
                     cleared++
-                    PlaceCache.forget(stop)
+                    PlaceCache.forget(current)
                 } else {
                     refreshed++
-                    PlaceCache.refreshed(stop, place, today)
+                    PlaceCache.refreshed(current, place, today)
                 },
             )
         }
@@ -42,6 +48,3 @@ class PlaceCacheSweeper(
         val touched: Boolean get() = refreshed > 0 || cleared > 0
     }
 }
-
-/** True when a stop is showing a place whose coordinate is due for renewal. */
-fun Stop.needsPlaceRefresh(today: LocalDate): Boolean = PlaceCache.isExpired(this, today)
