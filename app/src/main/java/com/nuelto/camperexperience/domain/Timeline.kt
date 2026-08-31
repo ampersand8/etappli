@@ -28,6 +28,9 @@ data class GapRow(val nights: Int, val from: LocalDate, val before: Stop) : Time
     }
 }
 
+/** Where something inserted in front of a row goes: whose place it takes, and its day. */
+data class Insertion(val orderIndex: Int, val date: LocalDate)
+
 /**
  * The timeline as the screen shows it. Gaps are derived from the dates, never stored:
  * every empty night between one stop's departure and the next one's arrival becomes a
@@ -53,6 +56,23 @@ object Timeline {
             departure = stop.arrivalDate.plusDays(stop.nights.toLong())
         }
         return rows
+    }
+
+    /**
+     * Where a row inserted in front of [key] lands: it takes that row's place in the
+     * order, and starts the day that row starts — the day after the stop before it
+     * leaves, or, in front of a gap, the first of its empty nights. Null if [key] is
+     * not on the timeline (it went away while the editor was open).
+     */
+    fun insertion(rows: List<TimelineRow>, key: String): Insertion? {
+        val row = rows.find { it.key == key } ?: return null
+        return Insertion(
+            orderIndex = row.anchor.orderIndex,
+            date = when (row) {
+                is StopRow -> row.stop.arrivalDate
+                is GapRow -> row.from
+            },
+        )
     }
 
     /**

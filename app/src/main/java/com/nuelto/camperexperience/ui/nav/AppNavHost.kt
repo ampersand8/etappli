@@ -39,7 +39,9 @@ fun AppNavHost() {
             TripDetailScreen(
                 onBack = { navController.popBackStack() },
                 onEditTrip = { tripId -> navController.navigate(TripEditRoute(tripId)) },
-                onAddStop = { tripId -> navController.navigate(StopEditRoute(tripId)) },
+                onAddStop = { tripId, insertBefore ->
+                    navController.navigate(StopEditRoute(tripId, insertBefore = insertBefore))
+                },
                 onEditStop = { tripId, stopId -> navController.navigate(StopEditRoute(tripId, stopId)) },
                 onOpenTripMap = { tripId -> navController.navigate(AllTripsMapRoute(tripId)) },
                 // Start-as-copy and plan-again land on the freshly created trip.

@@ -166,7 +166,7 @@ class TripDetailScreenTest {
                 TripDetailScreen(
                     onBack = { events += "back" },
                     onEditTrip = { events += "edit:$it" },
-                    onAddStop = { events += "addStop:$it" },
+                    onAddStop = { _, insertBefore -> events += "addStop:${insertBefore ?: "end"}" },
                     onEditStop = { tripId2, stopId -> events += "editStop:$tripId2:$stopId" },
                     onOpenTripMap = { events += "map:$it" },
                     onOpenTrip = { events += "open:$it" },
@@ -280,7 +280,7 @@ class TripDetailScreenTest {
         setContent()
         compose.onNodeWithContentDescription("Add").performClick()
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
-        assertEquals(listOf("addStop:t1"), events)
+        assertEquals(listOf("addStop:end"), events)
     }
 
     @Test
@@ -437,7 +437,8 @@ class TripDetailScreenTest {
             tripRepository.upsertStop(s2.copy(arrivalDate = LocalDate.of(2027, 6, 14)))
         }
         setContent("p1")
-        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Nothing planned"))
+        // One row past the gap, so its buttons sit clear of the floating action button.
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("row-s2"))
         compose.onNodeWithText("Nothing planned").assertIsDisplayed()
 
         compose.onNodeWithContentDescription("One unplanned night more").performClick()
@@ -448,6 +449,45 @@ class TripDetailScreenTest {
         compose.onNodeWithContentDescription("Remove the unplanned nights").performClick()
         assertEquals(LocalDate.of(2027, 6, 12), arrivalOf("s2")) // straight after s1's stay
         compose.onAllNodes(hasText("Nothing planned")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the slot between two rows adds a stop there`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("insert-s2"))
+        // Nothing goes in front of the first stop — the plan starts there.
+        compose.onNodeWithTag("insert-s1").assertDoesNotExist()
+        // It sits between the two rows, not on top of the one it belongs to.
+        val slot = compose.onNodeWithTag("insert-s2").fetchSemanticsNode().boundsInRoot
+        val stop = compose.onNodeWithTag("row-s2").fetchSemanticsNode().boundsInRoot
+        assertTrue("$slot overlaps $stop", slot.bottom <= stop.top)
+
+        compose.onNodeWithContentDescription("Insert here").performClick()
+        compose.onNodeWithText("Stop").performClick()
+        assertEquals(listOf("addStop:s2"), events)
+    }
+
+    @Test
+    fun `a slot can be filled with nothing planned, moving the rest back`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("insert-s2"))
+        compose.onNodeWithContentDescription("Insert here").performClick()
+        compose.onNodeWithText("Nothing planned").performClick()
+        assertEquals(LocalDate.of(2027, 6, 13), arrivalOf("s2"))
+        // The night is now a row of its own, in front of the stop it pushed back.
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("row-gap-s2"))
+        compose.onNodeWithText("Nothing planned").assertIsDisplayed()
+    }
+
+    @Test
+    fun `nothing can be inserted in front of what has already happened`() {
+        seedActive()
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasTestTag("insert-up"))
+        compose.onNodeWithTag("insert-done").assertDoesNotExist()
+        compose.onNodeWithTag("insert-cur").assertDoesNotExist()
     }
 
     @Test

@@ -105,10 +105,13 @@ There is no lint/format tooling configured.
   TripDetailViewModel) refreshes them via Place Details or **deletes** them. Coordinates
   from GPS or a dropped pin have no `locationCachedAt` and never expire. With OSM gone
   there is no non-expiring search source, so this path is not optional.
-- **Choosing a named place names the stop**, always — it is an explicit act, so it wins
-  over whatever the field held, including a hand-typed name. Type over it afterwards and
-  that sticks until a different place is picked. A dropped pin has no name and so goes
-  through `setLocation`, where the reverse geocode still only fills a blank name.
+- **A stop is named by the place you pick**, so a *new* stop has no name field at all —
+  it shows the picked name where the field used to be, and Save needs a name *or* a
+  location (`savedName` falls back to the reverse-geocoded place, then to the kind, so an
+  unnameable pin still saves as "Free camp"). The field is back when editing an existing
+  stop; typing over the name sticks until a different place is picked, which always wins.
+  A dropped pin has no name and so goes through `setLocation`, where the reverse geocode
+  still only fills a blank name.
 - Choosing a hit fetches **what the place is like** (`PlaceDetails`: type, rating, editorial
   summary, top review, one photo) in the same Place Details call that resolves its
   coordinate; a tapped POI is enriched the same way. Photos come back as bytes and are
@@ -161,7 +164,12 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   from the dates and never stored. Any row can be long-press dragged
   (`ui/components/Reorderable.kt` gesture + `ReorderState` math; `Timeline.move` rules —
   DONE stops are anchors nothing may cross, gaps stay between two stops), and gaps are
-  resizable/deletable. Every such edit writes `reorderStops` + `DateCascade.resequence`,
+  resizable/deletable. Between two rows sits a **+ slot** offering a stop or one
+  unplanned night — shown only where the row below could also be dragged, so never in
+  front of what has already happened. `Timeline.insertion` turns the row key (carried to
+  the editor as `StopEditRoute.insertBefore`) into the order index and the start date the
+  new row takes over, and `DateCascade.shift` moves the rest of the plan back by the
+  nights it takes. Every such edit writes `reorderStops` + `DateCascade.resequence`,
   which re-dates the plan from the row order (a pure reorder keeps the trip's start and
   length); nights/arrival changes instead shift downstream dates (`DateCascade.shift`).
   Color language everywhere (lists, timeline, maps):

@@ -285,6 +285,14 @@ class TripDetailViewModel(
         return Timeline.keyAt(rows, rows.indexOfFirst { it.key == key })
     }
 
+    /** An unplanned night in front of [key]: everything from there on moves a day back. */
+    fun insertGap(key: String) {
+        val at = Timeline.insertion(uiState.value.rows, key) ?: return
+        viewModelScope.launch {
+            writeLock.withLock { shiftAfter(at.orderIndex - 1, 1) }
+        }
+    }
+
     /** Resizes a gap; [nights] of 0 deletes it and pulls the rest of the plan forward. */
     fun setGapNights(key: String, nights: Int) {
         applyRows(
