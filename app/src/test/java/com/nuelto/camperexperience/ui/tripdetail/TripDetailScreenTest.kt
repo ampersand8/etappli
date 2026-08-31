@@ -46,6 +46,8 @@ import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import com.nuelto.camperexperience.ui.map.LocalMapProvider
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
+import com.nuelto.camperexperience.ui.formatDriveFromHere
+import java.time.LocalDateTime
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -744,7 +746,8 @@ class TripDetailScreenTest {
         grantLocation()
         setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onNodeWithText("47 km · 55 min from here", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("47 km · 55 min from here", substring = true, useUnmergedTree = true)
+            .assertIsDisplayed()
     }
 
     @Test
@@ -799,7 +802,8 @@ class TripDetailScreenTest {
         )
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
         compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("47 km · 55 min from here", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("47 km · 55 min from here", substring = true, useUnmergedTree = true)
+            .assertIsDisplayed()
     }
 
     @Test
@@ -813,6 +817,44 @@ class TripDetailScreenTest {
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
         compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
         compose.onAllNodesWithText("47 km", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the drive line says when you get there`() {
+        seedActive()
+        grantLocation()
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        val expected = formatDriveFromHere(47_000, 3_300, LocalDateTime.now())
+        compose.onNodeWithText(expected, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `checking in stops showing how far away it is`() {
+        seedActive()
+        grantLocation()
+        runBlocking {
+            // Tonight's stop, arrived at: CurrentStop keeps it current through the stay.
+            val cur = tripRepository.stops("a1").first().first { it.id == "cur" }
+            tripRepository.upsertStop(cur.copy(state = StopState.DONE, arrivalDate = LocalDate.now()))
+        }
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Checked in", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodesWithText("from here", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("arrive", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a checked-in stop is not even offered the distance`() {
+        seedActive()
+        runBlocking {
+            val cur = tripRepository.stops("a1").first().first { it.id == "cur" }
+            tripRepository.upsertStop(cur.copy(state = StopState.DONE, arrivalDate = LocalDate.now()))
+        }
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onAllNodesWithText("Show distance from here").assertCountEquals(0)
     }
 
 }

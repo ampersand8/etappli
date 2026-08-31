@@ -616,4 +616,22 @@ class TripDetailViewModelTest {
         assertNull(vm.uiState.value.driveFromHere)
     }
 
+    @Test
+    fun `checking in drops the distance and buys no more routes`() = runTest {
+        val target = LatLng(46.1591, 8.7853)
+        seedOnTheRoad(target)
+        var calls = 0
+        val vm = locatingViewModel({ hereFix }) { _, _ -> calls++; RoutedLeg("", 90_000, 5_400) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+        assertEquals(90_000, vm.uiState.value.driveFromHere!!.distanceMeters)
+
+        vm.arrived("s1")
+
+        assertNull(vm.uiState.value.driveFromHere)
+        vm.refreshDriveFromHere()
+        assertEquals(1, calls)
+        assertNull(vm.uiState.value.driveFromHere)
+    }
+
 }

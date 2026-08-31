@@ -126,6 +126,7 @@ import com.nuelto.camperexperience.ui.theme.ActiveGreen
 import com.nuelto.camperexperience.ui.theme.PlannedBlue
 import com.nuelto.camperexperience.ui.theme.stopColor
 import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlinx.coroutines.launch
 
 val ExpenseType.displayName: String
@@ -587,11 +588,19 @@ private fun NowCard(
             // live distance replaces the planned leg rather than sitting beside it.
             when {
                 fromHere != null && fromHere.to == stop.location -> Text(
-                    formatDriveFromHere(fromHere.distanceMeters, fromHere.durationSeconds),
+                    // "now" is read at composition: opening the trip gives a current
+                    // answer, and every state change refreshes it. It does not tick on
+                    // its own — an endless timer in a LaunchedEffect would leave the
+                    // Compose test clock permanently busy.
+                    formatDriveFromHere(
+                        fromHere.distanceMeters,
+                        fromHere.durationSeconds,
+                        LocalDateTime.now(),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = ActiveGreen,
                 )
-                onLocate != null && stop.location != null -> Text(
+                onLocate != null && stop.location != null && stop.state != StopState.DONE -> Text(
                     "Show distance from here",
                     style = MaterialTheme.typography.labelSmall,
                     color = ActiveGreen,

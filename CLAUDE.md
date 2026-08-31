@@ -68,7 +68,11 @@ There is no lint/format tooling configured.
   live route from the current GPS fix to the stop you are heading for (`domain/DriveFromHere`
   + `LiveDrive` rules, `MapProvider.drive`). Never stored — it is true for one fix.
   `LiveDrive` throttles it: no refetch under 2 km of movement, and nothing shown once you
-  are within 150 m. The permission is asked for on tap, never on opening a trip.
+  are within 150 m. The line also carries the arrival time (`formatArrival`, rounded to the
+  minute like `formatDuration` so the two agree), read at composition — no ticker, because
+  an endless `LaunchedEffect` would leave the Compose test clock busy forever. Checking in
+  clears it in the combine: you are there, so distance stops being a question. The
+  permission is asked for on tap, never on opening a trip.
 - **Elevation is not Google**: its Elevation API forbids storing results, so height comes
   from Open-Meteo (Copernicus DEM) via `domain/Elevation`. Two different numbers:
   `Stop.elevation` is **how high the stop is**, one point, stable, and the only one shown
