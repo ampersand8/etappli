@@ -1,6 +1,13 @@
 package com.nuelto.camperexperience.ui.tripdetail
 
 import android.content.Intent
+import com.nuelto.camperexperience.ui.formatDriveFromHere
+import com.nuelto.camperexperience.domain.DriveFromHere
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.content.pm.PackageManager
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.border
@@ -69,6 +76,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -178,6 +186,26 @@ fun TripDetailScreen(
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.restore(stop.id)
         }
+    }
+
+    // "How far from here" needs a fix. Asked for on tap rather than on open: a permission
+    // dialog the moment a trip is opened is not a trade the user agreed to.
+    val locationContext = LocalContext.current
+    var locationGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                locationContext,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> locationGranted = granted }
+    // Keyed on the grant too, so answering the dialog is what triggers the first fix —
+    // the launcher callback only has to record it.
+    LaunchedEffect(state.currentStopId, locationGranted) {
+        if (locationGranted) viewModel.refreshDriveFromHere()
     }
 
     Scaffold(
@@ -380,6 +408,12 @@ fun TripDetailScreen(
                         NowCard(
                             stop = row.stop,
                             leg = state.drives[row.stop.id],
+                            fromHere = state.driveFromHere,
+                            onLocate = if (locationGranted) {
+                                null
+                            } else {
+                                { locationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+                            },
                             settings = state.settings,
                             onClick = { onEditStop(trip.id, row.stop.id) },
                             onChangeNights = { delta -> viewModel.changeNights(row.stop.id, delta) },
@@ -528,6 +562,9 @@ private fun TimelineBottomBar(
 private fun NowCard(
     stop: Stop,
     leg: StopLeg?,
+    fromHere: DriveFromHere?,
+    // Null once the location permission is held; otherwise, what to call to ask for it.
+    onLocate: (() -> Unit)?,
     settings: UserSettings,
     onClick: () -> Unit,
     onChangeNights: (Int) -> Unit,
@@ -546,7 +583,22 @@ private fun NowCard(
                 color = ActiveGreen,
                 fontWeight = FontWeight.Bold,
             )
-            DriveLine(leg)
+            // Where you are beats where you came from: on the stop you are driving to, the
+            // live distance replaces the planned leg rather than sitting beside it.
+            when {
+                fromHere != null && fromHere.to == stop.location -> Text(
+                    formatDriveFromHere(fromHere.distanceMeters, fromHere.durationSeconds),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ActiveGreen,
+                )
+                onLocate != null && stop.location != null -> Text(
+                    "Show distance from here",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ActiveGreen,
+                    modifier = Modifier.clickable(onClick = onLocate),
+                )
+                else -> DriveLine(leg)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

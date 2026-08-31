@@ -12,6 +12,8 @@ import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.location.LocationProvider
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import com.nuelto.camperexperience.ui.map.MapProvider
 
@@ -27,12 +29,19 @@ class AppContainer(
     // Independent of the Firebase switch: a Firestore install with no Maps key still
     // runs, and a local-only install with a key still gets Google Maps.
     val mapProvider: MapProvider = PlaceholderMapProvider,
+    // One-shot GPS fix. The caller must hold ACCESS_FINE_LOCATION; the screens ask, and
+    // this returns null when they have not.
+    val currentLocation: suspend () -> LatLng? = { null },
 ) {
     val firebaseEnabled: Boolean get() = authRepository != null
 
     companion object {
-        fun inMemory(mapProvider: MapProvider = PlaceholderMapProvider) =
-            AppContainer(null, InMemoryTripRepository(), InMemorySettingsRepository(), mapProvider)
+        fun inMemory(
+            mapProvider: MapProvider = PlaceholderMapProvider,
+            currentLocation: suspend () -> LatLng? = { null },
+        ) = AppContainer(
+            null, InMemoryTripRepository(), InMemorySettingsRepository(), mapProvider, currentLocation,
+        )
     }
 }
 
@@ -49,7 +58,8 @@ open class CamperApp : Application() {
         // Two independent switches: Firebase decides the store, the key decides the map.
         // No key: the app runs, the map is simply blank.
         val map = googleMapProvider(this) ?: PlaceholderMapProvider
-        return firebaseContainer(this, map) ?: AppContainer.inMemory(map)
+        val locate: suspend () -> LatLng? = { LocationProvider(this).currentLocation() }
+        return firebaseContainer(this, map, locate) ?: AppContainer.inMemory(map, locate)
     }
 }
 

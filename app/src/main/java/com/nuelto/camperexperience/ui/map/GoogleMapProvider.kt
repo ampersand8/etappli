@@ -32,6 +32,7 @@ import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 import com.nuelto.camperexperience.domain.Elevation
 import com.nuelto.camperexperience.domain.RouteRefresher
+import com.nuelto.camperexperience.domain.RoutedLeg
 import com.nuelto.camperexperience.location.ElevationService
 import com.nuelto.camperexperience.location.GooglePlacesSearch
 import com.nuelto.camperexperience.location.GoogleRoutesService
@@ -55,6 +56,9 @@ object GoogleMapProvider : MapProvider {
     override fun placeSearch(): PlaceSearch = GooglePlacesSearch()
 
     override suspend fun photo(handle: String): ByteArray? = GooglePlacesSearch().photo(handle)
+
+    override suspend fun drive(from: LatLng, to: LatLng): RoutedLeg? =
+        GoogleRoutesService().legs(listOf(from, to))?.singleOrNull()
 
     override fun routeRefresher(tripRepository: TripRepository): RouteRefresher {
         val routes = GoogleRoutesService()

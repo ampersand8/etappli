@@ -51,3 +51,7 @@ fun formatDuration(seconds: Int): String {
  */
 fun formatDrive(leg: StopLeg): String =
     "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"
+
+/** The live drive to the stop you are heading for: "47 km · 55 min from here". */
+fun formatDriveFromHere(distanceMeters: Int, durationSeconds: Int): String =
+    "${formatDistance(distanceMeters)} · ${formatDuration(durationSeconds)} from here"

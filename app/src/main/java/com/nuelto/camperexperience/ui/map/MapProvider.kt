@@ -13,6 +13,7 @@ import com.nuelto.camperexperience.domain.MapRoute
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.RoutedLeg
 import com.nuelto.camperexperience.domain.RouteRefresher
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 
@@ -50,6 +51,12 @@ interface MapProvider {
      * means this provider cannot route, and the map falls back to straight lines.
      */
     fun routeRefresher(tripRepository: TripRepository): RouteRefresher? = null
+
+    /**
+     * One drive between two points, for the live "how far is it from here". Separate from
+     * [routeRefresher] because the answer is never stored: it is true for one GPS fix.
+     */
+    suspend fun drive(from: LatLng, to: LatLng): RoutedLeg? = null
 
     /**
      * Loads a photo handed out by [PlaceDetails.photo], as encoded bytes — decoding is

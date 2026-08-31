@@ -8,6 +8,10 @@ import androidx.navigation.toRoute
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.DriveFromHere
+import com.nuelto.camperexperience.domain.LiveDrive
+import com.nuelto.camperexperience.domain.RoutedLeg
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
@@ -35,6 +39,7 @@ import com.nuelto.camperexperience.domain.VignetteTable
 import com.nuelto.camperexperience.ui.nav.TripDetailRoute
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -62,6 +67,9 @@ data class TripDetailUiState(
     // The drive arriving at each stop, keyed by stop id. Only legs that still describe
     // their drive are in here, so an edit blanks the line rather than lying about it.
     val drives: Map<String, StopLeg> = emptyMap(),
+    // Live distance to the stop you are heading for, from the last GPS fix. Null until
+    // one is taken, and again once you are there.
+    val driveFromHere: DriveFromHere? = null,
     val vignetteSuggestions: List<VignetteTable.Choice> = emptyList(),
     val settings: UserSettings = UserSettings(),
     val loading: Boolean = true,
@@ -78,6 +86,10 @@ class TripDetailViewModel(
     // Null when the map provider has no routing of its own — the map draws straight
     // lines and the estimate falls back to the road-distance factor.
     private val routeRefresher: RouteRefresher? = null,
+    // One-shot GPS fix; null unless the screen has the location permission.
+    private val currentLocation: suspend () -> LatLng? = { null },
+    // A single route, for "how far is it from here". Never stored — see DriveFromHere.
+    private val drive: suspend (from: LatLng, to: LatLng) -> RoutedLeg? = { _, _ -> null },
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle.toRoute<TripDetailRoute>().tripId
@@ -98,13 +110,16 @@ class TripDetailViewModel(
         }
     }
 
+    private val liveDrive = MutableStateFlow<DriveFromHere?>(null)
+
     val uiState: StateFlow<TripDetailUiState> =
         combine(
             tripRepository.trip(tripId),
             tripRepository.stops(tripId),
             tripRepository.expenses(tripId),
             settingsRepository.settings(),
-        ) { trip, stops, expenses, settings ->
+            liveDrive,
+        ) { trip, stops, expenses, settings, fromHere ->
             val planning = trip != null && trip.status != TripStatus.DONE
             TripDetailUiState(
                 trip = trip,
@@ -120,11 +135,44 @@ class TripDetailViewModel(
                     null
                 },
                 drives = RouteCache.byStop(stops),
+                driveFromHere = fromHere,
                 vignetteSuggestions = if (planning) vignetteSuggestions(stops, expenses) else emptyList(),
                 settings = settings,
                 loading = false,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripDetailUiState())
+
+    // One fix at a time: the screen asks on open and again when the permission lands.
+    private var locating = false
+
+    /**
+     * Takes a GPS fix and asks Google how far the stop you are heading for is from it.
+     * Silent about every failure — no permission, no fix, no signal — because the card
+     * simply falls back to the planned drive.
+     */
+    fun refreshDriveFromHere() {
+        val state = uiState.value
+        val target = state.stops.find { it.id == state.currentStopId }?.location ?: return
+        if (locating) return
+        locating = true
+        viewModelScope.launch {
+            try {
+                val here = currentLocation() ?: return@launch
+                if (LiveDrive.arrived(here, target)) {
+                    liveDrive.value = null
+                    return@launch
+                }
+                // Drop an answer to a different question before asking the new one, or a
+                // failed fetch would leave the old stop's distance on screen.
+                if (liveDrive.value?.to != target) liveDrive.value = null
+                if (!LiveDrive.needsFetch(liveDrive.value, here, target)) return@launch
+                val leg = drive(here, target) ?: return@launch
+                liveDrive.value = DriveFromHere(here, target, leg.distanceMeters, leg.durationSeconds)
+            } finally {
+                locating = false
+            }
+        }
+    }
 
     /** Cheapest vignette per detected country that has no ROAD_TAX line yet. */
     private fun vignetteSuggestions(stops: List<Stop>, expenses: List<Expense>): List<VignetteTable.Choice> =
@@ -316,6 +364,8 @@ class TripDetailViewModel(
                 container.settingsRepository,
                 container.mapProvider.placeCacheSweeper(container.tripRepository),
                 container.mapProvider.routeRefresher(container.tripRepository),
+                container.currentLocation,
+                container.mapProvider::drive,
             )
         }
     }

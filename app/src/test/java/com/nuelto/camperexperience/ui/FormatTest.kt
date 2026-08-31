@@ -140,4 +140,10 @@ class FormatTest {
         assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 1450)))
         assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, null)))
     }
+    @Test
+    fun `the live drive says it is measured from where you are`() {
+        assertEquals("47 km · 55 min from here", formatDriveFromHere(47_000, 3_300))
+        assertEquals("800 m · 2 min from here", formatDriveFromHere(800, 100))
+    }
+
 }
