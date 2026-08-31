@@ -305,12 +305,34 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `a named pick never overwrites a name typed by hand`() {
+    fun `choosing a named place renames the stop, whatever it was called`() {
         val vm = newStopViewModel()
         vm.setName("Grandma's driveway")
         vm.setPickedLocation(LatLng(46.6, 7.9), "Lauterbrunnen", "Bern")
-        assertEquals("Grandma's driveway", vm.uiState.value.name)
+        assertEquals("Lauterbrunnen", vm.uiState.value.name)
         assertEquals("Bern", vm.uiState.value.locationName)
+    }
+
+    @Test
+    fun `an already-named stop takes the name of a place picked for it`() = runTest {
+        tripRepository.upsertStop(
+            Stop(id = "s1", tripId = "t1", name = "Camping Lido Luzern", location = LatLng(47.04, 8.33)),
+        )
+        val vm = editViewModel("s1")
+        assertEquals("Camping Lido Luzern", vm.uiState.value.name)
+
+        vm.setPickedLocation(LatLng(46.72, 8.22), "Camping Grimselblick", "Innertkirchen", "ChIJ1")
+        assertEquals("Camping Grimselblick", vm.uiState.value.name)
+        vm.save {}
+        assertEquals("Camping Grimselblick", tripRepository.stops("t1").first().single().name)
+    }
+
+    @Test
+    fun `a name typed after choosing a place is kept`() {
+        val vm = newStopViewModel()
+        vm.setPickedLocation(LatLng(46.6, 7.9), "Lauterbrunnen", "Bern")
+        vm.setName("The spot by the river")
+        assertEquals("The spot by the river", vm.uiState.value.name)
     }
 
     @Test

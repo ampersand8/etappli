@@ -74,6 +74,10 @@ There is no lint/format tooling configured.
   TripDetailViewModel) refreshes them via Place Details or **deletes** them. Coordinates
   from GPS or a dropped pin have no `locationCachedAt` and never expire. With OSM gone
   there is no non-expiring search source, so this path is not optional.
+- **Choosing a named place names the stop**, always — it is an explicit act, so it wins
+  over whatever the field held, including a hand-typed name. Type over it afterwards and
+  that sticks until a different place is picked. A dropped pin has no name and so goes
+  through `setLocation`, where the reverse geocode still only fills a blank name.
 - Choosing a hit fetches **what the place is like** (`PlaceDetails`: type, rating, editorial
   summary, top review, one photo) in the same Place Details call that resolves its
   coordinate; a tapped POI is enriched the same way. Photos come back as bytes and are

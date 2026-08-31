@@ -168,20 +168,21 @@ class StopEditViewModel(
     )
 
     /**
-     * Result of the map picker. A searched place already names itself better than
-     * reverse geocoding could, so it never routes through setLocation — that would drop
-     * the name and geocode over it. Moving the location in the same update also retires
-     * any reverse geocode still in flight.
+     * Result of the map picker. Choosing a named place is an explicit act, so it names
+     * the stop — that is the default you wanted when you went looking for it. Type over
+     * it afterwards and the name sticks until you pick a different place.
+     *
+     * It never routes through setLocation: that would drop the name and reverse geocode
+     * over it. Moving the location in the same update also retires any geocode in flight.
      */
     fun setPickedLocation(location: LatLng, name: String, label: String, placeId: String = "") {
         if (name.isBlank()) return setLocation(location)
+        autoFilledName = name
         _uiState.update { state ->
-            val fillName = state.name.isBlank() || state.name == autoFilledName
-            if (fillName) autoFilledName = name
             state.copy(
                 location = round(location),
                 locationName = label.ifBlank { name },
-                name = if (fillName) name else state.name,
+                name = name,
                 // A Google place is kept by id; its coordinate is only cached (30 days).
                 placeId = placeId.ifBlank { null },
                 locationCachedAt = placeId.ifBlank { null }?.let { LocalDate.now() },
