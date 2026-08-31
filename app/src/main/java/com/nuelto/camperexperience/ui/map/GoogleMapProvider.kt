@@ -30,7 +30,11 @@ import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
 import com.nuelto.camperexperience.domain.PlaceSuggestion
+import com.nuelto.camperexperience.domain.Elevation
+import com.nuelto.camperexperience.domain.RouteRefresher
+import com.nuelto.camperexperience.location.ElevationService
 import com.nuelto.camperexperience.location.GooglePlacesSearch
+import com.nuelto.camperexperience.location.GoogleRoutesService
 import com.nuelto.camperexperience.ui.theme.accentColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,11 +49,18 @@ private fun LatLng.gms() = GmsLatLng(latitude, longitude)
  */
 object GoogleMapProvider : MapProvider {
 
-    override val attribution = "Map data and places © Google"
+    // Copernicus is separate from Google and its licence asks to be named.
+    override val attribution = "Map data, places and routes © Google · ${Elevation.ATTRIBUTION}"
 
     override fun placeSearch(): PlaceSearch = GooglePlacesSearch()
 
     override suspend fun photo(handle: String): ByteArray? = GooglePlacesSearch().photo(handle)
+
+    override fun routeRefresher(tripRepository: TripRepository): RouteRefresher {
+        val routes = GoogleRoutesService()
+        val elevation = ElevationService()
+        return RouteRefresher(tripRepository, routes::legs, elevation::heights)
+    }
 
     override fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper {
         val places = GooglePlacesSearch()

@@ -83,6 +83,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.data.model.UserSettings
@@ -98,6 +99,7 @@ import com.nuelto.camperexperience.ui.components.rememberReorderState
 import com.nuelto.camperexperience.ui.components.reorderable
 import com.nuelto.camperexperience.ui.formatCurrency
 import com.nuelto.camperexperience.ui.formatDate
+import com.nuelto.camperexperience.ui.formatDrive
 import com.nuelto.camperexperience.ui.formatTripDates
 import com.nuelto.camperexperience.ui.map.TripMap
 import com.nuelto.camperexperience.ui.theme.ActiveGreen
@@ -365,6 +367,7 @@ fun TripDetailScreen(
                     is StopRow -> if (row.stop.id == state.currentStopId) {
                         NowCard(
                             stop = row.stop,
+                            leg = state.drives[row.stop.id],
                             settings = state.settings,
                             onClick = { onEditStop(trip.id, row.stop.id) },
                             onChangeNights = { delta -> viewModel.changeNights(row.stop.id, delta) },
@@ -377,6 +380,7 @@ fun TripDetailScreen(
                     } else {
                         TimelineStopRow(
                             stop = row.stop,
+                            leg = state.drives[row.stop.id],
                             tripStatus = trip.status,
                             settings = state.settings,
                             movable = movable,
@@ -502,6 +506,7 @@ private fun TimelineBottomBar(
 @Composable
 private fun NowCard(
     stop: Stop,
+    leg: StopLeg?,
     settings: UserSettings,
     onClick: () -> Unit,
     onChangeNights: (Int) -> Unit,
@@ -520,6 +525,7 @@ private fun NowCard(
                 color = ActiveGreen,
                 fontWeight = FontWeight.Bold,
             )
+            DriveLine(leg)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -632,6 +638,7 @@ private fun GapCard(
 @Composable
 private fun TimelineStopRow(
     stop: Stop,
+    leg: StopLeg?,
     tripStatus: TripStatus,
     settings: UserSettings,
     movable: Boolean,
@@ -648,6 +655,7 @@ private fun TimelineStopRow(
         ) {
             StopDot(stop, tripStatus)
             Column(Modifier.weight(1f)) {
+                DriveLine(leg)
                 Text(
                     stop.name,
                     style = MaterialTheme.typography.titleSmall,
@@ -679,6 +687,20 @@ private fun TimelineStopRow(
             }
         }
     }
+}
+
+/**
+ * How far and how long the drive to this stop is, as Google routed it. Absent until the
+ * route has been fetched, and while a stop edit has outdated it.
+ */
+@Composable
+private fun DriveLine(leg: StopLeg?) {
+    if (leg == null) return
+    Text(
+        "\u2192 ${formatDrive(leg)}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** Blue = upcoming, green = current, grey = done/skipped; visits are hollow. */

@@ -13,6 +13,7 @@ import com.nuelto.camperexperience.domain.MapRoute
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
 import com.nuelto.camperexperience.domain.PlaceSearch
+import com.nuelto.camperexperience.domain.RouteRefresher
 import com.nuelto.camperexperience.domain.PlaceSuggestion
 
 /**
@@ -43,6 +44,12 @@ interface MapProvider {
      * results are ours to keep, so nothing ever has to be swept.
      */
     fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper? = null
+
+    /**
+     * Road-following geometry, distance and driving time between a trip's stops. Null
+     * means this provider cannot route, and the map falls back to straight lines.
+     */
+    fun routeRefresher(tripRepository: TripRepository): RouteRefresher? = null
 
     /**
      * Loads a photo handed out by [PlaceDetails.photo], as encoded bytes — decoding is

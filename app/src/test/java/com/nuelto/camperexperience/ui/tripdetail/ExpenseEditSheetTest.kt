@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,6 +14,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.UserSettings
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import java.time.LocalDate
@@ -143,5 +145,80 @@ class ExpenseEditSheetTest {
     fun `zero amount on an existing expense shows an empty field`() {
         setContent(Expense(id = "e1", tripId = "t1", amount = 0.0))
         compose.onNodeWithText("Save").assertIsNotEnabled()
+    }
+
+    /** The same drive, routed at 80 km, with the climb figures under test. */
+    private fun routedStops(ascentMeters: Int?, descentMeters: Int?) = listOf(
+        locatedStops[0],
+        locatedStops[1].copy(
+            leg = StopLeg(
+                from = LatLng(47.0, 7.0),
+                to = LatLng(47.5, 7.5),
+                distanceMeters = 80_000,
+                ascentMeters = ascentMeters,
+                descentMeters = descentMeters,
+            ),
+        ),
+    )
+
+    @Test
+    fun `a climbing leg is priced on top of the flat estimate`() {
+        setContent(stops = routedStops(ascentMeters = 1500, descentMeters = 0))
+        compose.onNodeWithText("Estimate from distance…").performClick()
+        compose.onNodeWithText("Plus 4.5 l for the climbing on the way.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Use this amount").performClick()
+        compose.onNodeWithText("Save").performClick()
+        // 80 km x 10 l/100km x 1.80 = 14.40 flat, plus 4.50 l of lift at 1.80.
+        assertTrue(saved.single().amount > 14.40)
+        assertEquals(22.49, saved.single().amount, 1e-9)
+    }
+
+    @Test
+    fun `a leg with no elevation prices the distance alone`() {
+        setContent(stops = routedStops(ascentMeters = null, descentMeters = null))
+        compose.onNodeWithText("Estimate from distance…").performClick()
+        compose.onNodeWithText("for the climbing on the way", substring = true)
+            .assertDoesNotExist()
+        compose.onNodeWithText("Use this amount").performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(14.40, saved.single().amount, 1e-9)
+    }
+
+    @Test
+    fun `a descent gives fuel back, and says so`() {
+        setContent(stops = routedStops(ascentMeters = 100, descentMeters = 1800))
+        compose.onNodeWithText("Estimate from distance…").performClick()
+        compose.onNodeWithText("given back on the way down", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Use this amount").performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertTrue(saved.single().amount < 14.40)
+        assertTrue(saved.single().amount > 0.0)
+    }
+
+    @Test
+    fun `shortening the distance prices only that share of the climb`() {
+        setContent(stops = routedStops(ascentMeters = 1500, descentMeters = 0))
+        compose.onNodeWithText("Estimate from distance…").performClick()
+        compose.onNodeWithText("80").performScrollTo().performTextReplacement("40")
+        // Half the routed drive, so half the lift: 40 x 10/100 x 1.80 + 2.248 x 1.80.
+        compose.onNodeWithText("Plus 2.2 l for the climbing on the way.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Use this amount").performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(11.25, saved.single().amount, 1e-9)
+    }
+
+    @Test
+    fun `a descent credit can never drive the estimate below zero`() {
+        setContent(stops = routedStops(ascentMeters = 100, descentMeters = 1800))
+        compose.onNodeWithText("Estimate from distance…").performClick()
+        // Well under the consumption the credit was capped against, which is what used to
+        // let the credit outgrow the fuel it stands in for.
+        compose.onNodeWithText("10.0").performScrollTo().performTextReplacement("1")
+        compose.onNodeWithText("Use this amount").performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(0.0, saved.single().amount, 1e-9)
     }
 }

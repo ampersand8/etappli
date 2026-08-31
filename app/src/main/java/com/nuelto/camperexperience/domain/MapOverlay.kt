@@ -80,7 +80,7 @@ object MapOverlay {
             .filter { it.location != null }
         if (located.size < 2) return@flatMap emptyList()
         val leg = { stops: List<Stop>, accent: MapAccent, dashed: Boolean ->
-            MapRoute(entry.trip.id, stops.mapNotNull { it.location }, accent, dashed)
+            MapRoute(entry.trip.id, path(stops), accent, dashed)
         }
 
         when (entry.trip.status) {
@@ -98,6 +98,27 @@ object MapOverlay {
                 }
             }
         }
+    }
+
+    /**
+     * The line through [stops]: the road Google routed wherever there is a leg for it,
+     * and a straight hop between the two pins wherever there is not — no key, no signal,
+     * or a stop moved since the route was fetched.
+     */
+    private fun path(stops: List<Stop>): List<LatLng> {
+        val points = mutableListOf<LatLng>()
+        stops.zipWithNext().forEach { (from, to) ->
+            val segment = segment(from, to)
+            // Consecutive segments share the stop between them; a routed one starts at
+            // the road, not the pin, so the join is only dropped when it really repeats.
+            points += if (points.lastOrNull() == segment.firstOrNull()) segment.drop(1) else segment
+        }
+        return points
+    }
+
+    private fun segment(from: Stop, to: Stop): List<LatLng> {
+        val road = RouteCache.usable(from, to)?.let { Polyline.decode(it.polyline) }
+        return if (road != null && road.size >= 2) road else listOfNotNull(from.location, to.location)
     }
 
     /** Identical coordinates collapse, so a degenerate bounding box never reaches the map. */

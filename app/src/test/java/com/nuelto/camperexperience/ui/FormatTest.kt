@@ -1,5 +1,6 @@
 package com.nuelto.camperexperience.ui
 
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import java.time.LocalDate
@@ -81,5 +82,67 @@ class FormatTest {
             "${formatDate(start)} – ${formatDate(end)}",
             formatTripDates(Trip(startDate = start, endDate = end, status = TripStatus.PLANNED)),
         )
+    }
+
+    @Test
+    fun `distance stays in metres below a kilometre and flips at 1000`() {
+        assertEquals("0 m", formatDistance(0))
+        assertEquals("999 m", formatDistance(999))
+        assertEquals("1 km", formatDistance(1000))
+    }
+
+    @Test
+    fun `kilometres round to the nearest whole one`() {
+        assertEquals("1 km", formatDistance(1499))
+        assertEquals("2 km", formatDistance(1500))
+        assertEquals("124 km", formatDistance(124_400))
+    }
+
+    @Test
+    fun `a duration under an hour is minutes only`() {
+        assertEquals("0 min", formatDuration(0))
+        assertEquals("45 min", formatDuration(2700))
+        assertEquals("59 min", formatDuration(3540))
+    }
+
+    @Test
+    fun `whole hours drop the minutes`() {
+        assertEquals("1 h", formatDuration(3600))
+        assertEquals("2 h", formatDuration(7200))
+    }
+
+    @Test
+    fun `hours carry their leftover minutes`() {
+        assertEquals("1 h 1 min", formatDuration(3660))
+        assertEquals("1 h 45 min", formatDuration(6300))
+    }
+
+    @Test
+    fun `seconds round to the nearest minute`() {
+        assertEquals("0 min", formatDuration(29))
+        assertEquals("1 min", formatDuration(30))
+        assertEquals("1 min", formatDuration(89))
+        assertEquals("2 min", formatDuration(90))
+    }
+
+    private fun leg(meters: Int, seconds: Int, ascent: Int? = null) =
+        StopLeg(distanceMeters = meters, durationSeconds = seconds, ascentMeters = ascent)
+
+    @Test
+    fun `a drive joins distance and duration`() {
+        assertEquals("124 km · 1 h 45 min", formatDrive(leg(124_400, 6300)))
+        assertEquals("800 m · 12 min", formatDrive(leg(800, 700)))
+    }
+
+    @Test
+    fun `the climb is mentioned from 200 m up, never below`() {
+        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 199)))
+        assertEquals("10 km · 12 min · ↑ 200 m", formatDrive(leg(10_000, 700, 200)))
+        assertEquals("10 km · 12 min · ↑ 1450 m", formatDrive(leg(10_000, 700, 1450)))
+    }
+
+    @Test
+    fun `an unknown climb is left out`() {
+        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, null)))
     }
 }

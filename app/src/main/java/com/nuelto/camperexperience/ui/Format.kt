@@ -1,5 +1,6 @@
 package com.nuelto.camperexperience.ui
 
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import java.text.NumberFormat
@@ -7,6 +8,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Currency
+import kotlin.math.roundToInt
 
 fun formatCurrency(amount: Double, currencyCode: String): String {
     val format = NumberFormat.getCurrencyInstance()
@@ -28,3 +30,28 @@ fun formatTripDates(trip: Trip): String =
     } else {
         formatDateRange(trip.startDate, trip.endDate)
     }
+
+/** Driving distance at the precision a road sign uses — nobody plans in metres. */
+fun formatDistance(meters: Int): String =
+    if (meters < 1_000) "$meters m" else "${(meters / 1000.0).roundToInt()} km"
+
+fun formatDuration(seconds: Int): String {
+    val minutes = (seconds / 60.0).roundToInt()
+    return when {
+        minutes < 60 -> "$minutes min"
+        minutes % 60 == 0 -> "${minutes / 60} h"
+        else -> "${minutes / 60} h ${minutes % 60} min"
+    }
+}
+
+/**
+ * The drive that arrives at a stop: "124 km · 1 h 45 min", plus the climb when there is
+ * enough of it to be worth a driver's attention.
+ */
+fun formatDrive(leg: StopLeg): String {
+    val climb = leg.ascentMeters?.takeIf { it >= CLIMB_WORTH_MENTIONING_M }?.let { " · ↑ $it m" }
+    return "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}" +
+        climb.orEmpty()
+}
+
+private const val CLIMB_WORTH_MENTIONING_M = 200

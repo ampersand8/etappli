@@ -9,11 +9,14 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.domain.VignetteTable
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
+import com.nuelto.camperexperience.domain.RoutedLeg
+import com.nuelto.camperexperience.domain.RouteRefresher
 import com.nuelto.camperexperience.testutil.MainDispatcherRule
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -417,5 +420,98 @@ class TripDetailViewModelTest {
         val stop = tripRepository.stops("t1").first().single()
         assertNull(stop.location)
         assertEquals("ChIJ1", stop.placeId)
+    }
+
+    // --- drives -----------------------------------------------------------------------
+
+    private fun leg(from: LatLng, to: LatLng) =
+        StopLeg(from = from, to = to, distanceMeters = 124_000, durationSeconds = 6_300)
+
+    private fun refreshingViewModel(refresher: RouteRefresher) =
+        TripDetailViewModel(
+            SavedStateHandle(mapOf("tripId" to "t1")),
+            tripRepository,
+            settingsRepository,
+            routeRefresher = refresher,
+        )
+
+    /** Routes one leg per pair and records the points every request was made for. */
+    private fun refresher(asked: MutableList<List<LatLng>>) = RouteRefresher(
+        tripRepository,
+        { points ->
+            asked += points
+            points.zipWithNext().map { RoutedLeg(polyline = "", distanceMeters = 124_000, durationSeconds = 6_300) }
+        },
+    )
+
+    @Test
+    fun `drives key the leg by the stop it arrives at`() = runTest {
+        seedTrip()
+        tripRepository.upsertStop(
+            stops().first { it.id == "s2" }.copy(leg = leg(LatLng(47.0, 7.0), LatLng(47.5, 7.5))),
+        )
+        viewModel().uiState.test {
+            val drives = awaitItem().drives
+            assertEquals(listOf("s2"), drives.keys.toList()) // nothing drives to the first stop
+            assertEquals(124_000, drives.getValue("s2").distanceMeters)
+            assertEquals(6_300, drives.getValue("s2").durationSeconds)
+        }
+    }
+
+    @Test
+    fun `a leg whose endpoints no longer match its stops is left out`() = runTest {
+        seedTrip()
+        tripRepository.upsertStop(
+            stops().first { it.id == "s2" }.copy(leg = leg(LatLng(47.0, 7.0), LatLng(47.5, 7.5))),
+        )
+        // Re-pinned departure: the stored leg describes a drive nobody makes any more.
+        tripRepository.upsertStop(stops().first { it.id == "s1" }.copy(location = LatLng(46.0, 6.0)))
+        viewModel().uiState.test {
+            assertTrue(awaitItem().drives.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a route refresher fills the drives in`() = runTest {
+        seedTrip()
+        val asked = mutableListOf<List<LatLng>>()
+        refreshingViewModel(refresher(asked)).uiState.test {
+            assertEquals(listOf(listOf(LatLng(47.0, 7.0), LatLng(47.5, 7.5))), asked)
+            val drive = awaitItem().drives.getValue("s2")
+            assertEquals(124_000, drive.distanceMeters)
+            assertEquals(6_300, drive.durationSeconds)
+            assertEquals(LatLng(47.0, 7.0), drive.from)
+            assertEquals(LatLng(47.5, 7.5), drive.to)
+            assertEquals(LocalDate.now(), drive.fetchedAt)
+        }
+        assertNotNull(stops().first { it.id == "s2" }.leg)
+    }
+
+    @Test
+    fun `writing the fetched legs back does not fetch again`() = runTest {
+        seedTrip()
+        val asked = mutableListOf<List<LatLng>>()
+        val vm = refreshingViewModel(refresher(asked))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, asked.size) // the legs it just wrote are not a new set of drives
+
+        // A real change to the drives does re-route — once.
+        tripRepository.upsertStop(stops().first { it.id == "s2" }.copy(location = LatLng(46.0, 6.0)))
+        testScheduler.advanceUntilIdle()
+        assertEquals(2, asked.size)
+        assertEquals(listOf(LatLng(47.0, 7.0), LatLng(46.0, 6.0)), asked.last())
+    }
+
+    @Test
+    fun `without a refresher nothing is routed and the trip still reads`() = runTest {
+        seedTrip()
+        viewModel().uiState.test {
+            val state = awaitItem()
+            assertTrue(state.drives.isEmpty())
+            assertFalse(state.loading)
+            assertEquals(listOf("s1", "s2"), state.stops.map { it.id })
+        }
+        assertNull(stops().first { it.id == "s2" }.leg)
     }
 }
