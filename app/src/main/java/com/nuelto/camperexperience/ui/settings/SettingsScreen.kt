@@ -127,8 +127,21 @@ fun SettingsScreen(
                 onCommit = { viewModel.update(current.copy(roadDistanceFactor = it)) },
             )
             Text(
-                "The estimator prefills trip distance as straight-line distance between " +
-                    "stops multiplied by this factor.",
+                "Distance comes from the road Google routes between stops. This factor " +
+                    "only fills in for legs with no route yet — no map key, or no signal " +
+                    "when they were added.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NumberSetting(
+                label = "Vehicle weight",
+                suffix = "kg",
+                value = current.vehicleMassKg,
+                onCommit = { viewModel.update(current.copy(vehicleMassKg = it)) },
+            )
+            Text(
+                "Used to price the climbing on a route: lifting the van over a pass costs " +
+                    "fuel the flat-road consumption above does not account for.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

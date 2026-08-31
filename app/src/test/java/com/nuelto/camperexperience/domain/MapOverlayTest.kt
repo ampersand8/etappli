@@ -3,6 +3,7 @@ package com.nuelto.camperexperience.domain
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
@@ -171,5 +172,99 @@ class MapOverlayTest {
             MapFrame.Bounds(west = 7.0, south = 45.0, east = 9.0, north = 46.0),
             MapOverlay.frame(listOf(LatLng(46.0, 7.0), LatLng(45.0, 9.0), LatLng(45.5, 8.0))),
         )
+    }
+
+    // --- routes: road geometry -----------------------------------------------
+
+    /** (46,7) (46.4,7.3) (46.7,7.6) (47,8) — the drive from stop a to stop b. */
+    private val roadAB = "_kwwG_evi@_cmA_ry@_ry@_ry@_ry@_cmA"
+
+    /** (47,8) (47.5,8.4) (48,9) — on from b to c, starting where [roadAB] ends. */
+    private val roadBC = "_uz}G_oyo@_t`B_cmA_t`B_etB"
+
+    /** (46,7) (46.5,7.5) (46.99,7.99) — a road that ends just short of b's pin. */
+    private val roadShortOfB = "_kwwG_evi@_t`B_t`Bou~Aou~A"
+
+    /** (46.5,7.5) — a single point, too little to draw a line with. */
+    private val onePoint = "_`yzG_zwl@"
+
+    private fun Stop.road(from: Stop, polyline: String) =
+        copy(leg = StopLeg(from = from.location!!, to = location!!, polyline = polyline))
+
+    @Test
+    fun `a leg's road replaces the straight hop between the two pins`() {
+        val a = stop("a", 0)
+        val b = stop("b", 1).road(a, roadAB)
+        val points = MapOverlay.routes(data(TripStatus.DONE, listOf(a, b))).single().points
+        assertTrue(points.size > 2)
+        assertEquals(Polyline.decode(roadAB), points)
+    }
+
+    @Test
+    fun `a leg whose endpoints no longer match the stops falls back to the pins`() {
+        val a = stop("a", 0)
+        val moved = stop("b", 1).road(a, roadAB).copy(location = LatLng(47.5, 8.5))
+        assertEquals(
+            listOf(LatLng(46.0, 7.0), LatLng(47.5, 8.5)),
+            MapOverlay.routes(data(TripStatus.DONE, listOf(a, moved))).single().points,
+        )
+    }
+
+    @Test
+    fun `a polyline with fewer than two points falls back to the pins`() {
+        val a = stop("a", 0)
+        assertEquals(1, Polyline.decode(onePoint).size)
+        listOf("", onePoint).forEach { polyline ->
+            val b = stop("b", 1).road(a, polyline)
+            assertEquals(
+                listOf(LatLng(46.0, 7.0), LatLng(47.0, 8.0)),
+                MapOverlay.routes(data(TripStatus.DONE, listOf(a, b))).single().points,
+            )
+        }
+    }
+
+    @Test
+    fun `two roads meeting at a stop share that vertex once`() {
+        val a = stop("a", 0)
+        val b = stop("b", 1).road(a, roadAB)
+        val c = stop("c", 2).road(b, roadBC)
+        val points = MapOverlay.routes(data(TripStatus.DONE, listOf(a, b, c))).single().points
+        assertEquals(Polyline.decode(roadAB) + Polyline.decode(roadBC).drop(1), points)
+        assertEquals(6, points.size)
+        assertEquals(1, points.count { it == LatLng(47.0, 8.0) })
+    }
+
+    @Test
+    fun `a road ending short of the pin keeps the pin the next hop starts from`() {
+        val a = stop("a", 0)
+        val b = stop("b", 1).road(a, roadShortOfB)
+        val points = MapOverlay.routes(data(TripStatus.DONE, listOf(a, b, stop("c", 2)))).single().points
+        assertEquals(
+            Polyline.decode(roadShortOfB) + listOf(LatLng(47.0, 8.0), LatLng(48.0, 9.0)),
+            points,
+        )
+        assertEquals(5, points.size)
+    }
+
+    @Test
+    fun `an active trip splits into three roads where it has them`() {
+        // (46,7) (46.5,7.5) (47,8)
+        val travelled = "_kwwG_evi@_t`B_t`B_t`B_t`B"
+        // (47,8) (47.5,8.6) (48,9)
+        val current = "_uz}G_oyo@_t`B_etB_t`B_cmA"
+        // (48,9) (48.5,9.5) (49,10)
+        val ahead = "__~cH_y|u@_t`B_t`B_t`B_t`B"
+        val d1 = stop("d1", 0, state = StopState.DONE)
+        val d2 = stop("d2", 1, state = StopState.DONE).road(d1, travelled)
+        val u1 = stop("u1", 2).road(d2, current)
+        val u2 = stop("u2", 3).road(u1, ahead)
+        val routes = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(d1, d2, u1, u2)))
+        assertEquals(
+            listOf(MapAccent.DONE, MapAccent.CURRENT, MapAccent.PLANNED),
+            routes.map { it.accent },
+        )
+        assertEquals(Polyline.decode(travelled), routes[0].points)
+        assertEquals(Polyline.decode(current), routes[1].points)
+        assertEquals(Polyline.decode(ahead), routes[2].points)
     }
 }

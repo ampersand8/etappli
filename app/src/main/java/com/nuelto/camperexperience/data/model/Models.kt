@@ -38,6 +38,29 @@ enum class StopKind { CAMPSITE, STELLPLATZ, FREE_CAMP, VISIT }
  *  are excluded from route distance, nights, and cost math. */
 enum class StopState { PLANNED, DONE, SKIPPED }
 
+/**
+ * The drive from the previous stop, as Google routed it. [from]/[to] are the stop
+ * coordinates the route was computed between, so a reorder or a moved pin invalidates
+ * the leg by simple comparison rather than by hoping something remembered to clear it.
+ *
+ * Google's terms let a routed coordinate be kept for 30 days (SST §19.3, the same window
+ * as the Places rule), so [fetchedAt] is not optional — see domain/RouteCache.
+ */
+data class StopLeg(
+    val from: LatLng = LatLng(0.0, 0.0),
+    val to: LatLng = LatLng(0.0, 0.0),
+    // Encoded polyline, decoded for drawing by domain/Polyline.
+    val polyline: String = "",
+    val distanceMeters: Int = 0,
+    val durationSeconds: Int = 0,
+    // Cumulative climb along the leg, from an open DEM — null until it is fetched, and
+    // null forever if the elevation source is unreachable. Google is not the source:
+    // its Elevation API forbids storing results at all.
+    val ascentMeters: Int? = null,
+    val descentMeters: Int? = null,
+    val fetchedAt: LocalDate = LocalDate.now(),
+)
+
 data class Stop(
     val id: String = "",
     val tripId: String = "",
@@ -59,6 +82,9 @@ data class Stop(
     // When [location] was fetched from Google Places. Null means the coordinate came
     // from somewhere without a retention limit and never expires. See domain/PlaceCache.
     val locationCachedAt: LocalDate? = null,
+    // The drive that arrives here, from the stop before it. Null on the first stop of a
+    // trip, and until the route has been fetched.
+    val leg: StopLeg? = null,
 )
 
 enum class ExpenseType {
@@ -83,8 +109,12 @@ data class UserSettings(
     val currency: String = "CHF",
     val fuelConsumptionL100km: Double = 10.0,
     val fuelPricePerLiter: Double = 1.80,
-    // Multiplier on straight-line (haversine) distance to approximate road distance.
+    // Fallback multiplier on straight-line (haversine) distance, used only for legs with
+    // no routed distance — offline, no API key, or a fetch that failed.
     val roadDistanceFactor: Double = 1.25,
+    // Laden weight, for the climb term of the fuel estimate. 3.5 t is the usual limit a
+    // camper is built to sit under.
+    val vehicleMassKg: Double = 3500.0,
     // Default per-night camping estimates, used while a stop's price isn't known yet.
     val campsitePerNight: Double = 45.0,
     val stellplatzPerNight: Double = 15.0,

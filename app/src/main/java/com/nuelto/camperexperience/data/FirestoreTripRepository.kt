@@ -11,6 +11,7 @@ import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
@@ -90,7 +91,36 @@ class FirestoreTripRepository(
         "costKnown" to costKnown,
         "placeId" to placeId,
         "locationCachedAt" to locationCachedAt?.toEpochDay(),
+        "leg" to leg?.toMap(),
     )
+
+    private fun StopLeg.toMap() = mapOf(
+        "from" to GeoPoint(from.latitude, from.longitude),
+        "to" to GeoPoint(to.latitude, to.longitude),
+        "polyline" to polyline,
+        "distanceMeters" to distanceMeters,
+        "durationSeconds" to durationSeconds,
+        "ascentMeters" to ascentMeters,
+        "descentMeters" to descentMeters,
+        "fetchedAt" to fetchedAt.toEpochDay(),
+    )
+
+    /** No endpoints, no leg: without them nothing can tell whether it still applies. */
+    private fun Map<*, *>.toStopLeg(): StopLeg? {
+        val from = this["from"] as? GeoPoint ?: return null
+        val to = this["to"] as? GeoPoint ?: return null
+        return StopLeg(
+            from = LatLng(from.latitude, from.longitude),
+            to = LatLng(to.latitude, to.longitude),
+            polyline = this["polyline"] as? String ?: "",
+            distanceMeters = (this["distanceMeters"] as? Number)?.toInt() ?: 0,
+            durationSeconds = (this["durationSeconds"] as? Number)?.toInt() ?: 0,
+            ascentMeters = (this["ascentMeters"] as? Number)?.toInt(),
+            descentMeters = (this["descentMeters"] as? Number)?.toInt(),
+            fetchedAt = (this["fetchedAt"] as? Number)
+                ?.let { LocalDate.ofEpochDay(it.toLong()) } ?: LocalDate.now(),
+        )
+    }
 
     private fun DocumentSnapshot.toStop(tripId: String): Stop = Stop(
         id = id,
@@ -109,6 +139,7 @@ class FirestoreTripRepository(
         costKnown = getBoolean("costKnown") ?: true,
         placeId = getString("placeId"),
         locationCachedAt = getLong("locationCachedAt")?.let { LocalDate.ofEpochDay(it) },
+        leg = (get("leg") as? Map<*, *>)?.toStopLeg(),
     )
 
     private fun Expense.toMap() = mapOf(

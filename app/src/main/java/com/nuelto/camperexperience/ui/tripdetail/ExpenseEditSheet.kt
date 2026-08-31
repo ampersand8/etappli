@@ -35,6 +35,7 @@ import com.nuelto.camperexperience.ui.components.parseDecimal
 import com.nuelto.camperexperience.ui.formatCurrency
 import java.time.LocalDate
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Bottom sheet for creating/editing an expense. When type is FUEL an expandable
@@ -141,28 +142,60 @@ private fun FuelEstimatorSection(
     settings: UserSettings,
     onUseAmount: (Double) -> Unit,
 ) {
+    val routedKm = remember(stops, settings) { FuelEstimator.defaultTripDistanceKm(stops, settings) }
     var distance by remember {
-        val prefill = FuelEstimator.defaultTripDistanceKm(stops, settings)
-        mutableStateOf(if (prefill > 0) String.format(Locale.ROOT, "%.0f", prefill) else "")
+        mutableStateOf(if (routedKm > 0) String.format(Locale.ROOT, "%.0f", routedKm) else "")
     }
+    // What the climbing adds on top of the flat-road figure. Shown, not folded into the
+    // distance — the distance field has to stay something the user can recognise.
+    val tripClimbLiters = remember(stops, settings) { FuelEstimator.climbLiters(stops, settings) }
     var consumption by remember { mutableStateOf(settings.fuelConsumptionL100km.toString()) }
     var price by remember { mutableStateOf(settings.fuelPricePerLiter.toString()) }
 
+    val entered = parseDecimal(distance)
+    // The climb belongs to the routed drive, so price only the share of it the user kept.
+    // Otherwise shortening the distance leaves the whole trip's climbing on a fraction of
+    // it — and on a net-descent trip the credit would swamp what is left.
+    val climbLiters =
+        if (routedKm > 0 && entered != null) tripClimbLiters * entered / routedKm else 0.0
+
     val estimated = run {
-        val d = parseDecimal(distance)
         val c = parseDecimal(consumption)
         val p = parseDecimal(price)
-        if (d != null && c != null && p != null) FuelEstimator.estimateCost(d, c, p) else null
+        if (entered != null && c != null && p != null) {
+            // Floored: the descent credit was capped against the consumption in Settings,
+            // so a much lower figure typed here could otherwise turn the estimate negative
+            // and save a negative fuel expense.
+            (FuelEstimator.estimateCost(entered, c, p) + climbLiters * p).coerceAtLeast(0.0)
+        } else {
+            null
+        }
     }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Fuel estimate", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Distance is prefilled from the stops (straight line × road factor) — adjust to your real route.",
+                "Distance is prefilled from the stops — the road Google routed where there " +
+                    "is one, straight line × road factor where there isn't. Adjust to your " +
+                    "real route.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Both directions are worth saying: a descent that pays some fuel back is just
+            // as surprising as a climb that costs extra.
+            val climbNote = when {
+                climbLiters > 0 -> "Plus %.1f l for the climbing on the way."
+                climbLiters < 0 -> "Less %.1f l, given back on the way down."
+                else -> null
+            }
+            if (climbNote != null) {
+                Text(
+                    String.format(Locale.ROOT, climbNote, abs(climbLiters)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             DecimalField(label = "Distance", value = distance, onValueChange = { distance = it }, suffix = "km")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DecimalField(

@@ -25,6 +25,7 @@ import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
@@ -602,5 +603,34 @@ class TripDetailScreenTest {
         assertEquals(1, events.size)
         assertTrue(events[0].startsWith("open:"))
         runBlocking { assertEquals(2, tripRepository.trips().first().size) }
+    }
+
+    // --- drive lines -----------------------------------------------------------------
+
+    @Test
+    fun `a stop whose leg still matches shows the drive arriving there`() {
+        seedPlan()
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            tripRepository.upsertStop(
+                s2.copy(
+                    leg = StopLeg(
+                        from = LatLng(47.05, 8.31), to = LatLng(46.16, 8.79),
+                        distanceMeters = 124_000, durationSeconds = 6_300,
+                    ),
+                ),
+            )
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("\u2192 124 km \u00b7 1 h 45 min"))
+        compose.onNodeWithText("\u2192 124 km \u00b7 1 h 45 min", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a stop with no leg shows no drive line`() {
+        seedPlan()
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
+        compose.onAllNodes(hasText("\u2192", substring = true)).assertCountEquals(0)
     }
 }

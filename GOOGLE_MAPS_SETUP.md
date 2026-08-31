@@ -8,19 +8,51 @@ The app needs a Google Maps Platform key. Without one it still builds, installs 
 1. https://console.cloud.google.com → new project (or reuse the Firebase one).
 2. **Billing must be enabled**, even inside the free tier. The Android Maps SDK has no
    per-load charge, but Google requires a card on file.
-3. APIs & Services → Library → enable **Maps SDK for Android** and **Places API (New)**
-   (the one called "Places API (New)", not the legacy "Places API").
+3. APIs & Services → Library → enable **Maps SDK for Android**, **Places API (New)**
+   (the one called "Places API (New)", not the legacy "Places API") and **Routes API**.
 4. APIs & Services → Credentials → Create credentials → API key. Then restrict it:
    - *Application restrictions* → Android apps → add package `com.nuelto.camperexperience`
      with your debug SHA-1 (and the release one when you have it):
      ```bash
      ./gradlew :app:signingReport
      ```
-   - *API restrictions* → Restrict key → Maps SDK for Android + Places API (New).
+   - *API restrictions* → Restrict key → Maps SDK for Android + Places API (New) +
+     Routes API.
 5. Put it in `local.properties` (gitignored, same file as `webClientId`):
    ```properties
    mapsApiKey=AIza...
    ```
+
+## Application restrictions and the web-service calls
+
+One key covers all three APIs — verified against a live `computeRoutes` call. Enabling
+Routes API and listing it under *API restrictions* is the whole requirement.
+
+The catch is the **application** restriction in step 4. Maps SDK for Android is an SDK and
+proves its identity by itself, but Places API (New) and Routes API are called here as
+plain web services over `HttpURLConnection`. Google's rule for those is that an
+Android-restricted key requires `X-Android-Package` and `X-Android-Cert` (SHA-1 as
+undelimited hex) headers on every request — which this app does not send, for either API.
+
+So the key currently works because it carries no Android application restriction. Add one
+and **both** place search and routing stop working, not just routing. If you want that
+restriction, the fix is those two headers in `location/GooglePlacesSearch` and
+`location/RouteServices`, not a second key.
+
+Either way, cap the spend: APIs & Services → Quotas → Routes API, and set a daily ceiling
+you would not mind paying. Compute Routes Essentials gives 10,000 free requests a month
+and this app spends roughly one per trip edit.
+
+**Without the Routes API enabled** the app still runs: routes fall back to straight lines
+between stops, and distance to straight line × the road factor in Settings.
+
+## Elevation is not Google
+
+The climb figure that feeds the fuel estimate comes from Open-Meteo (Copernicus DEM
+GLO-90), not Google's Elevation API. Google's policies forbid caching or storing elevation
+results at all, and a per-leg climb that has to be re-fetched to draw a list is no use.
+Open-Meteo needs no key; the Copernicus licence asks for attribution, which is the second
+half of the line at the bottom of Settings.
 
 A new key can take a few minutes to activate. A grey map is almost always a key problem:
 
@@ -58,6 +90,13 @@ rather than ignored:
 app is next opened online. Trips shorter than a month are unaffected during and just
 after the trip; older trips need one online visit to redraw. That is the trade this
 design accepts — the alternative was not storing Google coordinates at all.
+
+The Routes API sits under the same clock: §19.3 grants it the same 30-day window that
+§14.3 grants Places, and a stored leg is a sequence of coordinates. `domain/RouteCache`
+decides when one is past its days or no longer describes the drive it was fetched for,
+and `domain/RouteRefresher` re-fetches where it can and deletes where it can't. A leg
+that goes is not a loss: the map falls back to a straight line and the estimate to the
+road factor.
 
 §14.2 also forbids showing Places results "in conjunction with a non-Google map" — moot
 now that Google is the only map, but it is why search and map cannot be mixed providers.

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.BuildConfig
@@ -107,21 +108,21 @@ class SettingsScreenTest {
     fun `sign out delegates to the auth repository`() {
         val auth = FakeAuthRepository()
         setContent(auth)
-        compose.onNodeWithText("Sign out").performClick()
+        compose.onNodeWithText("Sign out").performScrollTo().performClick()
         assertEquals(1, auth.signOutCalls)
     }
 
     @Test
     fun `shows the app version, and no attribution line when there is no map`() {
         setContent()
-        compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Map data and places © Google").assertDoesNotExist()
     }
 
     @Test
     fun `attribution follows the map provider`() {
         setContent(provider = AttributedMapProvider)
-        compose.onNodeWithText("Map data and places © Google").assertIsDisplayed()
+        compose.onNodeWithText("Map data and places © Google").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -129,6 +130,39 @@ class SettingsScreenTest {
         setContent()
         compose.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("back"), events)
+    }
+
+    @Test
+    fun `vehicle weight edits are committed while typing`() {
+        setContent()
+        compose.onNodeWithText("3500.0").performScrollTo().performTextReplacement("3200")
+        runBlocking {
+            assertEquals(3200.0, settingsRepository.settings().first().vehicleMassKg, 1e-9)
+        }
+    }
+
+    @Test
+    fun `an unusable vehicle weight is not committed`() {
+        setContent()
+        compose.onNodeWithText("3500.0").performScrollTo().performTextReplacement("0")
+        compose.onNodeWithText("0").performTextReplacement("heavy")
+        runBlocking {
+            assertEquals(3500.0, settingsRepository.settings().first().vehicleMassKg, 1e-9)
+        }
+    }
+
+    @Test
+    fun `explains that the road factor only fills in, and what the weight is for`() {
+        setContent()
+        compose.onNodeWithText(
+            "Distance comes from the road Google routes between stops. This factor " +
+                "only fills in for legs with no route yet — no map key, or no signal " +
+                "when they were added.",
+        ).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(
+            "Used to price the climbing on a route: lifting the van over a pass costs " +
+                "fuel the flat-road consumption above does not account for.",
+        ).performScrollTo().assertIsDisplayed()
     }
 }
 

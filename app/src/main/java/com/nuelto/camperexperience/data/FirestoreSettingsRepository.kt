@@ -29,6 +29,8 @@ class FirestoreSettingsRepository(
                             ?: defaults.fuelPricePerLiter,
                         roadDistanceFactor = snapshot?.getDouble("roadDistanceFactor")
                             ?: defaults.roadDistanceFactor,
+                        vehicleMassKg = snapshot?.getDouble("vehicleMassKg")
+                            ?: defaults.vehicleMassKg,
                         campsitePerNight = snapshot?.getDouble("campsitePerNight")
                             ?: defaults.campsitePerNight,
                         stellplatzPerNight = snapshot?.getDouble("stellplatzPerNight")
@@ -47,6 +49,7 @@ class FirestoreSettingsRepository(
                 "fuelConsumptionL100km" to settings.fuelConsumptionL100km,
                 "fuelPricePerLiter" to settings.fuelPricePerLiter,
                 "roadDistanceFactor" to settings.roadDistanceFactor,
+                "vehicleMassKg" to settings.vehicleMassKg,
                 "campsitePerNight" to settings.campsitePerNight,
                 "stellplatzPerNight" to settings.stellplatzPerNight,
             ),

@@ -11,6 +11,7 @@ import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.Expense
 import com.nuelto.camperexperience.data.model.ExpenseType
 import com.nuelto.camperexperience.data.model.Stop
+import com.nuelto.camperexperience.data.model.StopLeg
 import com.nuelto.camperexperience.data.model.StopState
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
@@ -24,6 +25,8 @@ import com.nuelto.camperexperience.domain.FuelEstimator
 import com.nuelto.camperexperience.domain.GapRow
 import com.nuelto.camperexperience.domain.StopRow
 import com.nuelto.camperexperience.domain.PlaceCacheSweeper
+import com.nuelto.camperexperience.domain.RouteCache
+import com.nuelto.camperexperience.domain.RouteRefresher
 import com.nuelto.camperexperience.domain.Timeline
 import com.nuelto.camperexperience.domain.TimelineRow
 import com.nuelto.camperexperience.domain.TripEstimator
@@ -35,6 +38,8 @@ import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,6 +59,9 @@ data class TripDetailUiState(
     val estimate: EstimateBreakdown? = null,
     // First upcoming stop of an ACTIVE trip: tonight's destination.
     val currentStopId: String? = null,
+    // The drive arriving at each stop, keyed by stop id. Only legs that still describe
+    // their drive are in here, so an edit blanks the line rather than lying about it.
+    val drives: Map<String, StopLeg> = emptyMap(),
     val vignetteSuggestions: List<VignetteTable.Choice> = emptyList(),
     val settings: UserSettings = UserSettings(),
     val loading: Boolean = true,
@@ -66,12 +74,27 @@ class TripDetailViewModel(
     // Renews Google Places coordinates that hit their 30-day retention, and deletes the
     // ones it cannot renew. Null when the map provider has no place lookup of its own.
     private val placeCacheSweeper: PlaceCacheSweeper? = null,
+    // Fetches the road between the stops, and drops legs that no longer describe one.
+    // Null when the map provider has no routing of its own — the map draws straight
+    // lines and the estimate falls back to the road-distance factor.
+    private val routeRefresher: RouteRefresher? = null,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle.toRoute<TripDetailRoute>().tripId
 
     init {
         placeCacheSweeper?.let { sweeper -> viewModelScope.launch { sweeper.sweep(tripId) } }
+        routeRefresher?.let { refresher ->
+            viewModelScope.launch {
+                // Re-route when the drives themselves change — a stop added, moved,
+                // skipped or re-pinned. Writing the legs back does not change that list,
+                // so this settles instead of chasing its own writes.
+                tripRepository.stops(tripId)
+                    .map { stops -> RouteCache.drives(stops).map { (from, to) -> from.location to to.location } }
+                    .distinctUntilChanged()
+                    .collect { refresher.refresh(tripId) }
+            }
+        }
     }
 
     val uiState: StateFlow<TripDetailUiState> =
@@ -95,6 +118,7 @@ class TripDetailViewModel(
                 } else {
                     null
                 },
+                drives = RouteCache.byStop(stops),
                 vignetteSuggestions = if (planning) vignetteSuggestions(stops, expenses) else emptyList(),
                 settings = settings,
                 loading = false,
@@ -290,6 +314,7 @@ class TripDetailViewModel(
                 container.tripRepository,
                 container.settingsRepository,
                 container.mapProvider.placeCacheSweeper(container.tripRepository),
+                container.mapProvider.routeRefresher(container.tripRepository),
             )
         }
     }

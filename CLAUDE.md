@@ -52,6 +52,21 @@ There is no lint/format tooling configured.
   needs Kotlin ≥ 2.4 metadata while every AGP release bundles built-in Kotlin 2.2.10.
   Both opt-outs die in AGP 10 (expected late 2026): when an AGP with built-in Kotlin ≥ 2.4
   exists, remove the two properties and the `org.jetbrains.kotlin.android` plugin.
+- **Routes follow roads.** `domain/GoogleRoutes` builds the Routes API `computeRoutes`
+  call (pure body + field mask + parse), `location/RouteServices` makes it, and each drive
+  is stored on the arriving stop as `Stop.leg` (`StopLeg`: encoded polyline, distance,
+  duration, ascent/descent). A leg records the two coordinates it was routed between, so
+  `domain/RouteCache` invalidates it by comparison when a stop moves or the order changes
+  — plus the same 30-day clock as Places (SST §19.3), enforced by `domain/RouteRefresher`
+  from TripDetailViewModel. Stay off the Pro SKU: ≤10 intermediates per call
+  (`GoogleRoutes.windows` splits longer trips), `TRAFFIC_UNAWARE`, no waypoint
+  optimisation. Same `mapsApiKey` as the map — Routes API just has to be enabled and in the
+  key's API restrictions. Note Places and Routes are called as plain web services, so an
+  Android *application* restriction would break both unless `X-Android-Package`/
+  `X-Android-Cert` headers are added. Everything degrades to straight lines without a key.
+- **Elevation is not Google**: its Elevation API forbids storing results, so climb comes
+  from Open-Meteo (Copernicus DEM) via `domain/Elevation` — sampled by distance along the
+  polyline, then a hysteresis filter so DEM noise does not read as ascent.
 - **Maps and place search are Google**, wired up when `mapsApiKey` is in local.properties
   (`MapsBackend.kt`, mirroring FirebaseBackend). Without a key the app runs with no map —
   the two switches are independent: Firebase decides the store, the key decides the map.
@@ -141,8 +156,12 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
 - **Cost semantics** (`domain/CostCalculator.kt`): camping cost lives **on the Stop**
   (`campingCostTotal`); the CAMPING expense type is only for extra site fees. Breakdown
   merges both into the CAMPING category. The fuel estimator (`domain/FuelEstimator.kt`)
-  prefills distance as haversine leg-sum × `roadDistanceFactor` from settings; estimator-
-  created expenses carry `isEstimate = true`. Trips with **no** recorded FUEL expense get
+  prefills distance from the road Google routed for each leg, falling back to haversine
+  × `roadDistanceFactor` only where a leg was never routed; estimator-created expenses
+  carry `isEstimate = true`. Climbing is priced on top, by the gravity term of the
+  road-load equation (`FuelEstimator.liftLiters`, ~0.086 l per tonne per 100 m of ascent),
+  with a descent giving back at most the fuel that stretch would have burned anyway —
+  **the constants are unvalidated against a real tankful**. Trips with **no** recorded FUEL expense get
   an automatic fuel estimate (`FuelEstimator.autoTripFuelCost`, same distance formula)
   that is computed at display time, never stored. **`Trip.totalCost` holds recorded
   numbers only** — display-time estimates never get denormalized; PLANNED/ACTIVE trips
@@ -157,9 +176,11 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   `PICKED_LOCATION_KEY` (a `DoubleArray`); `AppNavHost` observes it and feeds
   `StopEditViewModel.setLocation`. StopEdit's GPS/map-picker buttons are injected by the
   nav layer as the `locationSection` slot composable.
-- **Maps** (`ui/map/TripMap.kt`): one shared composable renders per-trip
-  CircleLayer markers + LineLayer routes from GeoJSON built in code; stop/trip ids ride
-  along as feature properties for click handling. Colors follow the lifecycle: planned
+- **Maps** (`ui/map/TripMap.kt`): one shared composable renders per-trip markers and
+  route polylines; stop/trip ids ride along for click handling. Route geometry is the
+  decoded `StopLeg` polyline where there is one and a straight hop where there is not
+  (`MapOverlay.routes`), and the camera frames marker **and** route vertices so a detour
+  cannot fall off-screen. Colors follow the lifecycle: planned
   routes dashed blue, done grey, active trips segmented grey (done) / green (current
   leg) / dashed blue (ahead); visit stops render hollow, skipped stops leave the route.
   `AllTripsMapScreen` doubles as the single-trip fullscreen map via its nullable
