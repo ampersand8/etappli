@@ -276,4 +276,10 @@ class GooglePlacesTest {
             assertTrue(it, GooglePlaces.DETAILS_FIELD_MASK.contains(it))
         }
     }
+    @Test
+    fun `home has no category to filter on`() {
+        // An address is not a place type; the search skips its second pass instead.
+        assertEquals(emptyList<String>(), GooglePlaces.preferredTypes(StopKind.HOME))
+    }
+
 }

@@ -43,6 +43,7 @@ val StopKind.displayName: String
         StopKind.STELLPLATZ -> "Stellplatz"
         StopKind.FREE_CAMP -> "Free camp"
         StopKind.VISIT -> "Visit"
+        StopKind.HOME -> "Home"
     }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,7 +87,7 @@ fun StopEditScreen(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                StopKind.entries.forEach { kind ->
+                StopKind.entries.filter { it != StopKind.HOME || state.kind == StopKind.HOME }.forEach { kind ->
                     FilterChip(
                         selected = state.kind == kind,
                         onClick = { viewModel.setKind(kind) },
@@ -97,7 +98,7 @@ fun StopEditScreen(
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::setName,
-                label = { Text(if (state.isVisit) "Place" else "Campsite / place") },
+                label = { Text(if (state.isStay) "Campsite / place" else "Place") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -106,7 +107,7 @@ fun StopEditScreen(
                 date = state.arrivalDate,
                 onDateChange = viewModel::setArrivalDate,
             )
-            if (!state.isVisit) {
+            if (state.isStay) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

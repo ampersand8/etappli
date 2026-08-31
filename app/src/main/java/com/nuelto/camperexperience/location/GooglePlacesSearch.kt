@@ -33,7 +33,8 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
         prefer: StopKind?,
     ): List<PlaceSuggestion>? = withContext(Dispatchers.IO) {
         val all = autocomplete(query, near, emptyList()) ?: return@withContext null
-        val types = prefer?.let(GooglePlaces::preferredTypes) ?: return@withContext all
+        val types = prefer?.let(GooglePlaces::preferredTypes)?.takeIf { it.isNotEmpty() }
+            ?: return@withContext all
         // A second, type-filtered pass: what the user is looking for goes to the top,
         // and it surfaces places the open query misses entirely.
         val wanted = autocomplete(query, near, types).orEmpty()

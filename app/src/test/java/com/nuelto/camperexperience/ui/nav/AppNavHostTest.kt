@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.testutil.TestCamperApp
@@ -155,4 +156,29 @@ class AppNavHostTest {
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Trips").assertIsDisplayed()
     }
+    @Test
+    fun `home is picked on the map, exactly as a stop's location is`() {
+        setContent()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("  Pick on map").performScrollTo().performClick()
+
+        compose.onNodeWithText("Pick location").assertIsDisplayed()
+        compose.onNodeWithTag("map-placeholder").performClick()
+        compose.onNodeWithText("Use this place").performClick()
+
+        // Back in Settings, with somewhere for new plans to start from.
+        compose.onNodeWithText("Set — new plans start here.").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `picking home can be cancelled`() {
+        setContent()
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("  Pick on map").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        compose.onNodeWithText("Not set. Pick it below and new plans will start from it.")
+            .performScrollTo().assertIsDisplayed()
+    }
+
 }

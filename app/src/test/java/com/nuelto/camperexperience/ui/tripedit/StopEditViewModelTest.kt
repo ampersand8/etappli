@@ -405,7 +405,7 @@ class StopEditViewModelTest {
         vm.setKind(StopKind.VISIT)
         assertEquals(0, vm.uiState.value.nights)
         assertEquals("", vm.uiState.value.campingCost)
-        assertTrue(vm.uiState.value.isVisit)
+        assertFalse(vm.uiState.value.isStay)
         vm.setKind(StopKind.STELLPLATZ)
         assertEquals(1, vm.uiState.value.nights)
     }

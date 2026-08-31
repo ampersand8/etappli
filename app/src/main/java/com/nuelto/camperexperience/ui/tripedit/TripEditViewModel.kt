@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.nuelto.camperexperience.containerViewModelFactory
 import com.nuelto.camperexperience.data.TripRepository
+import com.nuelto.camperexperience.domain.HomeStop
+import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.model.Trip
 import com.nuelto.camperexperience.data.model.TripStatus
 import com.nuelto.camperexperience.ui.nav.TripEditRoute
@@ -33,6 +35,7 @@ data class TripEditUiState(
 class TripEditViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
+    private val settingsRepository: SettingsRepository? = null,
 ) : ViewModel() {
 
     private val route: TripEditRoute = savedStateHandle.toRoute<TripEditRoute>()
@@ -97,6 +100,12 @@ class TripEditViewModel(
                         status = status,
                     ),
                 )
+                // A fresh plan starts at home, when there is one to start from.
+                if (state.isNew && status == TripStatus.PLANNED) {
+                    val settings = settingsRepository?.settings()?.first()
+                    settings?.let { HomeStop.forNewPlan(savedId, it, state.startDate) }
+                        ?.let { tripRepository.upsertStop(it) }
+                }
                 // Moving a plan's start moves its whole itinerary along.
                 if (base.status == TripStatus.PLANNED) {
                     val days = ChronoUnit.DAYS.between(base.startDate, state.startDate)
@@ -115,7 +124,11 @@ class TripEditViewModel(
 
     companion object {
         val Factory = containerViewModelFactory { container ->
-            TripEditViewModel(createSavedStateHandle(), container.tripRepository)
+            TripEditViewModel(
+                createSavedStateHandle(),
+                container.tripRepository,
+                container.settingsRepository,
+            )
         }
     }
 }

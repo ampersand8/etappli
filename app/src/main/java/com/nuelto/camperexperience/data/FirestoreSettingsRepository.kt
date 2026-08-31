@@ -2,6 +2,8 @@ package com.nuelto.camperexperience.data
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
+import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.UserSettings
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +33,9 @@ class FirestoreSettingsRepository(
                             ?: defaults.roadDistanceFactor,
                         vehicleMassKg = snapshot?.getDouble("vehicleMassKg")
                             ?: defaults.vehicleMassKg,
+                        homeName = snapshot?.getString("homeName") ?: defaults.homeName,
+                        homeLocation = snapshot?.getGeoPoint("homeLocation")
+                            ?.let { LatLng(it.latitude, it.longitude) },
                         campsitePerNight = snapshot?.getDouble("campsitePerNight")
                             ?: defaults.campsitePerNight,
                         stellplatzPerNight = snapshot?.getDouble("stellplatzPerNight")
@@ -50,6 +55,8 @@ class FirestoreSettingsRepository(
                 "fuelPricePerLiter" to settings.fuelPricePerLiter,
                 "roadDistanceFactor" to settings.roadDistanceFactor,
                 "vehicleMassKg" to settings.vehicleMassKg,
+                "homeName" to settings.homeName,
+                "homeLocation" to settings.homeLocation?.let { GeoPoint(it.latitude, it.longitude) },
                 "campsitePerNight" to settings.campsitePerNight,
                 "stellplatzPerNight" to settings.stellplatzPerNight,
             ),

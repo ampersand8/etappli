@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.nuelto.camperexperience.data.model.LatLng
+import org.junit.Assert.assertNull
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -55,8 +57,8 @@ class SettingsScreenTest {
         compose.onNodeWithText("10.0").assertIsDisplayed() // consumption
         compose.onNodeWithText("1.8").assertIsDisplayed() // fuel price
         compose.onNodeWithText("1.25").assertIsDisplayed() // road factor
-        compose.onNodeWithText("45.0").assertIsDisplayed() // campsite per night
-        compose.onNodeWithText("15.0").assertIsDisplayed() // stellplatz per night
+        compose.onNodeWithText("45.0").performScrollTo().assertIsDisplayed() // campsite per night
+        compose.onNodeWithText("15.0").performScrollTo().assertIsDisplayed() // stellplatz per night
     }
 
     @Test
@@ -164,9 +166,39 @@ class SettingsScreenTest {
                 "fuel the flat-road consumption above does not account for.",
         ).performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun `home says whether it is set, and takes a name`() {
+        setContent()
+        compose.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Not set. Pick it below and new plans will start from it.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Clear home").assertDoesNotExist()
+
+        runBlocking {
+            settingsRepository.update(
+                settingsRepository.settings().first().copy(homeLocation = LatLng(47.05, 8.31)),
+            )
+        }
+        compose.onNodeWithText("Set — new plans start here.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Clear home").performScrollTo().performClick()
+        runBlocking {
+            assertNull(settingsRepository.settings().first().homeLocation)
+        }
+    }
+
+    @Test
+    fun `naming home stores it`() {
+        setContent()
+        compose.onNodeWithText("Name").performScrollTo().performTextReplacement("Luzern")
+        runBlocking {
+            assertEquals("Luzern", settingsRepository.settings().first().homeName)
+        }
+    }
 }
 
 /** Stands in for the Google provider, which cannot be composed under Robolectric. */
 private object AttributedMapProvider : MapProvider by PlaceholderMapProvider {
     override val attribution = "Map data and places © Google"
+
 }

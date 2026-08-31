@@ -73,6 +73,8 @@ object GooglePlaces {
         // matches it pulled in weak ones from the other side of the continent.
         StopKind.FREE_CAMP -> listOf("parking", "rest_stop")
         StopKind.VISIT -> listOf("tourist_attraction")
+        // Home is an address, not a category Google filters on.
+        StopKind.HOME -> emptyList()
     }
 
     /** Lenient by design: an error body or a surprise shape yields no hits, never a throw. */

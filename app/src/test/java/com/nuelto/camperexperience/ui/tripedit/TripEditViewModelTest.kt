@@ -2,6 +2,9 @@ package com.nuelto.camperexperience.ui.tripedit
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.camperexperience.data.InMemorySettingsRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.data.model.StopKind
 import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.model.Stop
 import com.nuelto.camperexperience.data.model.Trip
@@ -172,4 +175,80 @@ class TripEditViewModelTest {
         vm.save { _, _ -> }
         assertEquals(TripStatus.PLANNED, tripRepository.trip("p1").first()!!.status)
     }
+    // --- home as the plan's starting point ----------------------------------------------
+
+    private val settingsRepository = InMemorySettingsRepository()
+
+    private fun planViewModel() = TripEditViewModel(
+        SavedStateHandle(mapOf("planned" to true)),
+        tripRepository,
+        settingsRepository,
+    )
+
+    private suspend fun setHome(name: String = "Luzern") {
+        settingsRepository.update(
+            settingsRepository.settings().first()
+                .copy(homeName = name, homeLocation = LatLng(47.0502, 8.3093)),
+        )
+    }
+
+    @Test
+    fun `a new plan starts at home`() = runTest {
+        setHome()
+        val vm = planViewModel()
+        vm.setName("Ticino")
+        vm.setStartDate(LocalDate.of(2027, 6, 10))
+        var created: String? = null
+        vm.save { id, _ -> created = id }
+
+        val stops = tripRepository.stops(created!!).first()
+        val home = stops.single()
+        assertEquals("Luzern", home.name)
+        assertEquals(StopKind.HOME, home.kind)
+        assertEquals(LatLng(47.0502, 8.3093), home.location)
+        assertEquals(0, home.orderIndex)
+        assertEquals(LocalDate.of(2027, 6, 10), home.arrivalDate)
+    }
+
+    @Test
+    fun `with no home set a new plan starts empty`() = runTest {
+        val vm = planViewModel()
+        vm.setName("Ticino")
+        var created: String? = null
+        vm.save { id, _ -> created = id }
+
+        assertTrue(tripRepository.stops(created!!).first().isEmpty())
+    }
+
+    @Test
+    fun `a logged trip does not get a home stop`() = runTest {
+        setHome()
+        val vm = TripEditViewModel(SavedStateHandle(), tripRepository, settingsRepository)
+        vm.setName("Last weekend")
+        var created: String? = null
+        vm.save { id, _ -> created = id }
+
+        assertTrue(tripRepository.stops(created!!).first().isEmpty())
+    }
+
+    @Test
+    fun `editing an existing plan does not add a second home`() = runTest {
+        setHome()
+        val first = planViewModel()
+        first.setName("Ticino")
+        var created: String? = null
+        first.save { id, _ -> created = id }
+        assertEquals(1, tripRepository.stops(created!!).first().size)
+
+        val again = TripEditViewModel(
+            SavedStateHandle(mapOf("tripId" to created!!)),
+            tripRepository,
+            settingsRepository,
+        )
+        again.setName("Ticino-Tour")
+        again.save { _, _ -> }
+
+        assertEquals(1, tripRepository.stops(created!!).first().size)
+    }
+
 }
