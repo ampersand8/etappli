@@ -104,3 +104,15 @@ class FakePlaceSearch : PlaceSearch {
         return result
     }
 }
+
+/** Follows a shared short link on demand; [gate] holds the answer for mid-flight assertions. */
+class FakeShareLinkResolver(var result: String? = null) {
+    val requests = mutableListOf<String>()
+    var gate: CompletableDeferred<Unit>? = null
+
+    suspend fun expand(url: String): String? {
+        requests += url
+        gate?.await()
+        return result
+    }
+}

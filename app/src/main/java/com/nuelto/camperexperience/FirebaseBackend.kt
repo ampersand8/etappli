@@ -18,6 +18,7 @@ fun firebaseContainer(
     app: Application,
     mapProvider: MapProvider,
     currentLocation: suspend () -> LatLng? = { null },
+    expandShareLink: suspend (String) -> String? = { null },
 ): AppContainer? {
     val firebaseApp = FirebaseApp.initializeApp(app) ?: return null
     val db = FirebaseFirestore.getInstance()
@@ -35,5 +36,6 @@ fun firebaseContainer(
         tripRepository = FirestoreTripRepository(db, auth),
         settingsRepository = FirestoreSettingsRepository(db, auth),
         currentLocation = currentLocation,
+        expandShareLink = expandShareLink,
     )
 }

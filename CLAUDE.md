@@ -205,6 +205,20 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   the timeline, map, distance and fuel all count it without knowing what home is. It is
   editable and deletable like any other stop; HOME is hidden from the kind chips so a
   second one cannot be made by hand.
+- **A shared place** arrives as `ACTION_SEND` text/plain (Google Maps' share sheet) or a
+  `geo:` `ACTION_VIEW`, and is parsed by pure `domain/SharedPlace`: the payload is scanned
+  as a haystack, not parsed as a URL, because Maps sends the name on the line above the link.
+  `!3d`/`!4d` is the place and beats `/@`, which is only the map camera and marks the hit
+  `approximate`; a place id is kept **only** from `query_place_id` (never an ftid or cid —
+  a wrong one would have PlaceCacheSweeper delete the pin 30 days on); redirects are
+  followed only for four allowlisted short-link hosts, by `location/ShareLinkResolver`
+  (one HEAD, redirects off). `MainActivity` offers the result to `domain/ShareIntake` on
+  the container — not to the Activity, since in Firebase mode the share must outlive the
+  sign-in screen — and `AppNavHost` routes it **once** into `AddToTripRoute`, after which
+  it rides the back stack. `ui/share/AddToTripScreen` picks the trip; that opens
+  `StopEditRoute` with the place args over a pushed `TripDetailRoute`, so Save lands on
+  the timeline. A shared coordinate **never** gets `locationCachedAt`: it came from a
+  link, not from the Places API, so no §14.3 clock applies to it.
 - **Navigation** (`ui/nav/`): type-safe kotlinx-serialization routes. The location picker
   returns its result through the **previous** back-stack entry's `SavedStateHandle` under
   `PICKED_LOCATION_KEY` (a `DoubleArray`); `AppNavHost` observes it and feeds
@@ -233,6 +247,9 @@ swaps the Maps SDK for a stand-in (`ui/map/MapProvider.kt`). Fakes live in `test
 - **ViewModel tests**: plain JUnit with `MainDispatcherRule` (testutil) and Turbine
   for flow assertions. Async races (late geocode result, slow sign-in) use the gated
   fakes: `FakeAuthRepository.gate`, `FakePlaceNameResolver.gates`.
+- **Never replace the activity's intent in `MainActivity.onCreate`** (`setIntent(...)`):
+  `ActivityScenario` then never sees the activity reach RESUMED, and every
+  `createAndroidComposeRule` test in the run hangs — with no failure, just a stuck suite.
 - **Coverage gate** is 100% of non-excluded lines — new code needs tests or, if
   genuinely untestable on the JVM (device/backend-only), an entry in
   `coverageExcludes` in app/build.gradle.kts.
