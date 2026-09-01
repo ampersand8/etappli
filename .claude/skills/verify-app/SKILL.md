@@ -20,8 +20,8 @@ The emulator command needs sandbox disabled (KVM access).
 
 ```bash
 ./gradlew :app:installDebug
-~/Android/Sdk/platform-tools/adb shell am force-stop com.nuelto.camperexperience
-~/Android/Sdk/platform-tools/adb shell am start -n com.nuelto.camperexperience/.MainActivity
+~/Android/Sdk/platform-tools/adb shell am force-stop com.nuelto.etappli
+~/Android/Sdk/platform-tools/adb shell am start -n com.nuelto.etappli/.MainActivity
 ```
 
 Screenshot: `adb exec-out screencap -p > <scratchpad>/step.png`, then Read the file.

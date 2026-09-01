@@ -21,12 +21,18 @@ adding new ones.
 ./gradlew :app:coverageVerify   # JaCoCo gate: 100% line coverage (device-only code excluded)
 ./gradlew :app:pitest           # mutation tests over JVM-pure logic, threshold 80%
 ./gradlew :app:installDebug     # install on connected device/emulator
-./gradlew test --tests "com.nuelto.camperexperience.domain.CostCalculatorTest"  # one test class
+./gradlew :app:bundleRelease    # Play bundle; unsigned unless the upload key is configured
+./gradlew test --tests "com.nuelto.etappli.domain.CostCalculatorTest"  # one test class
 ```
 
 CI (`.github/workflows/ci.yml`) runs tests + both gates + assembleDebug on every PR.
 On pushes to main it also uploads `app/build/screenshots/` (main screens light+dark,
 written by `ScreenshotsTest` during the normal test run) as a versioned artifact.
+
+**Releasing to Play**: PLAY_STORE_SETUP.md — the console steps, the data-safety
+answers, and the two things that break after the first upload (Firebase needs the Play
+app-signing SHA-1; the Maps key ships unrestricted). Listing copy and graphics live in
+`play/listing/`, the policy in PRIVACY.md.
 
 **Versioning**: `versionName` = `appVersionBase` (gradle.properties, major.minor) +
 git commit count as patch; shown at the bottom of Settings. Bump `appVersionBase`
@@ -39,7 +45,7 @@ platform `Geocoder` and silently returns null without Play services or network):
 
 ```bash
 ~/Android/Sdk/emulator/emulator -avd Pixel_9a -no-snapshot-save &
-~/Android/Sdk/platform-tools/adb shell am start -n com.nuelto.camperexperience/.MainActivity
+~/Android/Sdk/platform-tools/adb shell am start -n com.nuelto.etappli/.MainActivity
 ~/Android/Sdk/platform-tools/adb emu geo fix <lon> <lat>   # mock GPS (lon first!)
 ```
 
@@ -134,7 +140,7 @@ There is no lint/format tooling configured.
 ## Architecture
 
 MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
-`app/src/main/java/com/nuelto/camperexperience/`.
+`app/src/main/java/com/nuelto/etappli/`.
 
 - **`CamperApp.kt`** holds `AppContainer`, which picks the backing store at startup:
   `FirebaseApp.initializeApp()` returns non-null → Firestore repos + `AuthRepository`;

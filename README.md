@@ -1,4 +1,4 @@
-# CamperExperience
+# Etappli
 
 Personal Android app for tracking camper trips: where you went, how many nights you
 stayed at each stop, and what the trip cost (camping + fuel + road taxes) — with all
@@ -22,7 +22,7 @@ trips visible on a map.
   by name and choose from the results, tap a POI Google already shows, or press and
   hold to drop a pin. Results favour whatever kind of stop you're adding.
 - **Share a place into the app** — Google Maps (or anything sending a `geo:` link) →
-  Share → CamperExperience: pick the trip and the stop editor opens on that place.
+  Share → Etappli: pick the trip and the stop editor opens on that place.
 - **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).
   Until Firebase is configured the app runs in local demo mode — see
   [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
@@ -43,6 +43,17 @@ Requires JDK 17+ and an Android SDK with platform 37 (`local.properties` →
 `sdk.dir`). Use an emulator image with Play services (needed for sign-in and
 fused location); mock GPS via the emulator's extended controls.
 
+### Releasing
+
+```bash
+./gradlew :app:bundleRelease   # app/build/outputs/bundle/release/app-release.aab
+```
+
+Signing comes from `camperUpload*` properties in `~/.gradle/gradle.properties` (or a
+gitignored `keystore.properties`); without them the bundle builds unsigned. Play Console steps, listing copy and graphics:
+[PLAY_STORE_SETUP.md](PLAY_STORE_SETUP.md), `play/listing/`,
+[PRIVACY.md](PRIVACY.md).
+
 ### Installing on a physical phone
 
 One-time phone setup:
@@ -59,7 +70,7 @@ Then, from the project root:
 ./gradlew :app:installDebug                # build + install the debug APK
 ```
 
-The app appears in the launcher as **CamperExperience**. Re-running
+The app appears in the launcher as **Etappli**. Re-running
 `installDebug` updates it in place (data is kept). Notes:
 
 - This is the **debug** build. Without `app/google-services.json` it runs in
