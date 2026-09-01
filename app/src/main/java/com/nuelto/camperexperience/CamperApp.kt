@@ -13,7 +13,9 @@ import com.nuelto.camperexperience.data.InMemoryTripRepository
 import com.nuelto.camperexperience.data.SettingsRepository
 import com.nuelto.camperexperience.data.TripRepository
 import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.ShareIntake
 import com.nuelto.camperexperience.location.LocationProvider
+import com.nuelto.camperexperience.location.ShareLinkResolver
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import com.nuelto.camperexperience.ui.map.MapProvider
 
@@ -32,6 +34,10 @@ class AppContainer(
     // One-shot GPS fix. The caller must hold ACCESS_FINE_LOCATION; the screens ask, and
     // this returns null when they have not.
     val currentLocation: suspend () -> LatLng? = { null },
+    // Where a shared place waits for a NavHost to exist. See domain/ShareIntake.
+    val shareIntake: ShareIntake = ShareIntake(),
+    // Follows a shared short link to the Maps URL behind it; null without a connection.
+    val expandShareLink: suspend (String) -> String? = { null },
 ) {
     val firebaseEnabled: Boolean get() = authRepository != null
 
@@ -39,8 +45,10 @@ class AppContainer(
         fun inMemory(
             mapProvider: MapProvider = PlaceholderMapProvider,
             currentLocation: suspend () -> LatLng? = { null },
+            expandShareLink: suspend (String) -> String? = { null },
         ) = AppContainer(
             null, InMemoryTripRepository(), InMemorySettingsRepository(), mapProvider, currentLocation,
+            expandShareLink = expandShareLink,
         )
     }
 }
@@ -59,7 +67,8 @@ open class CamperApp : Application() {
         // No key: the app runs, the map is simply blank.
         val map = googleMapProvider(this) ?: PlaceholderMapProvider
         val locate: suspend () -> LatLng? = { LocationProvider(this).currentLocation() }
-        return firebaseContainer(this, map, locate) ?: AppContainer.inMemory(map, locate)
+        val expand: suspend (String) -> String? = { ShareLinkResolver.expand(it) }
+        return firebaseContainer(this, map, locate, expand) ?: AppContainer.inMemory(map, locate, expand)
     }
 }
 

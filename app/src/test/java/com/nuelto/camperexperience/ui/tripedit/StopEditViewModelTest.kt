@@ -41,6 +41,27 @@ class StopEditViewModelTest {
         resolver,
     )
 
+    private fun sharedViewModel(
+        lat: Double? = 46.5601,
+        lon: Double? = 8.332,
+        placeName: String? = "Camping Grimselblick",
+        placeId: String? = "ChIJCyinolJ-hUcR",
+    ) = StopEditViewModel(
+        SavedStateHandle(
+            mapOf(
+                "tripId" to "t1",
+                "lat" to lat,
+                "lon" to lon,
+                "placeName" to placeName,
+                "placeId" to placeId,
+                "fromShare" to true,
+            ),
+        ),
+        tripRepository,
+        settingsRepository,
+        resolver,
+    )
+
     private fun editViewModel(stopId: String) = StopEditViewModel(
         SavedStateHandle(mapOf("tripId" to "t1", "stopId" to stopId)),
         tripRepository,
@@ -566,5 +587,64 @@ class StopEditViewModelTest {
         vm.setName("B")
         vm.save {}
         assertEquals(listOf("A", "B"), tripRepository.stops("t1").first().map { it.name })
+    }
+
+    @Test
+    fun `a shared place prefills the stop, and never starts the Places clock`() {
+        val state = sharedViewModel().uiState.value
+        assertEquals("Camping Grimselblick", state.name)
+        assertEquals(LatLng(46.5601, 8.332), state.location)
+        assertEquals("ChIJCyinolJ-hUcR", state.placeId)
+        // The coordinate came out of a link, not out of the Places API: it never expires.
+        assertNull(state.locationCachedAt)
+        // Somewhere to be already: no unasked-for GPS fix on top of it.
+        assertFalse(state.autoLocatePending)
+    }
+
+    @Test
+    fun `a shared pin with no name is reverse geocoded`() {
+        val state = sharedViewModel(placeName = null, placeId = null).uiState.value
+        assertEquals("Place@46.5601", state.name)
+        assertEquals(LatLng(46.5601, 8.332), state.location)
+        assertNull(state.placeId)
+    }
+
+    @Test
+    fun `a shared name with no spot is still savable`() = runTest {
+        val vm = sharedViewModel(lat = null, lon = null, placeId = null)
+        val state = vm.uiState.value
+        assertEquals("Camping Grimselblick", state.name)
+        assertNull(state.location)
+        assertTrue(state.canSave)
+        assertFalse(state.autoLocatePending)
+
+        vm.save {}
+        assertEquals("Camping Grimselblick", tripRepository.stops("t1").first().single().name)
+    }
+
+    @Test
+    fun `a place picked on the map still carries the Places clock`() {
+        val vm = newStopViewModel()
+        vm.setPickedLocation(LatLng(46.72, 8.22), "Camping Grimselblick", "Innertkirchen", "ChIJ1")
+        assertEquals(LocalDate.now(), vm.uiState.value.locationCachedAt)
+    }
+
+    @Test
+    fun `a share with nothing in it still keeps your own position out of the stop`() {
+        // The link could not be followed: no name, no coordinate — and no GPS fix either,
+        // because sharing a place says you are not standing at it.
+        val state = sharedViewModel(lat = null, lon = null, placeName = null, placeId = null)
+            .uiState.value
+        assertFalse(state.autoLocatePending)
+        assertEquals("", state.name)
+        assertNull(state.location)
+    }
+
+    @Test
+    fun `a shared place id with no coordinate is kept for the sweeper`() {
+        val state = sharedViewModel(lat = null, lon = null).uiState.value
+        assertEquals("ChIJCyinolJ-hUcR", state.placeId)
+        assertNull(state.location)
+        assertNull(state.locationCachedAt)
     }
 }

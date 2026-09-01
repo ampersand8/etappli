@@ -13,11 +13,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.SharedPlace
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import com.nuelto.camperexperience.ui.map.LocalMapProvider
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
 import com.nuelto.camperexperience.ui.settings.SettingsScreen
 import com.nuelto.camperexperience.ui.settings.SettingsViewModel
+import com.nuelto.camperexperience.ui.share.AddToTripScreen
+import com.nuelto.camperexperience.ui.share.AddToTripViewModel
 import com.nuelto.camperexperience.ui.theme.CamperTheme
 import com.nuelto.camperexperience.ui.tripdetail.TripDetailScreen
 import com.nuelto.camperexperience.ui.tripdetail.TripDetailViewModel
@@ -116,6 +120,17 @@ class ScreenshotsTest {
         SettingsScreen(
             onBack = {},
             viewModel = SettingsViewModel(settingsRepository, authRepository = null),
+        )
+    }
+
+    @Test
+    fun addToTrip() = shoot("add-to-trip") {
+        AddToTripScreen(
+            onCancel = {}, onPlanTrip = {}, onAddTo = { _, _ -> },
+            viewModel = AddToTripViewModel(
+                SharedPlace("Camping Grimselblick", LatLng(46.5606, 8.3376)),
+                tripRepository,
+            ),
         )
     }
 }

@@ -5,26 +5,45 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
 import com.nuelto.camperexperience.data.model.LatLng
 import com.nuelto.camperexperience.data.model.StopKind
+import com.nuelto.camperexperience.domain.SharedPlace
 import com.nuelto.camperexperience.ui.map.AllTripsMapScreen
 import com.nuelto.camperexperience.ui.map.LocationPickerScreen
 import com.nuelto.camperexperience.ui.map.LocationSection
 import com.nuelto.camperexperience.ui.settings.SettingsScreen
 import com.nuelto.camperexperience.ui.settings.SettingsViewModel
+import com.nuelto.camperexperience.ui.share.AddToTripScreen
 import com.nuelto.camperexperience.ui.tripdetail.TripDetailScreen
 import com.nuelto.camperexperience.ui.tripedit.StopEditScreen
 import com.nuelto.camperexperience.ui.tripedit.StopEditViewModel
 import com.nuelto.camperexperience.ui.tripedit.TripEditScreen
 import com.nuelto.camperexperience.ui.triplist.TripListScreen
 
+/** [pending] is a place shared into the app, if one is waiting (see domain/ShareIntake). */
 @Composable
-fun AppNavHost() {
+fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {}) {
     val navController = rememberNavController()
+
+    // Routed exactly once: consuming empties the intake, and from here the place rides
+    // the back stack, so neither a rotation nor process death replays or loses it.
+    LaunchedEffect(pending) {
+        pending?.let {
+            navController.navigate(
+                AddToTripRoute(
+                    it.name, it.location?.latitude, it.location?.longitude,
+                    it.placeId, it.link, it.approximate,
+                ),
+            )
+            onPendingConsumed()
+        }
+    }
 
     NavHost(navController = navController, startDestination = TripListRoute) {
         composable<TripListRoute> {
@@ -52,9 +71,20 @@ fun AppNavHost() {
             TripEditScreen(
                 onBack = { navController.popBackStack() },
                 onSaved = { tripId, isNew ->
+                    // A tour planned to hold a shared place goes back to the chooser,
+                    // which now lists it; anything else opens the new trip.
+                    val fromChooser = navController.previousBackStackEntry
+                        ?.destination?.hasRoute<AddToTripRoute>() == true
                     navController.popBackStack()
-                    if (isNew) navController.navigate(TripDetailRoute(tripId))
+                    if (isNew && !fromChooser) navController.navigate(TripDetailRoute(tripId))
                 },
+            )
+        }
+        composable<AddToTripRoute> {
+            AddToTripScreen(
+                onCancel = { navController.popBackStack() },
+                onPlanTrip = { navController.navigate(TripEditRoute(planned = true)) },
+                onAddTo = navController::addToTrip,
             )
         }
         composable<StopEditRoute> { backStackEntry ->
@@ -165,6 +195,21 @@ fun AppNavHost() {
             )
         }
     }
+}
+
+/** The trip's timeline goes under the editor, so saving lands where the stop landed. */
+private fun NavController.addToTrip(tripId: String, place: SharedPlace) {
+    navigate(TripDetailRoute(tripId)) { popUpTo<AddToTripRoute> { inclusive = true } }
+    navigate(
+        StopEditRoute(
+            tripId,
+            lat = place.location?.latitude,
+            lon = place.location?.longitude,
+            placeName = place.name.ifBlank { null },
+            placeId = place.placeId.ifBlank { null },
+            fromShare = true,
+        ),
+    )
 }
 
 private const val PICKED_LOCATION_KEY = "picked_location"

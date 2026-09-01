@@ -204,6 +204,7 @@ tasks.register<JavaExec>("pitest") {
             "com.nuelto.camperexperience.ui.triplist.TripListViewModel",
             "com.nuelto.camperexperience.ui.settings.SettingsViewModel",
             "com.nuelto.camperexperience.ui.map.LocationPickerViewModel",
+            "com.nuelto.camperexperience.ui.share.AddToTripViewModel",
         ).joinToString(","),
         // $$inlined$: synthetic coroutine/flow machinery; avoidCallsTo: compiler null-check noise.
         "--excludedClasses", "*\$Companion,*Test,*Test\$*,*\$\$inlined\$*",
@@ -218,6 +219,7 @@ tasks.register<JavaExec>("pitest") {
             "com.nuelto.camperexperience.ui.triplist.TripListViewModelTest",
             "com.nuelto.camperexperience.ui.settings.SettingsViewModelTest",
             "com.nuelto.camperexperience.ui.map.LocationPickerViewModelTest",
+            "com.nuelto.camperexperience.ui.share.AddToTripViewModelTest",
         ).joinToString(","),
         "--sourceDirs", "src/main/java",
         "--reportDir", layout.buildDirectory.dir("reports/pitest").get().asFile.absolutePath,

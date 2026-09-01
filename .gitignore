@@ -12,3 +12,4 @@ app/google-services.json
 *.jks
 keystore.properties
 notes.txt
+.kotlin/

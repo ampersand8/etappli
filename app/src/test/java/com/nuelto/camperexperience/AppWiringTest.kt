@@ -8,9 +8,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.camperexperience.data.AuthUser
 import com.nuelto.camperexperience.data.InMemorySettingsRepository
 import com.nuelto.camperexperience.data.InMemoryTripRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.SharedPlace
 import com.nuelto.camperexperience.testutil.FakeAuthRepository
 import com.nuelto.camperexperience.testutil.TestCamperApp
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +41,13 @@ class AppContainerTest {
             InMemorySettingsRepository(),
         )
         assertTrue(container.firebaseEnabled)
+    }
+
+    @Test
+    fun `the in-memory container starts with an empty intake and no link resolver`() = runTest {
+        val container = AppContainer.inMemory()
+        assertNull(container.shareIntake.pending.value)
+        assertNull(container.expandShareLink("https://maps.app.goo.gl/x1"))
     }
 
     @Test
@@ -73,6 +84,18 @@ class AppRootTest {
     fun `firebase mode with a signed-in user shows the app`() {
         compose.setContent { AppRoot(firebaseContainerWith(FakeAuthRepository(AuthUser("u1")))) }
         compose.onNodeWithText("Trips").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a share arriving while signed out waits for the sign-in`() {
+        val auth = FakeAuthRepository()
+        val container = firebaseContainerWith(auth)
+        container.shareIntake.offer(SharedPlace("Camping Grimselblick", LatLng(46.5601, 8.332)))
+        compose.setContent { AppRoot(container) }
+        compose.onNodeWithText("Sign in with Google").assertIsDisplayed()
+
+        auth.state.value = AuthUser("u1")
+        compose.onNodeWithText("Add to a trip").assertIsDisplayed()
     }
 
     @Test

@@ -10,10 +10,17 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.camperexperience.AppContainer
+import com.nuelto.camperexperience.data.InMemorySettingsRepository
+import com.nuelto.camperexperience.data.InMemoryTripRepository
+import com.nuelto.camperexperience.data.model.LatLng
+import com.nuelto.camperexperience.domain.SharedPlace
 import com.nuelto.camperexperience.testutil.TestCamperApp
 import com.nuelto.camperexperience.ui.map.LocalMapProvider
 import com.nuelto.camperexperience.ui.map.PlaceholderMapProvider
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,13 +37,17 @@ class AppNavHostTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun setContent() {
+    private var consumed = 0
+
+    private fun setContent(pending: SharedPlace? = null) {
         compose.setContent {
             CompositionLocalProvider(LocalMapProvider provides PlaceholderMapProvider) {
-                AppNavHost()
+                AppNavHost(pending) { consumed++ }
             }
         }
     }
+
+    private val shared = SharedPlace("Camping Grimselblick", LatLng(46.5601, 8.332))
 
     @Test
     fun `starts on the trip list with demo data`() {
@@ -181,4 +192,46 @@ class AppNavHostTest {
             .performScrollTo().assertIsDisplayed()
     }
 
+
+    @Test
+    fun `a shared place is filed on the trip that is chosen for it`() {
+        setContent(shared)
+        compose.onNodeWithText("Add to a trip").assertIsDisplayed()
+        compose.onNodeWithText("Which trip?").assertIsDisplayed()
+        // Routed once; the place rides the back stack from here on.
+        assertEquals(1, consumed)
+
+        compose.onNodeWithText("Schwarzwald").performClick()
+        compose.onNodeWithText("New stop").assertIsDisplayed()
+        compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+
+        compose.onNodeWithText("Save").performScrollTo().performClick()
+        // Saving lands on that trip's timeline, with the stop on it.
+        compose.onNodeWithText("Camping Kirnbergsee").assertIsDisplayed()
+        compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+    }
+
+    @Test
+    fun `the chooser can be cancelled`() {
+        setContent(shared)
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        compose.onNodeWithText("Trips").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a tour planned from the chooser comes back to it`() {
+        ApplicationProvider.getApplicationContext<TestCamperApp>().container =
+            AppContainer(null, InMemoryTripRepository(seed = false), InMemorySettingsRepository())
+        setContent(shared)
+
+        compose.onNodeWithText("Plan a tour").performClick()
+        compose.onNodeWithText("Trip name").performTextInput("Ticino")
+        compose.onNodeWithText("Save").performClick()
+
+        // Back on the chooser rather than in the new tour, with the tour now listed.
+        compose.onNodeWithText("Add to a trip").assertIsDisplayed()
+        compose.onNodeWithText("Ticino").performClick()
+        compose.onNodeWithText("New stop").assertIsDisplayed()
+        compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+    }
 }

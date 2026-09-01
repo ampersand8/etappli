@@ -111,8 +111,9 @@ class StopEditViewModel(
                     // The slot says which day this starts on; no GPS fix improves on that.
                     _uiState.update { it.copy(arrivalDate = at.date) }
                 } else if (trip == null || trip.status == TripStatus.ACTIVE) {
-                    // Logging where you are: immediately try a GPS fix.
-                    _uiState.update { it.copy(autoLocatePending = true) }
+                    // Logging where you are: immediately try a GPS fix — unless a share
+                    // already said where, in which case your own position is beside the point.
+                    if (!route.fromShare) _uiState.update { it.copy(autoLocatePending = true) }
                 } else {
                     // Planning ahead or back-filling a finished trip: no GPS fix
                     // (your couch is not the campsite), arrival chains from the last stop.
@@ -122,6 +123,7 @@ class StopEditViewModel(
                     val arrival = last?.arrivalDate?.plusDays(last.nights.toLong()) ?: trip.startDate
                     _uiState.update { it.copy(arrivalDate = arrival) }
                 }
+                applyShared()
                 return@launch
             }
 
@@ -145,6 +147,18 @@ class StopEditViewModel(
                 stop.location?.let { resolvePlaceName(it, autoFillName = false) }
             }
         }
+    }
+
+    /** A place shared into the app: what the map picker delivers, minus the Places clock. */
+    private fun applyShared() {
+        val name = route.placeName.orEmpty()
+        val at = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null
+        if (at != null) {
+            return setPickedLocation(at, name, "", route.placeId.orEmpty(), fromPlaces = false)
+        }
+        // No coordinate, but a place id can still fetch one: PlaceCacheSweeper picks up a
+        // stop that has an id and nowhere to be.
+        _uiState.update { it.copy(name = name.ifBlank { it.name }, placeId = route.placeId) }
     }
 
     fun autoLocateHandled() = _uiState.update { it.copy(autoLocatePending = false) }
@@ -193,7 +207,15 @@ class StopEditViewModel(
      * It never routes through setLocation: that would drop the name and reverse geocode
      * over it. Moving the location in the same update also retires any geocode in flight.
      */
-    fun setPickedLocation(location: LatLng, name: String, label: String, placeId: String = "") {
+    fun setPickedLocation(
+        location: LatLng,
+        name: String,
+        label: String,
+        placeId: String = "",
+        // A shared link hands over a coordinate lifted from a URL, not one the Places API
+        // gave us: it carries no §14.3 clock, so PlaceCacheSweeper must leave it alone.
+        fromPlaces: Boolean = true,
+    ) {
         if (name.isBlank()) return setLocation(location)
         autoFilledName = name
         _uiState.update { state ->
@@ -203,7 +225,7 @@ class StopEditViewModel(
                 name = name,
                 // A Google place is kept by id; its coordinate is only cached (30 days).
                 placeId = placeId.ifBlank { null },
-                locationCachedAt = placeId.ifBlank { null }?.let { LocalDate.now() },
+                locationCachedAt = placeId.ifBlank { null }?.takeIf { fromPlaces }?.let { LocalDate.now() },
             )
         }
     }

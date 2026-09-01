@@ -21,6 +21,8 @@ trips visible on a map.
 - **Locations** via one-shot GPS fix ("I'm here") or the map picker — search a place
   by name and choose from the results, tap a POI Google already shows, or press and
   hold to drop a pin. Results favour whatever kind of stop you're adding.
+- **Share a place into the app** — Google Maps (or anything sending a `geo:` link) →
+  Share → CamperExperience: pick the trip and the stop editor opens on that place.
 - **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).
   Until Firebase is configured the app runs in local demo mode — see
   [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
