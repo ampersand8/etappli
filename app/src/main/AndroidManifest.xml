@@ -7,7 +7,7 @@
 
     <application
         android:name=".CamperApp"
-        android:label="CamperExperience"
+        android:label="Etappli"
         android:icon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.CamperExperience">

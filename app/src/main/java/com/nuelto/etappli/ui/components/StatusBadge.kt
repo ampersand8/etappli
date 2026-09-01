@@ -1,0 +1,37 @@
+package com.nuelto.etappli.ui.components
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.ui.theme.statusColor
+
+val TripStatus.displayName: String
+    get() = when (this) {
+        TripStatus.PLANNED -> "Planned"
+        TripStatus.ACTIVE -> "On the road"
+        TripStatus.DONE -> "Done"
+    }
+
+@Composable
+fun StatusBadge(status: TripStatus, modifier: Modifier = Modifier) {
+    val color = statusColor(status)
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = color.copy(alpha = 0.14f),
+        contentColor = color,
+    ) {
+        Text(
+            status.displayName,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+    }
+}

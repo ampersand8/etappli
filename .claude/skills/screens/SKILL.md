@@ -12,8 +12,8 @@ For each theme:
 
 ```bash
 adb shell "cmd uimode night no"    # light; use "night yes" for dark
-adb shell am force-stop com.nuelto.camperexperience
-adb shell am start -n com.nuelto.camperexperience/.MainActivity
+adb shell am force-stop com.nuelto.etappli
+adb shell am start -n com.nuelto.etappli/.MainActivity
 ```
 
 Screens to capture (navigate by tapping; scale tap coordinates as noted under each Read screenshot):

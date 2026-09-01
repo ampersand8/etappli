@@ -9,7 +9,7 @@ Google Sign-In + Firestore sync automatically.
 1. Go to <https://console.firebase.google.com> → **Add project** (e.g. `camperexperience`).
    Google Analytics can be disabled.
 2. In the project: **Add app → Android**.
-   - Package name: `com.nuelto.camperexperience`
+   - Package name: `com.nuelto.etappli`
    - Debug signing SHA-1 (required for Google Sign-In). Get it with:
      ```bash
      ./gradlew signingReport

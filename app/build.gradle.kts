@@ -46,12 +46,29 @@ val commitCount: Int = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().toIntOrNull() ?: 0 }.get()
 
+// Upload key for Play. Read from ~/.gradle/gradle.properties first, so the key and its
+// password can live entirely outside the repo (a `git clean -xdf` here must not be able
+// to delete them); a gitignored keystore.properties in the root still works as a
+// fallback. Neither present -> release builds are unsigned, so CI and fresh clones
+// still build. See PLAY_STORE_SETUP.md.
+val keystoreProps: Properties? = rootProject.file("keystore.properties")
+    .takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
+
+fun uploadKey(name: String): String? =
+    (project.findProperty("camperUpload${name.replaceFirstChar(Char::titlecase)}") as String?)
+        ?: keystoreProps?.getProperty(name)
+
+// Gradle's file() leaves "~" alone, but a hand-written properties file is full of them.
+fun keystorePath(path: String) =
+    rootProject.file(path.replaceFirst(Regex("^~"), System.getProperty("user.home")))
+
 android {
-    namespace = "com.nuelto.camperexperience"
+    namespace = "com.nuelto.etappli"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.nuelto.camperexperience"
+        applicationId = "com.nuelto.etappli"
         minSdk = 28
         targetSdk = 36
         versionCode = maxOf(commitCount, 1)
@@ -59,11 +76,23 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        uploadKey("storeFile")?.let { path ->
+            create("release") {
+                storeFile = keystorePath(path)
+                storePassword = uploadKey("storePassword")
+                keyAlias = uploadKey("keyAlias")
+                keyPassword = uploadKey("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
         }
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -121,13 +150,13 @@ tasks.withType<Test>().configureEach {
 }
 
 val coverageExcludes = listOf(
-    "com/nuelto/camperexperience/BuildConfig*",
-    "com/nuelto/camperexperience/FirebaseBackendKt*",
-    "com/nuelto/camperexperience/MapsBackendKt*",
-    "com/nuelto/camperexperience/data/FirebaseAuthRepository*",
-    "com/nuelto/camperexperience/data/Firestore*",
-    "com/nuelto/camperexperience/location/**",
-    "com/nuelto/camperexperience/ui/map/**",
+    "com/nuelto/etappli/BuildConfig*",
+    "com/nuelto/etappli/FirebaseBackendKt*",
+    "com/nuelto/etappli/MapsBackendKt*",
+    "com/nuelto/etappli/data/FirebaseAuthRepository*",
+    "com/nuelto/etappli/data/Firestore*",
+    "com/nuelto/etappli/location/**",
+    "com/nuelto/etappli/ui/map/**",
 )
 
 val coverageClassDirs = layout.buildDirectory.dir("tmp/kotlin-classes/debug").map { dir ->
@@ -195,31 +224,31 @@ tasks.register<JavaExec>("pitest") {
         "--mutableCodePaths", mainClassesDir.get().asFile.absolutePath,
         "--targetClasses",
         listOf(
-            "com.nuelto.camperexperience.domain.*",
-            "com.nuelto.camperexperience.data.InMemory*",
-            "com.nuelto.camperexperience.data.model.ModelsKt",
-            "com.nuelto.camperexperience.ui.FormatKt",
-            "com.nuelto.camperexperience.ui.theme.StatusColorsKt",
-            "com.nuelto.camperexperience.ui.components.ReorderState",
-            "com.nuelto.camperexperience.ui.triplist.TripListViewModel",
-            "com.nuelto.camperexperience.ui.settings.SettingsViewModel",
-            "com.nuelto.camperexperience.ui.map.LocationPickerViewModel",
-            "com.nuelto.camperexperience.ui.share.AddToTripViewModel",
+            "com.nuelto.etappli.domain.*",
+            "com.nuelto.etappli.data.InMemory*",
+            "com.nuelto.etappli.data.model.ModelsKt",
+            "com.nuelto.etappli.ui.FormatKt",
+            "com.nuelto.etappli.ui.theme.StatusColorsKt",
+            "com.nuelto.etappli.ui.components.ReorderState",
+            "com.nuelto.etappli.ui.triplist.TripListViewModel",
+            "com.nuelto.etappli.ui.settings.SettingsViewModel",
+            "com.nuelto.etappli.ui.map.LocationPickerViewModel",
+            "com.nuelto.etappli.ui.share.AddToTripViewModel",
         ).joinToString(","),
         // $$inlined$: synthetic coroutine/flow machinery; avoidCallsTo: compiler null-check noise.
         "--excludedClasses", "*\$Companion,*Test,*Test\$*,*\$\$inlined\$*",
         "--avoidCallsTo", "kotlin.jvm.internal,kotlin.ResultKt",
         "--targetTests",
         listOf(
-            "com.nuelto.camperexperience.domain.*",
-            "com.nuelto.camperexperience.data.*",
-            "com.nuelto.camperexperience.ui.FormatTest",
-            "com.nuelto.camperexperience.ui.theme.StatusColorsTest",
-            "com.nuelto.camperexperience.ui.components.ReorderStateTest",
-            "com.nuelto.camperexperience.ui.triplist.TripListViewModelTest",
-            "com.nuelto.camperexperience.ui.settings.SettingsViewModelTest",
-            "com.nuelto.camperexperience.ui.map.LocationPickerViewModelTest",
-            "com.nuelto.camperexperience.ui.share.AddToTripViewModelTest",
+            "com.nuelto.etappli.domain.*",
+            "com.nuelto.etappli.data.*",
+            "com.nuelto.etappli.ui.FormatTest",
+            "com.nuelto.etappli.ui.theme.StatusColorsTest",
+            "com.nuelto.etappli.ui.components.ReorderStateTest",
+            "com.nuelto.etappli.ui.triplist.TripListViewModelTest",
+            "com.nuelto.etappli.ui.settings.SettingsViewModelTest",
+            "com.nuelto.etappli.ui.map.LocationPickerViewModelTest",
+            "com.nuelto.etappli.ui.share.AddToTripViewModelTest",
         ).joinToString(","),
         "--sourceDirs", "src/main/java",
         "--reportDir", layout.buildDirectory.dir("reports/pitest").get().asFile.absolutePath,

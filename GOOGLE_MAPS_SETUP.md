@@ -11,7 +11,7 @@ The app needs a Google Maps Platform key. Without one it still builds, installs 
 3. APIs & Services → Library → enable **Maps SDK for Android**, **Places API (New)**
    (the one called "Places API (New)", not the legacy "Places API") and **Routes API**.
 4. APIs & Services → Credentials → Create credentials → API key. Then restrict it:
-   - *Application restrictions* → Android apps → add package `com.nuelto.camperexperience`
+   - *Application restrictions* → Android apps → add package `com.nuelto.etappli`
      with your debug SHA-1 (and the release one when you have it):
      ```bash
      ./gradlew :app:signingReport
