@@ -16,10 +16,10 @@ import kotlinx.coroutines.flow.first
 object TripStarter {
 
     /**
-     * Starts a planned tour on [startDate] (stop dates shift by the same delta) and
-     * snapshots the estimate for planned-vs-actual. With [keepPlanAsTemplate] the plan
-     * is deep-copied and survives untouched; otherwise it converts in place.
-     * Returns the ACTIVE trip's id.
+     * Starts a planned tour on [startDate]: its first stop lands on that day and the rest
+     * keep their spacing. Snapshots the estimate for planned-vs-actual. With
+     * [keepPlanAsTemplate] the plan is deep-copied and survives untouched; otherwise it
+     * converts in place. Returns the ACTIVE trip's id.
      */
     suspend fun start(
         repository: TripRepository,
@@ -31,7 +31,7 @@ object TripStarter {
         val trip = checkNotNull(repository.trip(tripId).first())
         val stops = repository.stops(tripId).first()
         val expenses = repository.expenses(tripId).first()
-        val shift = ChronoUnit.DAYS.between(trip.startDate, startDate)
+        val shift = ChronoUnit.DAYS.between(DateCascade.start(stops) ?: trip.startDate, startDate)
         // A tour starts by leaving home, so the home it sets out from is already reached:
         // the first night's stop is what you are heading for, not your own front door.
         val departed = HomeStop.departure(stops)?.id
@@ -77,12 +77,16 @@ object TripStarter {
         return newId
     }
 
-    /** Copies a trip into a fresh plan starting [startDate]; skipped stops stay behind. */
+    /**
+     * Copies a trip into a fresh plan whose first stop is on [startDate]; skipped stops
+     * stay behind. Both copies shift from the first stop, not from [Trip.startDate]: a
+     * plan's stops are what the user dated, and the trip's own date may lag behind them.
+     */
     suspend fun planAgain(repository: TripRepository, tripId: String, startDate: LocalDate): String {
         val trip = checkNotNull(repository.trip(tripId).first())
         val stops = repository.stops(tripId).first()
         val expenses = repository.expenses(tripId).first()
-        val shift = ChronoUnit.DAYS.between(trip.startDate, startDate)
+        val shift = ChronoUnit.DAYS.between(DateCascade.start(stops) ?: trip.startDate, startDate)
 
         val newId = repository.upsertTrip(
             trip.copy(

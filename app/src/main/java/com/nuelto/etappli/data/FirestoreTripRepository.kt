@@ -19,6 +19,7 @@ import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.legacyTripStatus
 import com.nuelto.etappli.domain.CostCalculator
+import com.nuelto.etappli.domain.DateCascade
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
@@ -251,11 +252,13 @@ class FirestoreTripRepository(
         val doc = if (stop.id.isBlank()) col.document() else col.document(stop.id)
         doc.set(stop.toMap())
         recomputeTotals(stop.tripId)
+        redatePlan(stop.tripId)
     }
 
     override suspend fun deleteStop(tripId: String, stopId: String) {
         trips(uid).document(tripId).collection("stops").document(stopId).delete()
         recomputeTotals(tripId)
+        redatePlan(tripId)
     }
 
     override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
@@ -264,6 +267,7 @@ class FirestoreTripRepository(
             col.document(stopId).update("orderIndex", index)
         }
         recomputeTotals(tripId)
+        redatePlan(tripId)
     }
 
     override suspend fun upsertExpense(expense: Expense) {
@@ -276,6 +280,18 @@ class FirestoreTripRepository(
     override suspend fun deleteExpense(tripId: String, expenseId: String) {
         trips(uid).document(tripId).collection("expenses").document(expenseId).delete()
         recomputeTotals(tripId)
+    }
+
+    /** A plan starts the day its first stop does; stop edits keep the trip doc saying so. */
+    private suspend fun redatePlan(tripId: String) {
+        val tripDoc = trips(uid).document(tripId)
+        val trip = runCatching { tripDoc.get(Source.CACHE).await().toTrip() }.getOrNull() ?: return
+        if (trip.status != TripStatus.PLANNED) return
+        val stops = runCatching {
+            tripDoc.collection("stops").get(Source.CACHE).await().documents.map { it.toStop(tripId) }
+        }.getOrNull() ?: return
+        val start = DateCascade.start(stops) ?: return
+        if (start != trip.startDate) tripDoc.update("startDate", start.toEpochDay())
     }
 
     /**

@@ -7,6 +7,10 @@ import java.time.temporal.ChronoUnit
 
 object DateCascade {
 
+    /** The day a schedule starts: the arrival of its first stop that is not skipped. */
+    fun start(stops: List<Stop>): LocalDate? =
+        stops.filterNot { it.state == StopState.SKIPPED }.minByOrNull { it.orderIndex }?.arrivalDate
+
     /**
      * Shifts the arrival dates of PLANNED stops ordered after [afterOrderIndex] by
      * [days] — used when a stay is extended/shortened or an arrival lands late, so

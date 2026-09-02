@@ -10,6 +10,7 @@ import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.CostCalculator
+import com.nuelto.etappli.domain.DateCascade
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -65,11 +66,13 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         val withId = if (stop.id.isBlank()) stop.copy(id = UUID.randomUUID().toString()) else stop
         stopsFlow.update { list -> list.filterNot { it.id == withId.id } + withId }
         recomputeTotals(withId.tripId)
+        redatePlan(withId.tripId)
     }
 
     override suspend fun deleteStop(tripId: String, stopId: String) {
         stopsFlow.update { list -> list.filterNot { it.id == stopId } }
         recomputeTotals(tripId)
+        redatePlan(tripId)
     }
 
     override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
@@ -80,6 +83,7 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
             }
         }
         recomputeTotals(tripId)
+        redatePlan(tripId)
     }
 
     override suspend fun upsertExpense(expense: Expense) {
@@ -91,6 +95,20 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
     override suspend fun deleteExpense(tripId: String, expenseId: String) {
         expensesFlow.update { list -> list.filterNot { it.id == expenseId } }
         recomputeTotals(tripId)
+    }
+
+    /** A plan starts the day its first stop does; stop edits keep the trip saying so. */
+    private fun redatePlan(tripId: String) {
+        val start = DateCascade.start(stopsFlow.value.filter { it.tripId == tripId }) ?: return
+        tripsFlow.update { list ->
+            list.map { trip ->
+                if (trip.id == tripId && trip.status == TripStatus.PLANNED) {
+                    trip.copy(startDate = start)
+                } else {
+                    trip
+                }
+            }
+        }
     }
 
     private fun recomputeTotals(tripId: String) {

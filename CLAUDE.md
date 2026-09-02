@@ -188,7 +188,10 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
   from `Source.CACHE` (which includes pending writes, so it works offline). Any new
-  mutation path must call it, or the trip list shows stale totals.
+  mutation path must call it, or the trip list shows stale totals. Stop mutations also
+  call `redatePlan`: a PLANNED trip's `startDate` follows its first unskipped stop
+  (`DateCascade.start`), and `TripStarter` shifts from that stop rather than from
+  `startDate`, so a tour started on a day has its first stop on that day.
 - **Cost semantics** (`domain/CostCalculator.kt`): camping cost lives **on the Stop**
   (`campingCostTotal`); the CAMPING expense type is only for extra site fees. Breakdown
   merges both into the CAMPING category. The fuel estimator (`domain/FuelEstimator.kt`)

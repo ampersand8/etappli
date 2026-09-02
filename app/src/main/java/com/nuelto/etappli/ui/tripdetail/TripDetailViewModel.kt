@@ -308,7 +308,7 @@ class TripDetailViewModel(
 
     /** Writes a rearranged timeline: the new stop order, then the dates it implies. */
     private fun applyRows(rows: List<TimelineRow>) {
-        val start = uiState.value.stops.firstOrNull { it.state != StopState.SKIPPED }?.arrivalDate ?: return
+        val start = DateCascade.start(uiState.value.stops) ?: return
         viewModelScope.launch {
             writeLock.withLock {
                 tripRepository.reorderStops(tripId, rows.filterIsInstance<StopRow>().map { it.stop.id })
