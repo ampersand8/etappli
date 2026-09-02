@@ -56,4 +56,12 @@ class CurrentStopTest {
         assertNull(CurrentStop.of(listOf(visited), today))
         assertNull(CurrentStop.of(emptyList(), today))
     }
+
+    @Test
+    fun `the home a tour set out from is behind you even before the start date`() {
+        // Started the evening before: home is checked in, dated tomorrow, with no nights.
+        val home = stop("home", 0, StopState.DONE, arrival = today.plusDays(1), nights = 0)
+        val first = stop("first", 1, arrival = today.plusDays(1))
+        assertEquals("first", CurrentStop.of(listOf(home, first), today))
+    }
 }

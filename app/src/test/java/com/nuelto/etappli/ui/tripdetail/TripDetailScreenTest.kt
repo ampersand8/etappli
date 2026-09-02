@@ -948,4 +948,30 @@ class TripDetailScreenTest {
         compose.onNodeWithText(back, useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("${formatDate(start)} · start", useUnmergedTree = true).assertExists()
     }
+
+    @Test
+    fun `a tour started ahead of its date heads for the first stop, not home`() {
+        val start = LocalDate.now().plusDays(1)
+        runBlocking {
+            tripRepository.upsertTrip(Trip(id = "h3", name = "Loop", startDate = start, status = TripStatus.ACTIVE))
+            tripRepository.upsertStop(
+                Stop(
+                    id = "out", tripId = "h3", name = "Luzern", orderIndex = 0, nights = 0, state = StopState.DONE,
+                    kind = StopKind.HOME, location = LatLng(47.05, 8.31), arrivalDate = start,
+                ),
+            )
+            tripRepository.upsertStop(
+                Stop(
+                    id = "s", tripId = "h3", name = "Locarno", orderIndex = 1, nights = 2,
+                    location = LatLng(46.16, 8.79), arrivalDate = start,
+                ),
+            )
+        }
+        setContent("h3")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Locarno"))
+        compose.onNodeWithText("TONIGHT").assertIsDisplayed()
+        compose.onNodeWithText("Navigate").assertIsDisplayed()
+        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodesWithText("Checked in", useUnmergedTree = true).assertCountEquals(0)
+    }
 }
