@@ -130,7 +130,10 @@ class TripDetailViewModelTest {
             Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
         )
         tripRepository.upsertStop(
-            Stop(id = "s1", tripId = "t1", name = "Luzern", nights = 2, location = LatLng(47.05, 8.31), orderIndex = 0),
+            Stop(
+                id = "s1", tripId = "t1", name = "Luzern", nights = 2, location = LatLng(47.05, 8.31),
+                orderIndex = 0, arrivalDate = LocalDate.of(2027, 6, 10),
+            ),
         )
         val vm = hotViewModel()
         val suggestion = vm.uiState.value.vignetteSuggestions.single()

@@ -226,4 +226,37 @@ class InMemoryTripRepositoryTest {
         }
         assertNotEquals(LatLng(0.0, 0.0), seeded.stops(trips[0].id).first().first().location)
     }
+
+
+    @Test
+    fun `a plan starts the day its first stop does`() = runTest {
+        val start = LocalDate.of(2026, 9, 2)
+        val id = repo.upsertTrip(Trip(id = "plan", name = "Plan", startDate = start, status = TripStatus.PLANNED))
+        repo.upsertStop(Stop(id = "s2", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(2)))
+        assertEquals(start.plusDays(2), repo.trip(id).first()!!.startDate)
+
+        repo.upsertStop(Stop(id = "s1", tripId = id, orderIndex = 0, arrivalDate = start.plusDays(4)))
+        assertEquals(start.plusDays(4), repo.trip(id).first()!!.startDate)
+
+        repo.reorderStops(id, listOf("s2", "s1"))
+        assertEquals(start.plusDays(2), repo.trip(id).first()!!.startDate)
+
+        repo.upsertStop(Stop(id = "s2", tripId = id, orderIndex = 0, arrivalDate = start, state = StopState.SKIPPED))
+        assertEquals(start.plusDays(4), repo.trip(id).first()!!.startDate)
+
+        repo.deleteStop(id, "s1")
+        assertEquals(start.plusDays(4), repo.trip(id).first()!!.startDate)
+    }
+
+    @Test
+    fun `only a plan follows its stops`() = runTest {
+        val start = LocalDate.of(2026, 9, 2)
+        val active = repo.upsertTrip(Trip(id = "active", name = "Active", startDate = start, status = TripStatus.ACTIVE))
+        repo.upsertStop(Stop(id = "a1", tripId = active, orderIndex = 0, arrivalDate = start.plusDays(2)))
+        assertEquals(start, repo.trip(active).first()!!.startDate)
+
+        val plan = repo.upsertTrip(Trip(id = "plan", name = "Plan", startDate = start, status = TripStatus.PLANNED))
+        repo.upsertStop(Stop(id = "other", tripId = active, orderIndex = 1, arrivalDate = start.plusDays(3)))
+        assertEquals(start, repo.trip(plan).first()!!.startDate)
+    }
 }

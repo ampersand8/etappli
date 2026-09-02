@@ -4,6 +4,7 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopState
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -110,5 +111,23 @@ class DateCascadeTest {
     fun `an order that changes no arrival writes nothing`() {
         val stops = listOf(stop("a", 0, base), stop("b", 1, base.plusDays(1)))
         assertTrue(DateCascade.resequence(Timeline.rows(stops), base).isEmpty())
+    }
+
+
+    @Test
+    fun `start is the arrival of the first stop that is not skipped`() {
+        val stops = listOf(
+            stop("second", 1, base.plusDays(3)),
+            stop("skipped", 0, base, state = StopState.SKIPPED),
+            stop("first", 2, base.plusDays(5)),
+        )
+        assertEquals(base.plusDays(3), DateCascade.start(stops))
+        assertEquals(base.plusDays(3), DateCascade.start(stops.filterNot { it.state == StopState.SKIPPED }))
+    }
+
+    @Test
+    fun `start of no stops is nothing`() {
+        assertNull(DateCascade.start(emptyList()))
+        assertNull(DateCascade.start(listOf(stop("skipped", 0, base, state = StopState.SKIPPED))))
     }
 }

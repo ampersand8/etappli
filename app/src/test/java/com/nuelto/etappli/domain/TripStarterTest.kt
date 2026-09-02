@@ -196,4 +196,50 @@ class TripStarterTest {
         assertEquals(listOf(StopState.DONE, StopState.PLANNED, StopState.PLANNED), converted.map { it.state })
         assertEquals(listOf(planStart, planStart, planStart.plusDays(2)), converted.map { it.arrivalDate })
     }
+
+
+    @Test
+    fun `a tour is dated from its first stop, not from what the plan says`() = runTest {
+        val planId = seedPlan()
+        // The plan doc says it starts two days before anyone arrives anywhere.
+        val plan = repo.trip(planId).first()!!
+        repo.upsertTrip(plan.copy(startDate = planStart.minusDays(2)))
+
+        val templateId = TripStarter.start(repo, planId, planStart.minusDays(2), keepPlanAsTemplate = true, settings = settings)
+        assertEquals(
+            listOf(planStart.minusDays(2), planStart),
+            repo.stops(templateId).first().map { it.arrivalDate },
+        )
+
+        TripStarter.start(repo, planId, planStart.minusDays(2), keepPlanAsTemplate = false, settings = settings)
+        assertEquals(
+            listOf(planStart.minusDays(2), planStart),
+            repo.stops(planId).first().map { it.arrivalDate },
+        )
+        assertEquals(planStart.minusDays(2), repo.trip(planId).first()!!.startDate)
+    }
+
+    @Test
+    fun `plan again is dated from the first stop that comes along`() = runTest {
+        val doneId = repo.upsertTrip(
+            Trip(id = "done", name = "Drive day", startDate = LocalDate.of(2025, 9, 11), status = TripStatus.DONE),
+        )
+        repo.upsertStop(
+            Stop(
+                id = "skipped", tripId = doneId, name = "Never", arrivalDate = LocalDate.of(2025, 9, 11),
+                orderIndex = 0, state = StopState.SKIPPED,
+            ),
+        )
+        repo.upsertStop(
+            Stop(
+                id = "d1", tripId = doneId, name = "Durance", arrivalDate = LocalDate.of(2025, 9, 12),
+                nights = 3, orderIndex = 1, state = StopState.DONE,
+            ),
+        )
+
+        val newStart = LocalDate.of(2026, 9, 12)
+        val newId = TripStarter.planAgain(repo, doneId, newStart)
+        assertEquals(newStart, repo.stops(newId).first().single().arrivalDate)
+        assertEquals(newStart, repo.trip(newId).first()!!.startDate)
+    }
 }
