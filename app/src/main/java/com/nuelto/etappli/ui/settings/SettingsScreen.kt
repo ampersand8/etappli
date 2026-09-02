@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.nuelto.etappli.BuildConfig
@@ -40,17 +41,21 @@ import com.nuelto.etappli.containerViewModelFactory
 import com.nuelto.etappli.data.AuthRepository
 import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.model.UserSettings
+import com.nuelto.etappli.location.PlaceNameResolver
 import com.nuelto.etappli.ui.components.DecimalField
 import com.nuelto.etappli.ui.components.parseDecimal
 import com.nuelto.etappli.ui.map.LocalMapProvider
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     val authRepository: AuthRepository?,
+    // Names a GPS fix or a dropped pin after the nearest village; null when nothing can.
+    private val placeName: suspend (LatLng) -> String? = { null },
 ) : ViewModel() {
 
     val settings: StateFlow<UserSettings?> =
@@ -61,16 +66,23 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.update(settings) }
     }
 
-    /** Sets home from the picker or a GPS fix; an unnamed pick keeps the name it had. */
+    /**
+     * Sets home from the picker or a GPS fix. An unnamed pick keeps the name it had, or
+     * takes the nearest village's: a fix or a pin has no name of its own, and a home
+     * with none looks exactly like no home at all.
+     */
     fun setHome(location: LatLng, name: String = "") {
         val current = settings.value ?: return
+        val home = current.copy(homeLocation = location, homeName = name.ifBlank { current.homeName })
         viewModelScope.launch {
-            settingsRepository.update(
-                current.copy(
-                    homeLocation = location,
-                    homeName = name.ifBlank { current.homeName },
-                ),
-            )
+            settingsRepository.update(home)
+            if (home.homeName.isNotBlank()) return@launch
+            val place = placeName(location) ?: return@launch
+            // A name typed meanwhile, or a pin moved since, beats a late answer.
+            val latest = settingsRepository.settings().first()
+            if (latest.homeLocation == location && latest.homeName.isBlank()) {
+                settingsRepository.update(latest.copy(homeName = place))
+            }
         }
     }
 
@@ -87,7 +99,8 @@ class SettingsViewModel(
 
     companion object {
         val Factory = containerViewModelFactory { container ->
-            SettingsViewModel(container.settingsRepository, container.authRepository)
+            val resolver = this[APPLICATION_KEY]?.let(::PlaceNameResolver)
+            SettingsViewModel(container.settingsRepository, container.authRepository) { resolver?.placeName(it) }
         }
     }
 }
@@ -142,8 +155,8 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                current.homeLocation?.let { "Set — new plans start here." }
-                    ?: "Not set. Pick it below and new plans will start from it.",
+                current.homeLocation?.let { "Set — new plans start and end here." }
+                    ?: "Not set. Pick it below and new plans will start and end there.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

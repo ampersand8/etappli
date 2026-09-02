@@ -3,6 +3,7 @@ package com.nuelto.etappli.ui.settings
 import app.cash.turbine.test
 import com.nuelto.etappli.data.InMemorySettingsRepository
 import com.nuelto.etappli.data.model.LatLng
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.testutil.FakeAuthRepository
@@ -69,8 +70,9 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `a named pick renames home`() = runTest {
-        val vm = SettingsViewModel(settingsRepository, null)
+    fun `a named pick renames home, and asks nobody else`() = runTest {
+        var asked = 0
+        val vm = SettingsViewModel(settingsRepository, null) { asked++; "Bern" }
         vm.settings.test {
             awaitItem()
             vm.setHome(LatLng(47.05, 8.31), "Camping Lido")
@@ -78,6 +80,75 @@ class SettingsViewModelTest {
             assertEquals("Camping Lido", stored.homeName)
             cancelAndIgnoreRemainingEvents()
         }
+        assertEquals(0, asked)
+    }
+
+    @Test
+    fun `an unnamed home takes the name of the nearest place`() = runTest {
+        val vm = SettingsViewModel(settingsRepository, null) { "Bern" }
+        vm.settings.test {
+            awaitItem()
+            vm.setHome(LatLng(46.95, 7.45))
+            cancelAndIgnoreRemainingEvents()
+        }
+        val stored = settingsRepository.settings().first()
+        assertEquals(LatLng(46.95, 7.45), stored.homeLocation)
+        assertEquals("Bern", stored.homeName)
+    }
+
+    @Test
+    fun `without a geocoder an unnamed home stays unnamed`() = runTest {
+        val vm = SettingsViewModel(settingsRepository, null)
+        vm.settings.test {
+            awaitItem()
+            vm.setHome(LatLng(46.95, 7.45))
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertEquals("", settingsRepository.settings().first().homeName)
+    }
+
+    @Test
+    fun `a late name never overwrites one typed meanwhile`() = runTest {
+        val gate = CompletableDeferred<String?>()
+        val vm = SettingsViewModel(settingsRepository, null) { gate.await() }
+        vm.settings.test {
+            awaitItem()
+            vm.setHome(LatLng(46.95, 7.45))
+            awaitItem()
+            vm.update(settingsRepository.settings().first().copy(homeName = "Daheim"))
+            awaitItem()
+            gate.complete("Bern")
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertEquals("Daheim", settingsRepository.settings().first().homeName)
+    }
+
+    @Test
+    fun `a late name for a pin that has since moved is dropped`() = runTest {
+        val gate = CompletableDeferred<String?>()
+        var first = true
+        val vm = SettingsViewModel(settingsRepository, null) {
+            if (first) {
+                first = false
+                gate.await()
+            } else {
+                null
+            }
+        }
+        vm.settings.test {
+            awaitItem()
+            vm.setHome(LatLng(46.95, 7.45))
+            awaitItem()
+            vm.setHome(LatLng(47.05, 8.31))
+            awaitItem()
+            gate.complete("Bern")
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
+        val stored = settingsRepository.settings().first()
+        assertEquals(LatLng(47.05, 8.31), stored.homeLocation)
+        assertEquals("", stored.homeName)
     }
 
     @Test

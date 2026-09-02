@@ -17,6 +17,7 @@ import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.domain.DateCascade
+import com.nuelto.etappli.domain.HomeStop
 import com.nuelto.etappli.domain.MapsUri
 import com.nuelto.etappli.domain.Timeline
 import com.nuelto.etappli.domain.nearestLocated
@@ -104,8 +105,10 @@ class StopEditViewModel(
                 // where the whole trip is "before" it.
                 val at = route.insertBefore?.let { Timeline.insertion(Timeline.rows(stops), it) }
                 insertAt = at?.orderIndex
+                // A plan ends with the drive home, so "the end" is in front of that.
+                val home = HomeStop.returning(stops)
                 _uiState.update {
-                    it.copy(nearbyLocation = nearestLocated(stops, at?.orderIndex ?: Int.MAX_VALUE))
+                    it.copy(nearbyLocation = nearestLocated(stops, at?.orderIndex ?: home?.orderIndex ?: Int.MAX_VALUE))
                 }
                 if (at != null) {
                     // The slot says which day this starts on; no GPS fix improves on that.
@@ -118,7 +121,7 @@ class StopEditViewModel(
                     // Planning ahead or back-filling a finished trip: no GPS fix
                     // (your couch is not the campsite), arrival chains from the last stop.
                     val last = stops
-                        .filterNot { it.state == StopState.SKIPPED }
+                        .filterNot { it.state == StopState.SKIPPED || it.id == home?.id }
                         .maxByOrNull { it.orderIndex }
                     val arrival = last?.arrivalDate?.plusDays(last.nights.toLong()) ?: trip.startDate
                     _uiState.update { it.copy(arrivalDate = arrival) }
@@ -169,11 +172,18 @@ class StopEditViewModel(
     fun setCampingCost(value: String) = _uiState.update { it.copy(campingCost = value) }
     fun setNotes(value: String) = _uiState.update { it.copy(notes = value) }
 
-    fun setKind(value: StopKind) = _uiState.update {
-        when {
-            !value.isStay -> it.copy(kind = value, nights = 0, campingCost = "")
-            !it.isStay -> it.copy(kind = value, nights = 1)
-            else -> it.copy(kind = value)
+    fun setKind(value: StopKind) {
+        // Home is a place you already have: choosing the kind puts the stop there.
+        if (value == StopKind.HOME) {
+            val settings = _uiState.value.settings
+            settings.homeLocation?.let { setPickedLocation(it, HomeStop.name(settings), "", fromPlaces = false) }
+        }
+        _uiState.update {
+            when {
+                !value.isStay -> it.copy(kind = value, nights = 0, campingCost = "")
+                !it.isStay -> it.copy(kind = value, nights = 1)
+                else -> it.copy(kind = value)
+            }
         }
     }
 
@@ -302,21 +312,20 @@ class StopEditViewModel(
     }
 
     /**
-     * New stops append — except when one is inserted in front of a row, and mid-trip
-     * with check-ins, where a spontaneous stop slots in right after the last done stop.
-     * Either way the stops from there on move down one.
+     * New stops append — except when one is inserted in front of a row; mid-trip with
+     * check-ins, where a spontaneous stop slots in right after the last done stop; and
+     * on a plan that ends with the drive home, which a stop added to the end goes in
+     * front of, pushing it back like any insertion. Either way the stops from there on
+     * move down one.
      */
     private suspend fun newOrderIndex(): Int {
         val stops = tripRepository.stops(route.tripId).first()
-        insertAt?.let { at ->
-            shoveDown(stops, at)
-            return at
-        }
         val lastDone = stops.filter { it.state == StopState.DONE }.maxOfOrNull { it.orderIndex }
-        if (tripStatus != TripStatus.ACTIVE || lastDone == null) {
-            return (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1
-        }
-        val at = lastDone + 1
+        val at = when {
+            insertAt != null -> insertAt
+            tripStatus == TripStatus.ACTIVE && lastDone != null -> lastDone + 1
+            else -> HomeStop.returning(stops)?.orderIndex?.also { insertAt = it }
+        } ?: return (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1
         shoveDown(stops, at)
         return at
     }

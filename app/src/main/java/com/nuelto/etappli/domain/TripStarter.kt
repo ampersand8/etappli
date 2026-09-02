@@ -32,6 +32,9 @@ object TripStarter {
         val stops = repository.stops(tripId).first()
         val expenses = repository.expenses(tripId).first()
         val shift = ChronoUnit.DAYS.between(trip.startDate, startDate)
+        // A tour starts by leaving home, so the home it sets out from is already reached:
+        // the first night's stop is what you are heading for, not your own front door.
+        val departed = HomeStop.departure(stops)?.id
         val started = trip.copy(
             status = TripStatus.ACTIVE,
             startDate = startDate,
@@ -42,10 +45,12 @@ object TripStarter {
 
         if (!keepPlanAsTemplate) {
             repository.upsertTrip(started)
-            if (shift != 0L) {
-                stops.forEach {
-                    repository.upsertStop(it.copy(arrivalDate = it.arrivalDate.plusDays(shift)))
-                }
+            stops.forEach {
+                val moved = it.copy(
+                    arrivalDate = it.arrivalDate.plusDays(shift),
+                    state = if (it.id == departed) StopState.DONE else it.state,
+                )
+                if (moved != it) repository.upsertStop(moved)
             }
             return tripId
         }
@@ -58,7 +63,7 @@ object TripStarter {
                 it.copy(
                     id = "",
                     tripId = newId,
-                    state = StopState.PLANNED,
+                    state = if (it.id == departed) StopState.DONE else StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
                 ),
             )

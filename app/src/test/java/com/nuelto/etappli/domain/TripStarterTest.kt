@@ -170,4 +170,30 @@ class TripStarterTest {
         assertNull(copied.stopId)
         assertEquals(2, repo.expenses(doneId).first().size)
     }
+
+    @Test
+    fun `starting a tour checks in at the home it sets out from`() = runTest {
+        val planId = repo.upsertTrip(Trip(id = "loop", name = "Loop", startDate = planStart, status = TripStatus.PLANNED))
+        repo.upsertStop(
+            Stop(id = "out", tripId = planId, name = "Home", kind = StopKind.HOME, nights = 0, orderIndex = 0, arrivalDate = planStart),
+        )
+        repo.upsertStop(Stop(id = "s1", tripId = planId, name = "Luzern", nights = 2, orderIndex = 1, arrivalDate = planStart))
+        repo.upsertStop(
+            Stop(
+                id = "back", tripId = planId, name = "Home", kind = StopKind.HOME, nights = 0, orderIndex = 2,
+                arrivalDate = planStart.plusDays(2),
+            ),
+        )
+
+        val newId = TripStarter.start(repo, planId, planStart, keepPlanAsTemplate = true, settings = settings)
+        val copied = repo.stops(newId).first().sortedBy { it.orderIndex }
+        assertEquals(listOf(StopState.DONE, StopState.PLANNED, StopState.PLANNED), copied.map { it.state })
+        // The template is untouched.
+        assertTrue(repo.stops(planId).first().all { it.state == StopState.PLANNED })
+
+        TripStarter.start(repo, planId, planStart, keepPlanAsTemplate = false, settings = settings)
+        val converted = repo.stops(planId).first().sortedBy { it.orderIndex }
+        assertEquals(listOf(StopState.DONE, StopState.PLANNED, StopState.PLANNED), converted.map { it.state })
+        assertEquals(listOf(planStart, planStart, planStart.plusDays(2)), converted.map { it.arrivalDate })
+    }
 }

@@ -100,11 +100,11 @@ class TripEditViewModel(
                         status = status,
                     ),
                 )
-                // A fresh plan starts at home, when there is one to start from.
+                // A fresh plan sets out from home and comes back to it, when there is one.
                 if (state.isNew && status == TripStatus.PLANNED) {
-                    val settings = settingsRepository?.settings()?.first()
-                    settings?.let { HomeStop.forNewPlan(savedId, it, state.startDate) }
-                        ?.let { tripRepository.upsertStop(it) }
+                    settingsRepository?.settings()?.first()
+                        ?.let { HomeStop.forNewPlan(savedId, it, state.startDate) }
+                        ?.forEach { tripRepository.upsertStop(it) }
                 }
                 // Moving a plan's start moves its whole itinerary along.
                 if (base.status == TripStatus.PLANNED) {

@@ -51,6 +51,20 @@ class RouteCacheTest {
     }
 
     @Test
+    fun `two stops at the same spot are not a drive`() {
+        // A fresh plan: leaving home and coming straight back, with nothing between yet.
+        assertTrue(RouteCache.drives(listOf(stop("out", 0, c), stop("back", 1, c))).isEmpty())
+        // With a stop between, both drives are real; a repeat of the same spot still is
+        // not, and the next drive leaves from the later of the two.
+        assertEquals(
+            listOf("out" to "s1", "twin" to "back"),
+            RouteCache.drives(listOf(stop("out", 0, c), stop("s1", 1, a), stop("twin", 2, a), stop("back", 3, c)))
+                .map { (from, to) -> from.id to to.id },
+        )
+        assertFalse(RouteCache.needsFetch(listOf(stop("out", 0, c), stop("back", 1, c)), today))
+    }
+
+    @Test
     fun `fewer than two routable stops is no drive at all`() {
         assertTrue(RouteCache.drives(emptyList()).isEmpty())
         assertTrue(RouteCache.drives(listOf(stop("only", 0, a))).isEmpty())
