@@ -179,7 +179,7 @@ class AppNavHostTest {
         compose.onNodeWithText("Use this place").performClick()
 
         // Back in Settings, with somewhere for new plans to start from.
-        compose.onNodeWithText("Set — new plans start here.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Set — new plans start and end here.").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -188,7 +188,7 @@ class AppNavHostTest {
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("  Pick on map").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
-        compose.onNodeWithText("Not set. Pick it below and new plans will start from it.")
+        compose.onNodeWithText("Not set. Pick it below and new plans will start and end there.")
             .performScrollTo().assertIsDisplayed()
     }
 

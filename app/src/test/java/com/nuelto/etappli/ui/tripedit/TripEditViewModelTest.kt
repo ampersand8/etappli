@@ -193,7 +193,7 @@ class TripEditViewModelTest {
     }
 
     @Test
-    fun `a new plan starts at home`() = runTest {
+    fun `a new plan sets out from home and comes back to it`() = runTest {
         setHome()
         val vm = planViewModel()
         vm.setName("Ticino")
@@ -201,13 +201,14 @@ class TripEditViewModelTest {
         var created: String? = null
         vm.save { id, _ -> created = id }
 
-        val stops = tripRepository.stops(created!!).first()
-        val home = stops.single()
-        assertEquals("Luzern", home.name)
-        assertEquals(StopKind.HOME, home.kind)
-        assertEquals(LatLng(47.0502, 8.3093), home.location)
-        assertEquals(0, home.orderIndex)
-        assertEquals(LocalDate.of(2027, 6, 10), home.arrivalDate)
+        val stops = tripRepository.stops(created!!).first().sortedBy { it.orderIndex }
+        assertEquals(listOf(0, 1), stops.map { it.orderIndex })
+        stops.forEach { home ->
+            assertEquals("Luzern", home.name)
+            assertEquals(StopKind.HOME, home.kind)
+            assertEquals(LatLng(47.0502, 8.3093), home.location)
+            assertEquals(LocalDate.of(2027, 6, 10), home.arrivalDate)
+        }
     }
 
     @Test
@@ -238,7 +239,7 @@ class TripEditViewModelTest {
         first.setName("Ticino")
         var created: String? = null
         first.save { id, _ -> created = id }
-        assertEquals(1, tripRepository.stops(created!!).first().size)
+        assertEquals(2, tripRepository.stops(created!!).first().size)
 
         val again = TripEditViewModel(
             SavedStateHandle(mapOf("tripId" to created!!)),
@@ -248,7 +249,7 @@ class TripEditViewModelTest {
         again.setName("Ticino-Tour")
         again.save { _, _ -> }
 
-        assertEquals(1, tripRepository.stops(created!!).first().size)
+        assertEquals(2, tripRepository.stops(created!!).first().size)
     }
 
 }

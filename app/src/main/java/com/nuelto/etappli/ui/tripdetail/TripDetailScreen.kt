@@ -113,6 +113,7 @@ import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.domain.TripMapData
 import com.nuelto.etappli.domain.Elevation
 import com.nuelto.etappli.domain.GapRow
+import com.nuelto.etappli.domain.HomeStop
 import com.nuelto.etappli.domain.StopRow
 import com.nuelto.etappli.domain.TripEstimator
 import com.nuelto.etappli.ui.components.DecimalField
@@ -167,6 +168,8 @@ fun TripDetailScreen(
     val listState = rememberLazyListState()
     // Draggable set: rows hanging off a planned stop of a live trip. Done and skipped
     // rows — and the current stop, which is simply where you are — are anchors.
+    // The home the plan sets out from reads as its start; any other home is the way back.
+    val departureId = HomeStop.departure(state.stops)?.id
     val movableKeys = state.rows
         .filter {
             trip?.status != TripStatus.DONE &&
@@ -447,6 +450,7 @@ fun TripDetailScreen(
                             leg = state.drives[row.stop.id],
                             tripStatus = trip.status,
                             settings = state.settings,
+                            departure = row.stop.id == departureId,
                             movable = movable,
                             onClick = { onEditStop(trip.id, row.stop.id) },
                             onSkip = { skipWithUndo(row.stop) },
@@ -797,6 +801,7 @@ private fun TimelineStopRow(
     leg: StopLeg?,
     tripStatus: TripStatus,
     settings: UserSettings,
+    departure: Boolean,
     movable: Boolean,
     onClick: () -> Unit,
     onSkip: () -> Unit,
@@ -827,7 +832,7 @@ private fun TimelineStopRow(
                     ElevationBadge(stop)
                 }
                 Text(
-                    stopMetaText(stop, tripStatus, settings),
+                    stopMetaText(stop, departure, tripStatus, settings),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -917,11 +922,11 @@ private fun ElevationBadge(stop: Stop) {
     }
 }
 
-private fun stopMetaText(stop: Stop, tripStatus: TripStatus, settings: UserSettings): String {
+private fun stopMetaText(stop: Stop, departure: Boolean, tripStatus: TripStatus, settings: UserSettings): String {
     val date = formatDate(stop.arrivalDate)
     return when {
         stop.state == StopState.SKIPPED -> "skipped"
-        stop.kind == StopKind.HOME -> "$date · start"
+        stop.kind == StopKind.HOME -> "$date · ${if (departure) "start" else "home again"}"
         stop.kind == StopKind.VISIT -> "$date · visit"
         else -> {
             val nights = if (stop.nights == 1) "1 night" else "${stop.nights} nights"

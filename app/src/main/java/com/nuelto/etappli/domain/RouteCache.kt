@@ -30,8 +30,13 @@ object RouteCache {
         .filterNot { it.state == StopState.SKIPPED }
         .filter { it.location != null }
 
-    /** Consecutive drives of the trip, each as the stop it leaves and the one it reaches. */
-    fun drives(stops: List<Stop>): List<Pair<Stop, Stop>> = routed(stops).zipWithNext()
+    /**
+     * Consecutive drives of the trip, each as the stop it leaves and the one it reaches.
+     * Two stops at the same spot — a fresh plan that leaves home and comes straight back —
+     * are not a drive: nothing to route, draw or cost.
+     */
+    fun drives(stops: List<Stop>): List<Pair<Stop, Stop>> =
+        routed(stops).zipWithNext().filter { (from, to) -> from.location != to.location }
 
     /** The stored leg for the drive [previous] → [stop], if it still describes it. */
     fun usable(previous: Stop, stop: Stop): StopLeg? =

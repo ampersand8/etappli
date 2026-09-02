@@ -249,6 +249,29 @@ class RouteRefresherTest {
     }
 
     @Test
+    fun `a stop at the same spot as the one before is left out of the chain`() = runTest {
+        addStop("out", here, index = 0)
+        addStop("back", here, index = 1)
+        // Leaving home and coming straight back is not a drive: nothing is asked for.
+        assertFalse(refresher { listOf(RoutedLeg(geometry, 1, 1)) }.refresh("t1", today).touched)
+        assertTrue(windows.isEmpty())
+
+        addStop("twin", here, index = 1)
+        addStop("far", there, index = 2)
+        addStop("back", here, index = 3)
+        val result = refresher { window -> window.zipWithNext().map { RoutedLeg(geometry, 42_000, 3_600) } }
+            .refresh("t1", today)
+
+        // One request over the distinct points; the leg lands on the stops that are driven to.
+        assertEquals(listOf(listOf(here, there, here)), windows)
+        assertEquals(2, result.fetched)
+        assertNull(stop("twin").leg)
+        assertEquals(here, stop("far").leg!!.from)
+        assertEquals(there, stop("back").leg!!.from)
+        assertEquals(here, stop("back").leg!!.to)
+    }
+
+    @Test
     fun `a trip with nothing to drive between is never routed`() = runTest {
         addStop("lonely", here, index = 0)
 

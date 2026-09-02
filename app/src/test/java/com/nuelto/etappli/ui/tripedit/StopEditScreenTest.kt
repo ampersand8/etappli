@@ -3,6 +3,8 @@ package com.nuelto.etappli.ui.tripedit
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -18,6 +20,7 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.testutil.TestCamperApp
 import java.time.LocalDate
 import kotlinx.coroutines.flow.first
@@ -41,9 +44,13 @@ class StopEditScreenTest {
 
     private lateinit var viewModel: StopEditViewModel
 
-    private fun setContent(stopId: String? = null, withLocationSection: Boolean = false) {
+    private fun setContent(
+        stopId: String? = null,
+        withLocationSection: Boolean = false,
+        settingsRepository: InMemorySettingsRepository = InMemorySettingsRepository(),
+    ) {
         val args = if (stopId == null) mapOf("tripId" to "t1") else mapOf("tripId" to "t1", "stopId" to stopId)
-        viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, InMemorySettingsRepository(), null)
+        viewModel = StopEditViewModel(SavedStateHandle(args), tripRepository, settingsRepository, null)
         compose.setContent {
             if (withLocationSection) {
                 StopEditScreen(
@@ -149,5 +156,28 @@ class StopEditScreenTest {
         }
         setContent()
         compose.onNodeWithText("≈ CHF45.00/night if left blank").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the home chip is offered once a home is set, and puts the stop there`() {
+        setContent()
+        compose.onNodeWithText("Home").assertDoesNotExist()
+    }
+
+    @Test
+    fun `with a home set the home chip puts the stop there`() {
+        val settings = InMemorySettingsRepository()
+        runBlocking { settings.update(UserSettings(homeName = "Luzern", homeLocation = LatLng(47.05, 8.31))) }
+        setContent(settingsRepository = settings)
+        compose.onNodeWithText("Home").performClick()
+        compose.onAllNodesWithText("Luzern").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("Nights").assertDoesNotExist()
+        compose.onNodeWithText("Save").performClick()
+        runBlocking {
+            val stop = tripRepository.stops("t1").first().single()
+            assertEquals(StopKind.HOME, stop.kind)
+            assertEquals("Luzern", stop.name)
+            assertEquals(LatLng(47.05, 8.31), stop.location)
+        }
     }
 }

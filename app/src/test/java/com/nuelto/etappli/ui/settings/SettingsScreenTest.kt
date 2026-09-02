@@ -171,7 +171,7 @@ class SettingsScreenTest {
     fun `home says whether it is set, and takes a name`() {
         setContent()
         compose.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Not set. Pick it below and new plans will start from it.")
+        compose.onNodeWithText("Not set. Pick it below and new plans will start and end there.")
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Clear home").assertDoesNotExist()
 
@@ -180,7 +180,7 @@ class SettingsScreenTest {
                 settingsRepository.settings().first().copy(homeLocation = LatLng(47.05, 8.31)),
             )
         }
-        compose.onNodeWithText("Set — new plans start here.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Set — new plans start and end here.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Clear home").performScrollTo().performClick()
         runBlocking {
             assertNull(settingsRepository.settings().first().homeLocation)

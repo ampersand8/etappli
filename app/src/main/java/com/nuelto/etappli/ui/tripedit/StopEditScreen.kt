@@ -87,13 +87,16 @@ fun StopEditScreen(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                StopKind.entries.filter { it != StopKind.HOME || state.kind == StopKind.HOME }.forEach { kind ->
-                    FilterChip(
-                        selected = state.kind == kind,
-                        onClick = { viewModel.setKind(kind) },
-                        label = { Text(kind.displayName) },
-                    )
-                }
+                // Home is offered once there is one to put a stop at.
+                StopKind.entries
+                    .filter { it != StopKind.HOME || state.kind == StopKind.HOME || state.settings.homeLocation != null }
+                    .forEach { kind ->
+                        FilterChip(
+                            selected = state.kind == kind,
+                            onClick = { viewModel.setKind(kind) },
+                            label = { Text(kind.displayName) },
+                        )
+                    }
             }
             if (state.isNew) {
                 // The place you pick names the stop — nothing to type. Blank until then.

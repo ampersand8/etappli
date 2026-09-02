@@ -922,4 +922,30 @@ class TripDetailScreenTest {
         ).assertIsDisplayed()
     }
 
+
+    @Test
+    fun `the home at the end of a plan reads as the way back`() {
+        val start = LocalDate.of(2027, 6, 10)
+        runBlocking {
+            tripRepository.upsertTrip(Trip(id = "h2", name = "Loop", startDate = start, status = TripStatus.PLANNED))
+            tripRepository.upsertStop(
+                Stop(
+                    id = "out", tripId = "h2", name = "Luzern", orderIndex = 0, nights = 0,
+                    kind = StopKind.HOME, location = LatLng(47.05, 8.31), arrivalDate = start,
+                ),
+            )
+            tripRepository.upsertStop(Stop(id = "s", tripId = "h2", name = "Locarno", orderIndex = 1, nights = 2, arrivalDate = start))
+            tripRepository.upsertStop(
+                Stop(
+                    id = "back", tripId = "h2", name = "Luzern", orderIndex = 2, nights = 0,
+                    kind = StopKind.HOME, location = LatLng(47.05, 8.31), arrivalDate = start.plusDays(2),
+                ),
+            )
+        }
+        setContent("h2")
+        val back = "${formatDate(start.plusDays(2))} · home again"
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText(back))
+        compose.onNodeWithText(back, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("${formatDate(start)} · start", useUnmergedTree = true).assertExists()
+    }
 }

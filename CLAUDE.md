@@ -61,7 +61,9 @@ There is no lint/format tooling configured.
 - **Routes follow roads.** `domain/GoogleRoutes` builds the Routes API `computeRoutes`
   call (pure body + field mask + parse), `location/RouteServices` makes it, and each drive
   is stored on the arriving stop as `Stop.leg` (`StopLeg`: encoded polyline, distance,
-  duration, ascent/descent). A leg records the two coordinates it was routed between, so
+  duration, ascent/descent). Two consecutive stops at the same spot are not a drive
+  (`RouteCache.drives`) — a fresh plan is home-to-home until a stop goes between. A leg
+  records the two coordinates it was routed between, so
   `domain/RouteCache` invalidates it by comparison when a stop moves or the order changes
   — plus the same 30-day clock as Places (SST §19.3), enforced by `domain/RouteRefresher`
   from TripDetailViewModel. Stay off the Pro SKU: ≤10 intermediates per call
@@ -206,11 +208,15 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   (offline bounding boxes, confirm-only) + `domain/VignetteTable` — **refresh the table's
   prices yearly with the `appVersionBase` bump**.
 - **Home** is a `UserSettings` pin (`homeName`/`homeLocation`) picked in Settings through
-  the same injected `LocationSection` the stop editor uses. A new *plan* opens with it as
-  its first stop (`domain/HomeStop`) — a real Stop of kind HOME, not a special case, so
-  the timeline, map, distance and fuel all count it without knowing what home is. It is
-  editable and deletable like any other stop; HOME is hidden from the kind chips so a
-  second one cannot be made by hand.
+  the same injected `LocationSection` the stop editor uses; a fix or pin with no name is
+  reverse-geocoded into `homeName`, or the section looks as if nothing happened. A new
+  *plan* opens with it as its first stop **and its last** (`domain/HomeStop.forNewPlan`)
+  — real Stops of kind HOME, not a special case, so the timeline, map, distance and fuel
+  count the drive out and the drive back without knowing what home is. Both are editable
+  and deletable like any other stop. A stop added to the end of a plan goes in front of
+  the drive home (`HomeStop.returning`, in StopEditViewModel), starting a tour checks the
+  start home in (`TripStarter`) so the first night is what you are heading for, and the
+  HOME kind chip appears once a home is set and puts the stop there.
 - **A shared place** arrives as `ACTION_SEND` text/plain (Google Maps' share sheet) or a
   `geo:` `ACTION_VIEW`, and is parsed by pure `domain/SharedPlace`: the payload is scanned
   as a haystack, not parsed as a URL, because Maps sends the name on the line above the link.

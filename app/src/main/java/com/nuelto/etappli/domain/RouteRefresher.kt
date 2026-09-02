@@ -40,13 +40,16 @@ class RouteRefresher(
             return Result(fetched = 0, cleared = cleared, elevated = elevated)
         }
 
-        val routed = RouteCache.routed(stops)
-        // Safe: routed() keeps only stops that have a location.
-        val legs = fetchAll(routed.map { it.location!! })
+        val drives = RouteCache.drives(stops)
+        // One point per drive plus the last arrival: a stop at the same spot as the one
+        // before it is skipped, so consecutive points are always distinct. Safe: drives()
+        // keeps only stops that have a location.
+        val points = drives.map { (from, _) -> from.location!! } + drives.last().second.location!!
+        val legs = fetchAll(points)
             ?: return Result(fetched = 0, cleared = cleared, elevated = elevated)
 
         var fetched = 0
-        routed.zipWithNext().forEachIndexed { index, (from, to) ->
+        drives.forEachIndexed { index, (from, to) ->
             val climb = climb(legs[index].polyline)
             val leg = StopLeg(
                 // The coordinates the route was actually computed between. A stop edited

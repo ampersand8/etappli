@@ -11,6 +11,7 @@ import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.testutil.FakePlaceNameResolver
 import com.nuelto.etappli.testutil.MainDispatcherRule
 import java.time.LocalDate
@@ -646,5 +647,116 @@ class StopEditViewModelTest {
         assertEquals("ChIJCyinolJ-hUcR", state.placeId)
         assertNull(state.location)
         assertNull(state.locationCachedAt)
+    }
+
+    // --- the drive home ------------------------------------------------------------------
+
+    private val homeAt = LatLng(47.05, 8.31)
+
+    /** A fresh plan: home to leave from, home to come back to, nothing between yet. */
+    private suspend fun planEndingAtHome(): LocalDate {
+        val start = LocalDate.of(2027, 6, 10)
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Plan", startDate = start, status = TripStatus.PLANNED))
+        tripRepository.upsertStop(homeStop("out", 0, start))
+        tripRepository.upsertStop(homeStop("back", 1, start))
+        return start
+    }
+
+    private fun homeStop(id: String, orderIndex: Int, arrival: LocalDate, state: StopState = StopState.PLANNED) = Stop(
+        id = id, tripId = "t1", name = "Home", kind = StopKind.HOME, nights = 0,
+        orderIndex = orderIndex, arrivalDate = arrival, location = homeAt, state = state,
+    )
+
+    private suspend fun names() = tripRepository.stops("t1").first().sortedBy { it.orderIndex }.map { it.name }
+
+    @Test
+    fun `a stop added to the end of a plan goes in front of the drive home`() = runTest {
+        val start = planEndingAtHome()
+        val vm = newStopViewModel()
+        // Arrival chains from the last stop before the drive home — here, leaving home.
+        assertEquals(start, vm.uiState.value.arrivalDate)
+        vm.setName("Aire")
+        vm.setNights(2)
+        vm.save {}
+        val stops = tripRepository.stops("t1").first().sortedBy { it.orderIndex }
+        assertEquals(listOf("Home", "Aire", "Home"), stops.map { it.name })
+        assertEquals(listOf(0, 1, 2), stops.map { it.orderIndex })
+        // The stay pushes the drive home back by the nights it takes.
+        assertEquals(start, stops[1].arrivalDate)
+        assertEquals(start.plusDays(2), stops.last().arrivalDate)
+    }
+
+    @Test
+    fun `the next stop after a stay still lands before the drive home`() = runTest {
+        val start = planEndingAtHome()
+        tripRepository.upsertStop(
+            Stop(id = "a", tripId = "t1", name = "A", orderIndex = 1, nights = 2, arrivalDate = start, location = LatLng(46.32, 7.99)),
+        )
+        tripRepository.upsertStop(homeStop("back", 2, start.plusDays(2)))
+        val vm = newStopViewModel()
+        assertEquals(start.plusDays(2), vm.uiState.value.arrivalDate)
+        // The picker opens near the last stop before home, not at home.
+        assertEquals(LatLng(46.32, 7.99), vm.uiState.value.pickerStart)
+        vm.setName("B")
+        vm.save {}
+        assertEquals(listOf("Home", "A", "B", "Home"), names())
+        assertEquals(start.plusDays(3), tripRepository.stops("t1").first().single { it.id == "back" }.arrivalDate)
+    }
+
+    @Test
+    fun `a lone home is where a plan starts, so new stops follow it`() = runTest {
+        val start = LocalDate.of(2027, 6, 10)
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Plan", startDate = start, status = TripStatus.PLANNED))
+        tripRepository.upsertStop(homeStop("out", 0, start))
+        val vm = newStopViewModel()
+        assertEquals(homeAt, vm.uiState.value.pickerStart)
+        vm.setName("A")
+        vm.save {}
+        assertEquals(listOf("Home", "A"), names())
+    }
+
+    @Test
+    fun `mid-trip a spontaneous stop slots in after the last check-in, not at the drive home`() = runTest {
+        val start = LocalDate.of(2026, 8, 20)
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Trip", startDate = start, status = TripStatus.ACTIVE))
+        tripRepository.upsertStop(homeStop("out", 0, start, StopState.DONE))
+        tripRepository.upsertStop(Stop(id = "a", tripId = "t1", name = "A", orderIndex = 1, state = StopState.DONE))
+        tripRepository.upsertStop(Stop(id = "b", tripId = "t1", name = "B", orderIndex = 2))
+        tripRepository.upsertStop(homeStop("back", 3, start.plusDays(3)))
+        val vm = newStopViewModel()
+        vm.setName("Spontan")
+        vm.save {}
+        assertEquals(listOf("Home", "A", "Spontan", "B", "Home"), names())
+    }
+
+    @Test
+    fun `the home chip puts the stop at home`() = runTest {
+        settingsRepository.update(UserSettings(homeName = "Luzern", homeLocation = homeAt))
+        val vm = newStopViewModel()
+        vm.setKind(StopKind.HOME)
+        val state = vm.uiState.value
+        assertEquals(StopKind.HOME, state.kind)
+        assertEquals(homeAt, state.location)
+        assertEquals("Luzern", state.name)
+        assertEquals("Luzern", state.locationLabel)
+        assertEquals(0, state.nights)
+        // Home is yours, not Google's: no place id, no clock, no reverse geocode over its name.
+        assertNull(state.placeId)
+        assertNull(state.locationCachedAt)
+        assertTrue(resolver.requests.isEmpty())
+
+        settingsRepository.update(UserSettings(homeLocation = homeAt))
+        val unnamed = newStopViewModel()
+        unnamed.setKind(StopKind.HOME)
+        assertEquals("Home", unnamed.uiState.value.name)
+    }
+
+    @Test
+    fun `the home chip without a home set only changes the kind`() {
+        val vm = newStopViewModel()
+        vm.setKind(StopKind.HOME)
+        assertEquals(StopKind.HOME, vm.uiState.value.kind)
+        assertNull(vm.uiState.value.location)
+        assertEquals("", vm.uiState.value.name)
     }
 }
