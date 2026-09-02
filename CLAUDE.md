@@ -215,8 +215,9 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   count the drive out and the drive back without knowing what home is. Both are editable
   and deletable like any other stop. A stop added to the end of a plan goes in front of
   the drive home (`HomeStop.returning`, in StopEditViewModel), starting a tour checks the
-  start home in (`TripStarter`) so the first night is what you are heading for, and the
-  HOME kind chip appears once a home is set and puts the stop there.
+  start home in (`TripStarter`) so the first night is what you are heading for
+  (`CurrentStop` never holds a zero-night check-in, even when the tour was started ahead
+  of its date), and the HOME kind chip appears once a home is set and puts the stop there.
 - **A shared place** arrives as `ACTION_SEND` text/plain (Google Maps' share sheet) or a
   `geo:` `ACTION_VIEW`, and is parsed by pure `domain/SharedPlace`: the payload is scanned
   as a haystack, not parsed as a URL, because Maps sends the name on the line above the link.
