@@ -189,9 +189,14 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   front of what has already happened. `Timeline.insertion` turns the row key (carried to
   the editor as `StopEditRoute.insertBefore`) into the order index and the start date the
   new row takes over, and `DateCascade.shift` moves the rest of the plan back by the
-  nights it takes. Every such edit writes `reorderStops` + `DateCascade.resequence`,
+  nights it takes. Every such edit writes the new order + `DateCascade.resequence`,
   which re-dates the plan from the row order (a pure reorder keeps the trip's start and
   length); nights/arrival changes instead shift downstream dates (`DateCascade.shift`).
+  **A stop and the shift it causes are one `upsertStops` write** (a Firestore batch),
+  never `upsertStop` in a loop: both repositories run `DateCascade.settle` after every
+  stop write — no PLANNED stop may arrive before the one in front of it leaves — so a
+  half-written change would be re-dated twice, and a lost cascade can never leave a
+  plan overlapping itself (a DONE stop's departure binds nothing: tours leave early).
   Color language everywhere (lists, timeline, maps):
   **blue = planned, green = active/current, grey = done** (`ui/theme/StatusColors.kt`).
   In the timeline a stop's icon carries both axes at once: the **shape** is the kind
@@ -212,9 +217,10 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
   from `Source.CACHE` (which includes pending writes, so it works offline). Any new
   mutation path must call it, or the trip list shows stale totals. Stop mutations also
-  call `redatePlan`: a PLANNED trip's `startDate` follows its first unskipped stop
-  (`DateCascade.start`), and `TripStarter` shifts from that stop rather than from
-  `startDate`, so a tour started on a day has its first stop on that day.
+  call `redatePlan`: it settles the plan (above), and a PLANNED trip's `startDate`
+  follows its first unskipped stop (`DateCascade.start`) — `TripStarter` shifts from
+  that stop rather than from `startDate`, so a tour started on a day has its first stop
+  on that day.
 - **Cost semantics** (`domain/CostCalculator.kt`): camping cost lives **on the Stop**
   (`campingCostTotal`); the CAMPING expense type is only for extra site fees. Breakdown
   merges both into the CAMPING category. The fuel estimator (`domain/FuelEstimator.kt`)

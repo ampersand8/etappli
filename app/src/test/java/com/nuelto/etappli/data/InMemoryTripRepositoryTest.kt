@@ -115,26 +115,62 @@ class InMemoryTripRepositoryTest {
     }
 
     @Test
-    fun `reorder rewrites order indexes to match the given id order`() = runTest {
+    fun `several stops land together, ids given out and totals recomputed`() = runTest {
         val id = addTrip()
-        repo.upsertStop(Stop(id = "a", tripId = id, name = "A", orderIndex = 0))
-        repo.upsertStop(Stop(id = "b", tripId = id, name = "B", orderIndex = 1))
-        repo.upsertStop(Stop(id = "c", tripId = id, name = "C", orderIndex = 2))
-        repo.reorderStops(id, listOf("c", "a", "b"))
-        assertEquals(listOf("C", "A", "B"), repo.stops(id).first().map { it.name })
-        assertEquals(listOf(0, 1, 2), repo.stops(id).first().map { it.orderIndex })
+        val other = addTrip(id = "other")
+        val start = LocalDate.of(2026, 6, 1)
+        repo.upsertStop(Stop(id = "a", tripId = id, name = "A", orderIndex = 0, nights = 1, campingCostTotal = 10.0, arrivalDate = start))
+        repo.upsertStops(
+            listOf(
+                Stop(id = "a", tripId = id, name = "A", orderIndex = 1, nights = 2, campingCostTotal = 10.0, arrivalDate = start.plusDays(1)),
+                Stop(tripId = id, name = "New", orderIndex = 0, nights = 1, campingCostTotal = 5.0, arrivalDate = start),
+                Stop(tripId = other, name = "X", orderIndex = 0, nights = 3),
+            ),
+        )
+        val stops = repo.stops(id).first()
+        assertEquals(listOf("New", "A"), stops.map { it.name })
+        assertTrue(stops.first().id.isNotBlank())
+        assertEquals(3, repo.trip(id).first()!!.nights)
+        assertEquals(15.0, repo.trip(id).first()!!.totalCost, 1e-9)
+        assertEquals(3, repo.trip(other).first()!!.nights)
+
+        repo.upsertStops(emptyList())
+        assertEquals(listOf("New", "A"), repo.stops(id).first().map { it.name })
     }
 
     @Test
-    fun `reorder leaves unlisted stops and other trips untouched`() = runTest {
-        val id = addTrip()
-        val other = addTrip(id = "other")
-        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0))
-        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 5))
-        repo.upsertStop(Stop(id = "x", tripId = other, orderIndex = 7))
-        repo.reorderStops(id, listOf("a"))
-        assertEquals(5, repo.stops(id).first().single { it.id == "b" }.orderIndex)
-        assertEquals(7, repo.stops(other).first().single().orderIndex)
+    fun `no stop starts before the one in front of it leaves`() = runTest {
+        val start = LocalDate.of(2026, 9, 4)
+        val id = repo.upsertTrip(Trip(id = "plan", name = "Plan", startDate = start, status = TripStatus.PLANNED))
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0, arrivalDate = start, nights = 2))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(1), nights = 2))
+        repo.upsertStop(Stop(id = "home", tripId = id, orderIndex = 2, arrivalDate = start.plusDays(3), nights = 0))
+        assertEquals(
+            listOf(start, start.plusDays(2), start.plusDays(4)),
+            repo.stops(id).first().map { it.arrivalDate },
+        )
+    }
+
+    @Test
+    fun `on a tour the planned stops settle too, but a done stop's departure binds nothing`() = runTest {
+        val start = LocalDate.of(2026, 9, 4)
+        val id = repo.upsertTrip(Trip(id = "tour", name = "Tour", startDate = start, status = TripStatus.ACTIVE))
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0, arrivalDate = start, nights = 3, state = StopState.DONE))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(1), nights = 2)) // left a early
+        repo.upsertStop(Stop(id = "c", tripId = id, orderIndex = 2, arrivalDate = start.plusDays(2)))
+        assertEquals(
+            listOf(start, start.plusDays(1), start.plusDays(3)),
+            repo.stops(id).first().map { it.arrivalDate },
+        )
+    }
+
+    @Test
+    fun `a finished trip is a record, never re-dated`() = runTest {
+        val start = LocalDate.of(2026, 9, 4)
+        val id = repo.upsertTrip(Trip(id = "done", name = "Done", startDate = start, status = TripStatus.DONE))
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0, arrivalDate = start, nights = 2))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(1)))
+        assertEquals(start.plusDays(1), repo.stops(id).first().last().arrivalDate)
     }
 
     @Test
@@ -244,13 +280,15 @@ class InMemoryTripRepositoryTest {
     fun `a plan starts the day its first stop does`() = runTest {
         val start = LocalDate.of(2026, 9, 2)
         val id = repo.upsertTrip(Trip(id = "plan", name = "Plan", startDate = start, status = TripStatus.PLANNED))
-        repo.upsertStop(Stop(id = "s2", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(2)))
-        assertEquals(start.plusDays(2), repo.trip(id).first()!!.startDate)
+        val s2 = Stop(id = "s2", tripId = id, orderIndex = 1, arrivalDate = start.plusDays(6))
+        repo.upsertStop(s2)
+        assertEquals(start.plusDays(6), repo.trip(id).first()!!.startDate)
 
-        repo.upsertStop(Stop(id = "s1", tripId = id, orderIndex = 0, arrivalDate = start.plusDays(4)))
+        val s1 = Stop(id = "s1", tripId = id, orderIndex = 0, arrivalDate = start.plusDays(4))
+        repo.upsertStop(s1)
         assertEquals(start.plusDays(4), repo.trip(id).first()!!.startDate)
 
-        repo.reorderStops(id, listOf("s2", "s1"))
+        repo.upsertStops(listOf(s2.copy(orderIndex = 0, arrivalDate = start.plusDays(2)), s1.copy(orderIndex = 1)))
         assertEquals(start.plusDays(2), repo.trip(id).first()!!.startDate)
 
         repo.upsertStop(Stop(id = "s2", tripId = id, orderIndex = 0, arrivalDate = start, state = StopState.SKIPPED))

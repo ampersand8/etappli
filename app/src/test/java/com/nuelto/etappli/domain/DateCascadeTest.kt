@@ -115,6 +115,74 @@ class DateCascadeTest {
 
 
     @Test
+    fun `a stop arriving before the one in front of it leaves is pushed back, and the plan behind it along`() {
+        val stops = listOf(
+            stop("a", 0, base, nights = 2),
+            stop("b", 1, base.plusDays(1), nights = 2), // a night too early
+            stop("c", 2, base.plusDays(3), nights = 1),
+            stop("d", 3, base.plusDays(6), nights = 1), // two empty nights in front of it
+        )
+        val changed = DateCascade.settle(stops)
+        assertEquals(listOf("b", "c", "d"), changed.map { it.id })
+        assertEquals(base.plusDays(2), changed[0].arrivalDate)
+        assertEquals(base.plusDays(4), changed[1].arrivalDate)
+        assertEquals(base.plusDays(7), changed[2].arrivalDate) // the empty nights survive
+    }
+
+    @Test
+    fun `settling a consistent plan writes nothing, whatever the list order`() {
+        val stops = listOf(
+            stop("c", 2, base.plusDays(5)),
+            stop("a", 0, base, nights = 2),
+            stop("home", 1, base.plusDays(2), nights = 0), // leaves the day it arrives
+        )
+        assertTrue(DateCascade.settle(stops).isEmpty())
+    }
+
+    @Test
+    fun `settling pushes in order index order, not list order`() {
+        val stops = listOf(stop("b", 1, base), stop("a", 0, base, nights = 3))
+        assertEquals(base.plusDays(3), DateCascade.settle(stops).single().arrivalDate)
+    }
+
+    @Test
+    fun `a stop that leaves early is not pushed onto its own next stop twice`() {
+        // b overlaps a by one night; c is dated off b's old departure, so it moves by one too.
+        val stops = listOf(
+            stop("a", 0, base, nights = 3),
+            stop("b", 1, base.plusDays(2), nights = 1),
+            stop("c", 2, base.plusDays(4), nights = 1), // one empty night after b
+        )
+        val changed = DateCascade.settle(stops)
+        assertEquals(listOf(base.plusDays(3), base.plusDays(5)), changed.map { it.arrivalDate })
+    }
+
+    @Test
+    fun `done stops are never rewritten and bind nothing, skipped stops sit outside`() {
+        val stops = listOf(
+            stop("early", 0, base, nights = 1),
+            stop("done", 1, base, StopState.DONE, nights = 4), // left early — its departure is only a plan
+            stop("skipped", 2, base.minusDays(9), StopState.SKIPPED),
+            stop("x", 3, base.plusDays(1), nights = 2),
+            stop("y", 4, base.plusDays(2), nights = 1),
+        )
+        val changed = DateCascade.settle(stops)
+        assertEquals(listOf("y"), changed.map { it.id })
+        assertEquals(base.plusDays(3), changed.single().arrivalDate)
+    }
+
+    @Test
+    fun `a push does not carry past a done stop`() {
+        val stops = listOf(
+            stop("a", 0, base, nights = 2),
+            stop("b", 1, base.plusDays(1), nights = 1), // pushed to +2, leaves +3
+            stop("done", 2, base.plusDays(3), StopState.DONE, nights = 1),
+            stop("c", 3, base.plusDays(4), nights = 1), // dated off the done stop: stays
+        )
+        assertEquals(listOf("b"), DateCascade.settle(stops).map { it.id })
+    }
+
+    @Test
     fun `start is the arrival of the first stop that is not skipped`() {
         val stops = listOf(
             stop("second", 1, base.plusDays(3)),

@@ -7,6 +7,7 @@ import com.nuelto.etappli.data.InMemorySettingsRepository
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
+import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
@@ -313,6 +314,19 @@ class StopEditViewModelTest {
             LocalDate.of(2027, 6, 14),
             tripRepository.stops("t1").first().single { it.id == "s2" }.arrivalDate,
         )
+    }
+
+    @Test
+    fun `saving keeps what was written to the stop while the editor was open`() = runTest {
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", name = "A", orderIndex = 0, location = LatLng(46.0, 7.0)))
+        val vm = editViewModel("s1")
+        val height = StopElevation(LatLng(46.0, 7.0), 1200)
+        tripRepository.upsertStop(tripRepository.stops("t1").first().single().copy(elevation = height))
+        vm.setNotes("late")
+        vm.save {}
+        val saved = tripRepository.stops("t1").first().single()
+        assertEquals(height, saved.elevation)
+        assertEquals("late", saved.notes)
     }
 
     @Test
@@ -684,6 +698,38 @@ class StopEditViewModelTest {
         // The stay pushes the drive home back by the nights it takes.
         assertEquals(start, stops[1].arrivalDate)
         assertEquals(start.plusDays(2), stops.last().arrivalDate)
+    }
+
+    @Test
+    fun `leaving a day later and staying a night longer keep the next stop behind the first`() = runTest {
+        val start = planEndingAtHome()
+        newStopViewModel().apply {
+            setName("Aire")
+            save {}
+        }
+        // Leave home a day later than first planned...
+        editViewModel("out").apply {
+            setArrivalDate(start.plusDays(1))
+            save {}
+        }
+        val aire = tripRepository.stops("t1").first().single { it.name == "Aire" }
+        assertEquals(start.plusDays(1), aire.arrivalDate)
+        // ...and stay a second night: the drive home follows both moves.
+        editViewModel(aire.id).apply {
+            setNights(2)
+            save {}
+        }
+        // The next stop, added in front of the drive home, starts the day the first one ends.
+        val vm = insertViewModel("back")
+        assertEquals(start.plusDays(3), vm.uiState.value.arrivalDate)
+        vm.setName("Grächbiel")
+        vm.setNights(2)
+        vm.save {}
+        assertEquals(listOf("Home", "Aire", "Grächbiel", "Home"), names())
+        assertEquals(
+            listOf(start.plusDays(1), start.plusDays(1), start.plusDays(3), start.plusDays(5)),
+            tripRepository.stops("t1").first().sortedBy { it.orderIndex }.map { it.arrivalDate },
+        )
     }
 
     @Test

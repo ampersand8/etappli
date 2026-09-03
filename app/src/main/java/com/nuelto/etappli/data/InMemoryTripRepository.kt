@@ -63,26 +63,21 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         expensesFlow.update { list -> list.filterNot { it.tripId == tripId } }
     }
 
-    override suspend fun upsertStop(stop: Stop) {
-        val withId = if (stop.id.isBlank()) stop.copy(id = UUID.randomUUID().toString()) else stop
-        stopsFlow.update { list -> list.filterNot { it.id == withId.id } + withId }
-        recomputeTotals(withId.tripId)
-        redatePlan(withId.tripId)
+    override suspend fun upsertStop(stop: Stop) = upsertStops(listOf(stop))
+
+    override suspend fun upsertStops(stops: List<Stop>) {
+        if (stops.isEmpty()) return
+        val withIds = stops.map { if (it.id.isBlank()) it.copy(id = UUID.randomUUID().toString()) else it }
+        val ids = withIds.map { it.id }.toSet()
+        stopsFlow.update { list -> list.filterNot { it.id in ids } + withIds }
+        withIds.map { it.tripId }.distinct().forEach {
+            recomputeTotals(it)
+            redatePlan(it)
+        }
     }
 
     override suspend fun deleteStop(tripId: String, stopId: String) {
         stopsFlow.update { list -> list.filterNot { it.id == stopId } }
-        recomputeTotals(tripId)
-        redatePlan(tripId)
-    }
-
-    override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
-        stopsFlow.update { list ->
-            list.map { stop ->
-                val index = orderedStopIds.indexOf(stop.id)
-                if (stop.tripId == tripId && index >= 0) stop.copy(orderIndex = index) else stop
-            }
-        }
         recomputeTotals(tripId)
         redatePlan(tripId)
     }
@@ -98,18 +93,19 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         recomputeTotals(tripId)
     }
 
-    /** A plan starts the day its first stop does; stop edits keep the trip saying so. */
+    /**
+     * No stop starts before the one in front of it leaves (DateCascade.settle), and a
+     * plan starts the day its first stop does. Both are kept true after every stop write,
+     * so no path can leave a plan overlapping itself. A finished trip is a record.
+     */
     private fun redatePlan(tripId: String) {
+        val trip = tripsFlow.value.find { it.id == tripId } ?: return
+        if (trip.status == TripStatus.DONE) return
+        val settled = DateCascade.settle(stopsFlow.value.filter { it.tripId == tripId }).associateBy { it.id }
+        stopsFlow.update { list -> list.map { settled[it.id] ?: it } }
+        if (trip.status != TripStatus.PLANNED) return
         val start = DateCascade.start(stopsFlow.value.filter { it.tripId == tripId }) ?: return
-        tripsFlow.update { list ->
-            list.map { trip ->
-                if (trip.id == tripId && trip.status == TripStatus.PLANNED) {
-                    trip.copy(startDate = start)
-                } else {
-                    trip
-                }
-            }
-        }
+        tripsFlow.update { list -> list.map { if (it.id == tripId) it.copy(startDate = start) else it } }
     }
 
     private fun recomputeTotals(tripId: String) {
