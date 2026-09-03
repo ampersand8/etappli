@@ -1,14 +1,18 @@
 package com.nuelto.etappli.ui.share
 
+import com.nuelto.etappli.data.InMemorySettingsRepository
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.domain.SharedPlace
 import com.nuelto.etappli.testutil.FakeShareLinkResolver
+import com.nuelto.etappli.testutil.GatedSettingsRepository
 import com.nuelto.etappli.testutil.MainDispatcherRule
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,9 +26,11 @@ class AddToTripViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val tripRepository = InMemoryTripRepository(seed = false)
+    private val settingsRepository = InMemorySettingsRepository()
     private val resolver = FakeShareLinkResolver()
 
-    private fun viewModel(place: SharedPlace) = AddToTripViewModel(place, tripRepository, resolver::expand)
+    private fun viewModel(place: SharedPlace) =
+        AddToTripViewModel(place, tripRepository, settingsRepository, resolver::expand)
 
     private suspend fun trip(name: String, status: TripStatus, start: LocalDate = LocalDate.of(2026, 6, 1)) {
         tripRepository.upsertTrip(Trip(id = name, name = name, startDate = start, status = status))
@@ -86,6 +92,30 @@ class AddToTripViewModelTest {
         // Nothing left to follow: a second try is a no-op, not another request.
         vm.expand()
         assertEquals(2, resolver.requests.size)
+    }
+
+    @Test
+    fun `planning a tour for the place makes an unnamed plan from home and hands back its id`() = runTest {
+        settingsRepository.update(UserSettings(homeName = "Luzern", homeLocation = LatLng(47.05, 8.31)))
+        val created = mutableListOf<String>()
+        viewModel(SharedPlace("Camping X", LatLng(46.5, 8.3))).planTour { created += it }
+        val trip = tripRepository.trip(created.single()).first()!!
+        assertEquals(TripStatus.PLANNED, trip.status)
+        assertEquals("", trip.name)
+        assertEquals(2, tripRepository.stops(trip.id).first().size)
+    }
+
+    @Test
+    fun `a second tap while the plan is being made mints no second plan`() = runTest {
+        val gated = GatedSettingsRepository()
+        val vm = AddToTripViewModel(SharedPlace("Camping X", LatLng(46.5, 8.3)), tripRepository, gated)
+        val created = mutableListOf<String>()
+        vm.planTour { created += it }
+        vm.planTour { created += it }
+        gated.gate.complete(Unit)
+        assertEquals(1, created.size)
+        vm.planTour { created += it }
+        assertEquals(2, tripRepository.trips().first().size)
     }
 
     @Test

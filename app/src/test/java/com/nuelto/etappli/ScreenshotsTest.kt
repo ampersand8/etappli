@@ -71,7 +71,7 @@ class ScreenshotsTest {
     @Test
     fun tripList() = shoot("trip-list") {
         TripListScreen(
-            onTripClick = {}, onAddTrip = { _ -> }, onOpenMap = {}, onOpenSettings = {},
+            onTripClick = {}, onLogTrip = {}, onTourPlanned = {}, onOpenMap = {}, onOpenSettings = {},
             viewModel = TripListViewModel(tripRepository, settingsRepository),
         )
     }
@@ -126,10 +126,11 @@ class ScreenshotsTest {
     @Test
     fun addToTrip() = shoot("add-to-trip") {
         AddToTripScreen(
-            onCancel = {}, onPlanTrip = {}, onAddTo = { _, _ -> },
+            onCancel = {}, onAddTo = { _, _ -> },
             viewModel = AddToTripViewModel(
                 SharedPlace("Camping Grimselblick", LatLng(46.5606, 8.3376)),
                 tripRepository,
+                settingsRepository,
             ),
         )
     }

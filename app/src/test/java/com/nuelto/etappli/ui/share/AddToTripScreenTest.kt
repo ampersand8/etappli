@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nuelto.etappli.data.InMemorySettingsRepository
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Trip
@@ -16,6 +17,7 @@ import com.nuelto.etappli.testutil.FakeShareLinkResolver
 import com.nuelto.etappli.testutil.TestCamperApp
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -33,16 +35,14 @@ class AddToTripScreenTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val resolver = FakeShareLinkResolver()
     private var cancelled = 0
-    private var planned = 0
     private val added = mutableListOf<Pair<String, SharedPlace>>()
 
     private fun setContent(place: SharedPlace) {
         compose.setContent {
             AddToTripScreen(
                 onCancel = { cancelled++ },
-                onPlanTrip = { planned++ },
                 onAddTo = { tripId, shared -> added += tripId to shared },
-                viewModel = AddToTripViewModel(place, tripRepository, resolver::expand),
+                viewModel = AddToTripViewModel(place, tripRepository, InMemorySettingsRepository(), resolver::expand),
             )
         }
     }
@@ -108,11 +108,14 @@ class AddToTripScreenTest {
     }
 
     @Test
-    fun `with no trips at all the chooser offers to plan one`() {
-        setContent(SharedPlace("Camping X", LatLng(46.5, 8.3)))
+    fun `with no trips at all the chooser plans one and files the place on it`() = runTest {
+        val place = SharedPlace("Camping X", LatLng(46.5, 8.3))
+        setContent(place)
         compose.onNodeWithText("No trips yet.\nPlan a tour, then add this place to it.").assertIsDisplayed()
         compose.onNodeWithText("Plan a tour").performClick()
-        assertEquals(1, planned)
+        val planned = tripRepository.trips().first().single()
+        assertEquals(TripStatus.PLANNED, planned.status)
+        assertEquals(listOf(planned.id to place), added)
 
         compose.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(1, cancelled)

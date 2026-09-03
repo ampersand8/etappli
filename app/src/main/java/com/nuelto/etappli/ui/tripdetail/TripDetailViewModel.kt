@@ -2,6 +2,7 @@ package com.nuelto.etappli.ui.tripdetail
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
@@ -29,6 +30,7 @@ import com.nuelto.etappli.domain.FuelEstimator
 import com.nuelto.etappli.domain.GapRow
 import com.nuelto.etappli.domain.StopRow
 import com.nuelto.etappli.domain.PlaceCacheSweeper
+import com.nuelto.etappli.domain.RegionResolver
 import com.nuelto.etappli.domain.RouteCache
 import com.nuelto.etappli.domain.RouteRefresher
 import com.nuelto.etappli.domain.Timeline
@@ -36,6 +38,7 @@ import com.nuelto.etappli.domain.TimelineRow
 import com.nuelto.etappli.domain.TripEstimator
 import com.nuelto.etappli.domain.TripStarter
 import com.nuelto.etappli.domain.VignetteTable
+import com.nuelto.etappli.location.PlaceNameResolver
 import com.nuelto.etappli.ui.nav.TripDetailRoute
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -86,6 +89,8 @@ class TripDetailViewModel(
     // Null when the map provider has no routing of its own — the map draws straight
     // lines and the estimate falls back to the road-distance factor.
     private val routeRefresher: RouteRefresher? = null,
+    // Finds the region each stop lies in, which is what an unnamed tour is called after.
+    private val regionResolver: RegionResolver? = null,
     // One-shot GPS fix; null unless the screen has the location permission.
     private val currentLocation: suspend () -> LatLng? = { null },
     // A single route, for "how far is it from here". Never stored — see DriveFromHere.
@@ -106,6 +111,16 @@ class TripDetailViewModel(
                     .map { stops -> RouteCache.routed(stops).map { it.location } }
                     .distinctUntilChanged()
                     .collect { refresher.refresh(tripId) }
+            }
+        }
+        regionResolver?.let { resolver ->
+            viewModelScope.launch {
+                // Every located stop, whatever its state: the region is the pin's. Writing
+                // it back leaves this list alone, so this settles like the routes do.
+                tripRepository.stops(tripId)
+                    .map { stops -> stops.map { it.location } }
+                    .distinctUntilChanged()
+                    .collect { resolver.resolve(tripId) }
             }
         }
     }
@@ -379,6 +394,9 @@ class TripDetailViewModel(
                 container.settingsRepository,
                 container.mapProvider.placeCacheSweeper(container.tripRepository),
                 container.mapProvider.routeRefresher(container.tripRepository),
+                this[APPLICATION_KEY]?.let {
+                    RegionResolver(container.tripRepository, PlaceNameResolver(it)::region)
+                },
                 container.currentLocation,
                 container.mapProvider::drive,
             )

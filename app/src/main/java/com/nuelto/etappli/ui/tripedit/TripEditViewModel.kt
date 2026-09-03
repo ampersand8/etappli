@@ -7,10 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.nuelto.etappli.containerViewModelFactory
 import com.nuelto.etappli.data.TripRepository
-import com.nuelto.etappli.domain.HomeStop
-import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.domain.title
 import com.nuelto.etappli.ui.nav.TripEditRoute
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -28,18 +27,20 @@ data class TripEditUiState(
     val isNew: Boolean = true,
     val isPlan: Boolean = false,
     val loaded: Boolean = false,
+    // What the trip is called while [name] is blank (domain/TripName); empty until it exists.
+    val autoName: String = "",
 ) {
-    val canSave: Boolean get() = name.isNotBlank()
+    val nameHint: String
+        get() = if (autoName.isBlank()) "Optional — named after its stops" else "Leave blank to call it \"$autoName\""
 }
 
+/** Edits a trip's own fields, and logs a past trip; tours are planned without a form (NewPlan). */
 class TripEditViewModel(
     savedStateHandle: SavedStateHandle,
     private val tripRepository: TripRepository,
-    private val settingsRepository: SettingsRepository? = null,
 ) : ViewModel() {
 
-    private val route: TripEditRoute = savedStateHandle.toRoute<TripEditRoute>()
-    private val tripId: String? = route.tripId
+    private val tripId: String? = savedStateHandle.toRoute<TripEditRoute>().tripId
     private var existing: Trip? = null
 
     private val _uiState = MutableStateFlow(TripEditUiState())
@@ -53,7 +54,7 @@ class TripEditViewModel(
             val trip = existing
             _uiState.update {
                 if (trip == null) {
-                    it.copy(isPlan = route.planned, loaded = true)
+                    it.copy(loaded = true)
                 } else {
                     TripEditUiState(
                         name = trip.name,
@@ -63,6 +64,7 @@ class TripEditViewModel(
                         isNew = false,
                         isPlan = trip.status == TripStatus.PLANNED,
                         loaded = true,
+                        autoName = trip.copy(name = "").title,
                     )
                 }
             }
@@ -77,20 +79,16 @@ class TripEditViewModel(
     private var saving = false
 
     fun save(onSaved: (tripId: String, isNew: Boolean) -> Unit) {
-        val state = _uiState.value
-        if (!state.canSave || saving) return
+        if (saving) return
         saving = true
+        val state = _uiState.value
         viewModelScope.launch {
             try {
                 val base = existing ?: Trip()
                 val endDate = state.endDate
-                val status = when {
-                    state.isNew && state.isPlan -> TripStatus.PLANNED
-                    // Logging/editing a trip that already ended finishes it right away.
-                    base.status != TripStatus.PLANNED && endDate != null && endDate.isBefore(LocalDate.now()) ->
-                        TripStatus.DONE
-                    else -> base.status
-                }
+                // Logging/editing a trip that already ended finishes it right away.
+                val ended = endDate != null && endDate.isBefore(LocalDate.now())
+                val status = if (base.status != TripStatus.PLANNED && ended) TripStatus.DONE else base.status
                 val savedId = tripRepository.upsertTrip(
                     base.copy(
                         name = state.name.trim(),
@@ -100,12 +98,6 @@ class TripEditViewModel(
                         status = status,
                     ),
                 )
-                // A fresh plan sets out from home and comes back to it, when there is one.
-                if (state.isNew && status == TripStatus.PLANNED) {
-                    settingsRepository?.settings()?.first()
-                        ?.let { HomeStop.forNewPlan(savedId, it, state.startDate) }
-                        ?.forEach { tripRepository.upsertStop(it) }
-                }
                 // Moving a plan's start moves its whole itinerary along.
                 if (base.status == TripStatus.PLANNED) {
                     val days = ChronoUnit.DAYS.between(base.startDate, state.startDate)
@@ -124,11 +116,7 @@ class TripEditViewModel(
 
     companion object {
         val Factory = containerViewModelFactory { container ->
-            TripEditViewModel(
-                createSavedStateHandle(),
-                container.tripRepository,
-                container.settingsRepository,
-            )
+            TripEditViewModel(createSavedStateHandle(), container.tripRepository)
         }
     }
 }

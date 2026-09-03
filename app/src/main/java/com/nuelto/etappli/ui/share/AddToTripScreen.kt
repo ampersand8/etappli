@@ -35,18 +35,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.SharedPlace
+import com.nuelto.etappli.domain.title
 import com.nuelto.etappli.ui.formatTripDates
 import com.nuelto.etappli.ui.theme.statusColor
 
 /**
  * Where a place shared from Google Maps lands: name it, then pick the trip it belongs
- * to. Choosing one opens the stop editor on that trip with the place already filled in.
+ * to. Choosing one opens the stop editor on that trip with the place already filled in;
+ * with no trip to choose, "Plan a tour" makes one and does the same.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddToTripScreen(
     onCancel: () -> Unit,
-    onPlanTrip: () -> Unit,
     onAddTo: (tripId: String, place: SharedPlace) -> Unit,
     viewModel: AddToTripViewModel = viewModel(factory = AddToTripViewModel.Factory),
 ) {
@@ -110,7 +111,9 @@ fun AddToTripScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Button(onClick = onPlanTrip) { Text("Plan a tour") }
+                            Button(onClick = { viewModel.planTour { onAddTo(it, state.place) } }) {
+                                Text("Plan a tour")
+                            }
                         }
                     }
                 }
@@ -152,7 +155,7 @@ private fun LazyListScope.tripSection(
         ) {
             Column(Modifier.padding(16.dp)) {
                 Text(
-                    trip.name,
+                    trip.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )

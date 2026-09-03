@@ -12,6 +12,7 @@ import com.nuelto.etappli.data.model.ExpenseType
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopElevation
+import com.nuelto.etappli.data.model.StopRegion
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
@@ -20,6 +21,7 @@ import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.legacyTripStatus
 import com.nuelto.etappli.domain.CostCalculator
 import com.nuelto.etappli.domain.DateCascade
+import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
@@ -60,6 +62,7 @@ class FirestoreTripRepository(
         "status" to status.name,
         "plannedCost" to plannedCost,
         "plannedNights" to plannedNights,
+        "region" to region,
     )
 
     private fun DocumentSnapshot.toTrip(): Trip? {
@@ -77,6 +80,7 @@ class FirestoreTripRepository(
                 ?: legacyTripStatus(endDate),
             plannedCost = getDouble("plannedCost"),
             plannedNights = getLong("plannedNights")?.toInt(),
+            region = getString("region") ?: "",
         )
     }
 
@@ -96,6 +100,9 @@ class FirestoreTripRepository(
         "leg" to leg?.toMap(),
         "elevation" to elevation?.let {
             mapOf("at" to GeoPoint(it.at.latitude, it.at.longitude), "meters" to it.meters)
+        },
+        "region" to region?.let {
+            mapOf("at" to GeoPoint(it.at.latitude, it.at.longitude), "name" to it.name, "country" to it.country)
         },
     )
 
@@ -148,6 +155,14 @@ class FirestoreTripRepository(
         elevation = (get("elevation") as? Map<*, *>)?.let { stored ->
             val at = stored["at"] as? GeoPoint ?: return@let null
             StopElevation(LatLng(at.latitude, at.longitude), (stored["meters"] as? Number)?.toInt() ?: 0)
+        },
+        region = (get("region") as? Map<*, *>)?.let { stored ->
+            val at = stored["at"] as? GeoPoint ?: return@let null
+            StopRegion(
+                LatLng(at.latitude, at.longitude),
+                stored["name"] as? String ?: "",
+                stored["country"] as? String ?: "",
+            )
         },
     )
 
@@ -312,6 +327,7 @@ class FirestoreTripRepository(
             mapOf(
                 "totalCost" to CostCalculator.tripTotal(stops, expenses),
                 "nights" to CostCalculator.tripNights(stops),
+                "region" to TripName.region(stops),
             ),
         )
     }

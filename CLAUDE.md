@@ -22,7 +22,7 @@ adding new ones.
 ./gradlew :app:pitest           # mutation tests over JVM-pure logic, threshold 80%
 ./gradlew :app:installDebug     # install on connected device/emulator
 ./gradlew :app:bundleRelease    # Play bundle; unsigned unless the upload key is configured
-./gradlew test --tests "com.nuelto.etappli.domain.CostCalculatorTest"  # one test class
+./gradlew :app:testDebugUnitTest --tests "com.nuelto.etappli.domain.CostCalculatorTest"  # one class
 ```
 
 CI (`.github/workflows/ci.yml`) runs tests + both gates + assembleDebug on every PR.
@@ -185,6 +185,17 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   In the timeline a stop's icon carries both axes at once: the **shape** is the kind
   (tent / RV hookup / forest / camera) and the **tint** is that status color. Its height
   above sea level rides to the right of the name as a small mountain badge.
+- **A tour needs no name and no form.** "Plan a tour" makes the plan on the spot
+  (`domain/NewPlan`: unnamed, dated today, home at both ends when one is set) and opens
+  the stop editor over its timeline; the chooser for a shared place does the same and
+  files the place on it. Logging a trip keeps the form, with the name optional.
+  `Trip.name` is only what the user typed; what a trip is *called* is `Trip.title`
+  (`domain/TripName`): the name, else `Trip.region`, else a name made up from the id
+  ("Rusty Edelweiss" — stable, never stored). `Trip.region` ("Ticino & Graubünden") is
+  denormalized with the totals from `Stop.region` — canton/state and country,
+  reverse-geocoded by `domain/RegionResolver` (run from TripDetailViewModel through
+  `PlaceNameResolver.region`), with an `at` that invalidates it like `StopElevation`.
+  HOME and SKIPPED stops never name a tour.
 - **Denormalized totals**: `Trip.totalCost`/`Trip.nights` are recomputed client-side by
   each repository after every stop/expense mutation (`recomputeTotals`), reading Firestore
   from `Source.CACHE` (which includes pending writes, so it works offline). Any new
@@ -262,7 +273,7 @@ swaps the Maps SDK for a stand-in (`ui/map/MapProvider.kt`). Fakes live in `test
   `InMemoryTripRepository(seed = false)` etc. and pass it into the screen composable.
 - **ViewModel tests**: plain JUnit with `MainDispatcherRule` (testutil) and Turbine
   for flow assertions. Async races (late geocode result, slow sign-in) use the gated
-  fakes: `FakeAuthRepository.gate`, `FakePlaceNameResolver.gates`.
+  fakes: `FakeAuthRepository.gate`, `FakePlaceNameResolver.gates`, `GatedSettingsRepository.gate`.
 - **Never replace the activity's intent in `MainActivity.onCreate`** (`setIntent(...)`):
   `ActivityScenario` then never sees the activity reach RESUMED, and every
   `createAndroidComposeRule` test in the run hangs — with no failure, just a stuck suite.

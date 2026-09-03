@@ -3,8 +3,10 @@ package com.nuelto.etappli.testutil
 import android.content.Context
 import com.nuelto.etappli.data.AuthRepository
 import com.nuelto.etappli.data.AuthUser
+import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.StopKind
+import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.domain.PlaceSearch
 import com.nuelto.etappli.domain.PlaceSuggestion
 import com.nuelto.etappli.location.PlaceNameResolver
@@ -13,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -115,4 +118,14 @@ class FakeShareLinkResolver(var result: String? = null) {
         gate?.await()
         return result
     }
+}
+
+/** Settings that arrive only once [gate] completes — for what a second tap does mid-write. */
+class GatedSettingsRepository : SettingsRepository {
+    val gate = CompletableDeferred<Unit>()
+    override fun settings(): Flow<UserSettings> = flow {
+        gate.await()
+        emit(UserSettings())
+    }
+    override suspend fun update(settings: UserSettings) = Unit
 }

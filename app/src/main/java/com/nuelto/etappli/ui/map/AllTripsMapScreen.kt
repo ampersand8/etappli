@@ -41,6 +41,7 @@ import com.nuelto.etappli.domain.TripMapData
 import com.nuelto.etappli.domain.CurrentStop
 import com.nuelto.etappli.domain.EstimateBreakdown
 import com.nuelto.etappli.domain.TripEstimator
+import com.nuelto.etappli.domain.title
 import com.nuelto.etappli.ui.formatCurrency
 import com.nuelto.etappli.ui.formatDate
 import java.time.LocalDate
@@ -121,7 +122,7 @@ fun AllTripsMapScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (tripId == null) "All trips" else shown.firstOrNull()?.trip?.name ?: "Trip") },
+                title = { Text(if (tripId == null) "All trips" else shown.firstOrNull()?.trip?.title ?: "Trip") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -149,7 +150,7 @@ fun AllTripsMapScreen(
                         .padding(16.dp),
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(entry.trip.name, style = MaterialTheme.typography.titleMedium)
+                        Text(entry.trip.title, style = MaterialTheme.typography.titleMedium)
                         Text(
                             "${stop.name} · ${formatDate(stop.arrivalDate)} · " +
                                 (if (stop.nights == 1) "1 night" else "${stop.nights} nights"),

@@ -10,11 +10,13 @@ import com.nuelto.etappli.data.model.ExpenseType
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.StopRegion
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.VignetteTable
 import com.nuelto.etappli.domain.PlaceCacheSweeper
+import com.nuelto.etappli.domain.RegionResolver
 import com.nuelto.etappli.domain.RoutedLeg
 import com.nuelto.etappli.domain.RouteRefresher
 import com.nuelto.etappli.testutil.MainDispatcherRule
@@ -650,4 +652,38 @@ class TripDetailViewModelTest {
         assertNull(vm.uiState.value.driveFromHere)
     }
 
+}
+
+@RunWith(AndroidJUnit4::class)
+class TripDetailRegionTest {
+
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
+
+    private val tripRepository = InMemoryTripRepository(seed = false)
+
+    @Test
+    fun `opening a trip finds the region of every located stop, and again when a pin moves`() = runTest {
+        tripRepository.upsertTrip(Trip(id = "t1", status = TripStatus.PLANNED))
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", location = LatLng(46.17, 8.79), orderIndex = 0))
+        tripRepository.upsertStop(Stop(id = "s2", tripId = "t1", orderIndex = 1))
+        val asked = mutableListOf<LatLng>()
+        TripDetailViewModel(
+            SavedStateHandle(mapOf("tripId" to "t1")),
+            tripRepository,
+            InMemorySettingsRepository(),
+            regionResolver = RegionResolver(tripRepository) { at ->
+                asked += at
+                StopRegion(name = "Ticino", country = "Switzerland")
+            },
+        )
+        assertEquals(listOf(LatLng(46.17, 8.79)), asked)
+        assertEquals("Ticino", tripRepository.trip("t1").first()!!.region)
+
+        // A stop that gets a pin is looked up; one whose pin moves is looked up again.
+        val s2 = tripRepository.stops("t1").first().first { it.id == "s2" }
+        tripRepository.upsertStop(s2.copy(location = LatLng(47.0, 7.0)))
+        tripRepository.upsertStop(s2.copy(location = LatLng(47.5, 7.5)))
+        assertEquals(listOf(LatLng(46.17, 8.79), LatLng(47.0, 7.0), LatLng(47.5, 7.5)), asked)
+    }
 }

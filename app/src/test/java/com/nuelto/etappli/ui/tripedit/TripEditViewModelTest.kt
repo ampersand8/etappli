@@ -2,9 +2,6 @@ package com.nuelto.etappli.ui.tripedit
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.nuelto.etappli.data.InMemorySettingsRepository
-import com.nuelto.etappli.data.model.LatLng
-import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.Trip
@@ -36,13 +33,13 @@ class TripEditViewModelTest {
         TripEditViewModel(SavedStateHandle(mapOf("tripId" to tripId)), tripRepository)
 
     @Test
-    fun `new trip starts blank and savable only with a name`() {
+    fun `new trip starts blank, with its name optional`() {
         val state = newTripViewModel().uiState.value
         assertTrue(state.isNew)
         assertTrue(state.loaded)
         assertEquals("", state.name)
         assertNull(state.endDate)
-        assertFalse(state.canSave)
+        assertEquals("Optional — named after its stops", state.nameHint)
     }
 
     @Test
@@ -57,7 +54,6 @@ class TripEditViewModelTest {
         assertEquals(LocalDate.of(2026, 7, 1), state.startDate)
         assertEquals(LocalDate.of(2026, 7, 5), state.endDate)
         assertEquals("wet", state.notes)
-        assertTrue(state.canSave)
         vm.setEndDate(null)
         assertNull(vm.uiState.value.endDate)
     }
@@ -76,11 +72,10 @@ class TripEditViewModelTest {
     }
 
     @Test
-    fun `save without a name is refused`() = runTest {
-        var called = false
-        newTripViewModel().save { _, _ -> called = true }
-        assertFalse(called)
-        assertTrue(tripRepository.trips().first().isEmpty())
+    fun `a trip saves without a name`() = runTest {
+        var saved: String? = null
+        newTripViewModel().save { id, _ -> saved = id }
+        assertEquals("", tripRepository.trip(saved!!).first()!!.name)
     }
 
     @Test
@@ -107,19 +102,18 @@ class TripEditViewModelTest {
     }
 
     @Test
+    fun `the hint says what an unnamed trip is called`() = runTest {
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Old"))
+        assertEquals("Leave blank to call it \"Rusty Edelweiss\"", editViewModel("t1").uiState.value.nameHint)
+        tripRepository.upsertStop(Stop(id = "s1", tripId = "t1", region = com.nuelto.etappli.data.model.StopRegion(name = "Ticino")))
+        assertEquals("Leave blank to call it \"Ticino\"", editViewModel("t1").uiState.value.nameHint)
+    }
+
+    @Test
     fun `editing an id that vanished behaves like a new trip`() {
         val state = editViewModel("gone").uiState.value
         assertTrue(state.isNew)
         assertTrue(state.loaded)
-    }
-
-    @Test
-    fun `a plan route creates a planned tour`() = runTest {
-        val vm = TripEditViewModel(SavedStateHandle(mapOf("planned" to true)), tripRepository)
-        assertTrue(vm.uiState.value.isPlan)
-        vm.setName("Ticino")
-        vm.save { _, _ -> }
-        assertEquals(TripStatus.PLANNED, tripRepository.trips().first().single().status)
     }
 
     @Test
@@ -175,81 +169,4 @@ class TripEditViewModelTest {
         vm.save { _, _ -> }
         assertEquals(TripStatus.PLANNED, tripRepository.trip("p1").first()!!.status)
     }
-    // --- home as the plan's starting point ----------------------------------------------
-
-    private val settingsRepository = InMemorySettingsRepository()
-
-    private fun planViewModel() = TripEditViewModel(
-        SavedStateHandle(mapOf("planned" to true)),
-        tripRepository,
-        settingsRepository,
-    )
-
-    private suspend fun setHome(name: String = "Luzern") {
-        settingsRepository.update(
-            settingsRepository.settings().first()
-                .copy(homeName = name, homeLocation = LatLng(47.0502, 8.3093)),
-        )
-    }
-
-    @Test
-    fun `a new plan sets out from home and comes back to it`() = runTest {
-        setHome()
-        val vm = planViewModel()
-        vm.setName("Ticino")
-        vm.setStartDate(LocalDate.of(2027, 6, 10))
-        var created: String? = null
-        vm.save { id, _ -> created = id }
-
-        val stops = tripRepository.stops(created!!).first().sortedBy { it.orderIndex }
-        assertEquals(listOf(0, 1), stops.map { it.orderIndex })
-        stops.forEach { home ->
-            assertEquals("Luzern", home.name)
-            assertEquals(StopKind.HOME, home.kind)
-            assertEquals(LatLng(47.0502, 8.3093), home.location)
-            assertEquals(LocalDate.of(2027, 6, 10), home.arrivalDate)
-        }
-    }
-
-    @Test
-    fun `with no home set a new plan starts empty`() = runTest {
-        val vm = planViewModel()
-        vm.setName("Ticino")
-        var created: String? = null
-        vm.save { id, _ -> created = id }
-
-        assertTrue(tripRepository.stops(created!!).first().isEmpty())
-    }
-
-    @Test
-    fun `a logged trip does not get a home stop`() = runTest {
-        setHome()
-        val vm = TripEditViewModel(SavedStateHandle(), tripRepository, settingsRepository)
-        vm.setName("Last weekend")
-        var created: String? = null
-        vm.save { id, _ -> created = id }
-
-        assertTrue(tripRepository.stops(created!!).first().isEmpty())
-    }
-
-    @Test
-    fun `editing an existing plan does not add a second home`() = runTest {
-        setHome()
-        val first = planViewModel()
-        first.setName("Ticino")
-        var created: String? = null
-        first.save { id, _ -> created = id }
-        assertEquals(2, tripRepository.stops(created!!).first().size)
-
-        val again = TripEditViewModel(
-            SavedStateHandle(mapOf("tripId" to created!!)),
-            tripRepository,
-            settingsRepository,
-        )
-        again.setName("Ticino-Tour")
-        again.save { _, _ -> }
-
-        assertEquals(2, tripRepository.stops(created!!).first().size)
-    }
-
 }
