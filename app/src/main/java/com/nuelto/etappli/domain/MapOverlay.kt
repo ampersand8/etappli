@@ -24,6 +24,8 @@ data class MapRoute(
     val points: List<LatLng>,
     val accent: MapAccent,
     val dashed: Boolean,
+    // A ride to a stop no road reaches, drawn apart from the road: a cable car is not one.
+    val ride: Boolean = false,
 )
 
 /** How the camera should sit over a set of points. */
@@ -79,25 +81,38 @@ object MapOverlay {
             .filterNot { it.state == StopState.SKIPPED }
             .filter { it.location != null }
         if (located.size < 2) return@flatMap emptyList()
-        val leg = { stops: List<Stop>, accent: MapAccent, dashed: Boolean ->
-            MapRoute(entry.trip.id, path(stops), accent, dashed)
+        // The road through the stops, then any ride off it, in the same colour.
+        val section = { stops: List<Stop>, accent: MapAccent, dashed: Boolean ->
+            listOf(MapRoute(entry.trip.id, path(stops), accent, dashed)) +
+                rides(stops).map { MapRoute(entry.trip.id, it, accent, dashed = false, ride = true) }
         }
 
         when (entry.trip.status) {
-            TripStatus.DONE -> listOf(leg(located, MapAccent.DONE, false))
-            TripStatus.PLANNED -> listOf(leg(located, MapAccent.PLANNED, true))
+            TripStatus.DONE -> section(located, MapAccent.DONE, false)
+            TripStatus.PLANNED -> section(located, MapAccent.PLANNED, true)
             TripStatus.ACTIVE -> {
                 val done = located.filter { it.state == StopState.DONE }
                 val upcoming = located.filter { it.state == StopState.PLANNED }
                 buildList {
-                    if (done.size >= 2) add(leg(done, MapAccent.DONE, false))
+                    if (done.size >= 2) addAll(section(done, MapAccent.DONE, false))
                     if (done.isNotEmpty() && upcoming.isNotEmpty()) {
-                        add(leg(listOf(done.last(), upcoming.first()), MapAccent.CURRENT, false))
+                        addAll(section(listOf(done.last(), upcoming.first()), MapAccent.CURRENT, false))
                     }
-                    if (upcoming.size >= 2) add(leg(upcoming, MapAccent.PLANNED, true))
+                    if (upcoming.size >= 2) addAll(section(upcoming, MapAccent.PLANNED, true))
                 }
             }
         }
+    }
+
+    /**
+     * The rides either side of each drive whose stop no road reaches, as lines of their
+     * own: the road [path] ends where the vehicle is left, and the ride carries on to the pin.
+     */
+    private fun rides(stops: List<Stop>): List<List<LatLng>> = stops.zipWithNext().flatMap { (from, to) ->
+        val leg = RouteCache.usable(from, to) ?: return@flatMap emptyList()
+        listOfNotNull(leg.rideBefore, leg.rideAfter)
+            .map { Polyline.decode(it.polyline) }
+            .filter { it.size >= 2 }
     }
 
     /**

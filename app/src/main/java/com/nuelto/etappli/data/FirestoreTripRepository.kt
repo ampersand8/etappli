@@ -14,6 +14,7 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopRegion
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
@@ -114,8 +115,30 @@ class FirestoreTripRepository(
         "durationSeconds" to durationSeconds,
         "ascentMeters" to ascentMeters,
         "descentMeters" to descentMeters,
+        "rideBefore" to rideBefore?.toMap(),
+        "rideAfter" to rideAfter?.toMap(),
         "fetchedAt" to fetchedAt.toEpochDay(),
     )
+
+    private fun TransitRide.toMap() = mapOf(
+        "parked" to GeoPoint(parked.latitude, parked.longitude),
+        "polyline" to polyline,
+        "distanceMeters" to distanceMeters,
+        "durationSeconds" to durationSeconds,
+        "mode" to mode,
+    )
+
+    /** No parking spot, no ride: without it the drive cannot be told where it ends. */
+    private fun Map<*, *>.toTransitRide(): TransitRide? {
+        val parked = this["parked"] as? GeoPoint ?: return null
+        return TransitRide(
+            parked = LatLng(parked.latitude, parked.longitude),
+            polyline = this["polyline"] as? String ?: "",
+            distanceMeters = (this["distanceMeters"] as? Number)?.toInt() ?: 0,
+            durationSeconds = (this["durationSeconds"] as? Number)?.toInt() ?: 0,
+            mode = this["mode"] as? String ?: "",
+        )
+    }
 
     /** No endpoints, no leg: without them nothing can tell whether it still applies. */
     private fun Map<*, *>.toStopLeg(): StopLeg? {
@@ -129,6 +152,8 @@ class FirestoreTripRepository(
             durationSeconds = (this["durationSeconds"] as? Number)?.toInt() ?: 0,
             ascentMeters = (this["ascentMeters"] as? Number)?.toInt(),
             descentMeters = (this["descentMeters"] as? Number)?.toInt(),
+            rideBefore = (this["rideBefore"] as? Map<*, *>)?.toTransitRide(),
+            rideAfter = (this["rideAfter"] as? Map<*, *>)?.toTransitRide(),
             fetchedAt = (this["fetchedAt"] as? Number)
                 ?.let { LocalDate.ofEpochDay(it.toLong()) } ?: LocalDate.now(),
         )

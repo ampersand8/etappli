@@ -5,6 +5,7 @@ import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.domain.Elevation
 import com.nuelto.etappli.domain.GoogleRoutes
 import com.nuelto.etappli.domain.RoutedLeg
+import com.nuelto.etappli.domain.TransitStep
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -22,16 +23,17 @@ class GoogleRoutesService(private val apiKey: String = BuildConfig.MAPS_API_KEY)
 
     /** One leg per pair of consecutive points, or null if the call did not come back. */
     suspend fun legs(points: List<LatLng>): List<RoutedLeg>? = withContext(Dispatchers.IO) {
-        val body = post(
-            url = GoogleRoutes.COMPUTE_ROUTES_URL,
-            body = GoogleRoutes.computeRoutesBody(points),
-            headers = mapOf(
-                "X-Goog-Api-Key" to apiKey,
-                "X-Goog-FieldMask" to GoogleRoutes.FIELD_MASK,
-            ),
-        )
-        body?.let(GoogleRoutes::parseLegs)
+        post(GoogleRoutes.COMPUTE_ROUTES_URL, GoogleRoutes.computeRoutesBody(points), headers(GoogleRoutes.FIELD_MASK))
+            ?.let(GoogleRoutes::parseLegs)
     }
+
+    /** The steps of a public-transport route — empty when there is none, null if the call did not come back. */
+    suspend fun transit(from: LatLng, to: LatLng): List<TransitStep>? = withContext(Dispatchers.IO) {
+        post(GoogleRoutes.COMPUTE_ROUTES_URL, GoogleRoutes.transitBody(from, to), headers(GoogleRoutes.TRANSIT_FIELD_MASK))
+            ?.let(GoogleRoutes::parseTransitSteps)
+    }
+
+    private fun headers(fieldMask: String) = mapOf("X-Goog-Api-Key" to apiKey, "X-Goog-FieldMask" to fieldMask)
 }
 
 /**

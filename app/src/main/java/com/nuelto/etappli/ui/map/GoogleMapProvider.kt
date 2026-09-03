@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Dot
 import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.CameraPositionState
@@ -63,7 +64,7 @@ object GoogleMapProvider : MapProvider {
     override fun routeRefresher(tripRepository: TripRepository): RouteRefresher {
         val routes = GoogleRoutesService()
         val elevation = ElevationService()
-        return RouteRefresher(tripRepository, routes::legs, elevation::heights)
+        return RouteRefresher(tripRepository, routes::legs, elevation::heights, routes::transit)
     }
 
     override fun placeCacheSweeper(tripRepository: TripRepository): PlaceCacheSweeper {
@@ -114,9 +115,14 @@ object GoogleMapProvider : MapProvider {
                 Polyline(
                     points = route.points.map { it.gms() },
                     color = accentColor(route.accent).copy(alpha = 0.7f),
-                    width = 8f,
-                    // Google has no data-driven dash expression; a pattern list is the equivalent.
-                    pattern = if (route.dashed) listOf(Dash(20f), Gap(10f)) else null,
+                    width = if (route.ride) 5f else 8f,
+                    // Google has no data-driven dash expression; a pattern list is the
+                    // equivalent. A ride is dotted: it is not a road.
+                    pattern = when {
+                        route.ride -> listOf(Dot(), Gap(8f))
+                        route.dashed -> listOf(Dash(20f), Gap(10f))
+                        else -> null
+                    },
                 )
             }
             markers.forEach { marker ->

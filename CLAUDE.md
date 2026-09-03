@@ -73,10 +73,16 @@ There is no lint/format tooling configured.
   Android *application* restriction would break both unless `X-Android-Package`/
   `X-Android-Cert` headers are added. Everything degrades to straight lines without a key.
   A stop Google cannot drive to (Riederalp is car-free) empties the whole `computeRoutes`
-  answer, so `RouteRefresher` then asks that window drive by drive and stores a leg with
-  **no distance** for the drive that has no road (`StopLeg.hasRoad`): the map keeps its
-  straight hop, the estimate its road factor, the timeline says "No drivable route", and
-  nothing asks again for 30 days.
+  answer, so `RouteRefresher` then asks that window drive by drive, and a drive that still
+  has no road goes **park-and-ride** (`domain/ParkAndRide`): a TRANSIT route to the stop
+  (no `routingPreference`, no intermediates — the mode allows neither) says where its last
+  ride boards, the vehicle is left there (`TransitRide.parked`; up to three rides back when
+  no road reaches that either), the road legs run to and from that spot, and the ride sits
+  on the leg either side of the drive (`StopLeg.rideAfter` up, the next leg's `rideBefore`
+  down) — dotted on the map, "122 km · 2 h + cable car 24 min" in the timeline, never in
+  the fuel. A stop no ride reaches either keeps a leg with **no distance**
+  (`StopLeg.hasRoad` false): straight hop, road factor, "No drivable route", and nothing
+  asks again for 30 days.
 - **"How far from here"**: on an ACTIVE trip the NowCard replaces the planned leg with a
   live route from the current GPS fix to the stop you are heading for (`domain/DriveFromHere`
   + `LiveDrive` rules, `MapProvider.drive`). Never stored — it is true for one fix.
