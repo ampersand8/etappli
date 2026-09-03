@@ -50,16 +50,18 @@ class RouteRefresher(
 
         var fetched = 0
         drives.forEachIndexed { index, (from, to) ->
-            val climb = climb(legs[index].polyline)
+            // Null where there is no road: written all the same, as a leg with no distance.
+            val routed = legs[index]
+            val climb = routed?.let { climb(it.polyline) }
             val leg = StopLeg(
                 // The coordinates the route was actually computed between. A stop edited
                 // while the request was in flight must invalidate this leg on the next
                 // pass, not quietly adopt it.
                 from = from.location!!,
                 to = to.location!!,
-                polyline = legs[index].polyline,
-                distanceMeters = legs[index].distanceMeters,
-                durationSeconds = legs[index].durationSeconds,
+                polyline = routed?.polyline.orEmpty(),
+                distanceMeters = routed?.distanceMeters ?: 0,
+                durationSeconds = routed?.durationSeconds ?: 0,
                 ascentMeters = climb?.ascentMeters?.roundToInt(),
                 descentMeters = climb?.descentMeters?.roundToInt(),
                 fetchedAt = today,
@@ -92,9 +94,10 @@ class RouteRefresher(
      * A failed elevation call must not erase a climb already measured for the same drive.
      * [RouteCache.needsFetch] only asks whether a leg exists, so a leg written with a null
      * climb is never revisited — the figure would be gone until the stop moved again.
+     * A drive that has lost its road keeps nothing: there is no road to have climbed.
      */
     private fun StopLeg.keepingClimbOf(stored: StopLeg?): StopLeg {
-        if (ascentMeters != null) return this
+        if (ascentMeters != null || !hasRoad) return this
         val measured = stored?.takeIf { it.from == from && it.to == to } ?: return this
         return copy(ascentMeters = measured.ascentMeters, descentMeters = measured.descentMeters)
     }
@@ -123,14 +126,27 @@ class RouteRefresher(
         return true
     }
 
-    /** Null on the first window that fails, so a half-routed trip is never written. */
-    private suspend fun fetchAll(points: List<LatLng>): List<RoutedLeg>? {
-        val legs = mutableListOf<RoutedLeg>()
+    /**
+     * One entry per drive, null where Google found no road. A stop it cannot drive to —
+     * Riederalp is car-free — empties the whole window's answer, so such a window is then
+     * asked drive by drive to keep the roads the other drives do have. Null altogether on
+     * the first call that fails, so a half-routed trip is never written.
+     */
+    private suspend fun fetchAll(points: List<LatLng>): List<RoutedLeg?>? {
+        val legs = mutableListOf<RoutedLeg?>()
         GoogleRoutes.windows(points).forEach { window ->
             val fetched = route(window) ?: return null
-            // One leg per pair, or the response cannot be lined up with the stops.
-            if (fetched.size != window.size - 1) return null
-            legs += fetched
+            when {
+                fetched.size == window.size - 1 -> legs += fetched
+                // One leg per pair, or the response cannot be lined up with the stops.
+                fetched.isNotEmpty() -> return null
+                else -> window.zipWithNext().forEach { (from, to) ->
+                    // A two-point window already was that one drive: no need to ask twice.
+                    val pair = if (window.size == 2) fetched else (route(listOf(from, to)) ?: return null)
+                    if (pair.size > 1) return null
+                    legs += pair.firstOrNull()
+                }
+            }
         }
         return legs
     }

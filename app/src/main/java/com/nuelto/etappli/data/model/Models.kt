@@ -79,6 +79,8 @@ data class StopLeg(
     val to: LatLng = LatLng(0.0, 0.0),
     // Encoded polyline, decoded for drawing by domain/Polyline.
     val polyline: String = "",
+    // Zero when Google found no drivable road between the two (a car-free village) — an
+    // answer worth keeping too, so the same drive is not asked about again for 30 days.
     val distanceMeters: Int = 0,
     val durationSeconds: Int = 0,
     // Cumulative climb along the leg, from an open DEM — null until it is fetched, and
@@ -87,7 +89,10 @@ data class StopLeg(
     val ascentMeters: Int? = null,
     val descentMeters: Int? = null,
     val fetchedAt: LocalDate = LocalDate.now(),
-)
+) {
+    /** False for a drive Google could not route: the map keeps its straight hop. */
+    val hasRoad: Boolean get() = distanceMeters > 0
+}
 
 data class Stop(
     val id: String = "",

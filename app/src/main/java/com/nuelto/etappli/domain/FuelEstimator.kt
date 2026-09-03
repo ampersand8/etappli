@@ -39,7 +39,7 @@ object FuelEstimator {
 
     // Safe: RouteCache.drives keeps only stops that have a location.
     private fun driveDistanceKm(from: Stop, to: Stop, settings: UserSettings): Double =
-        RouteCache.usable(from, to)?.let { it.distanceMeters / 1000.0 }
+        RouteCache.usable(from, to)?.takeIf { it.hasRoad }?.let { it.distanceMeters / 1000.0 }
             ?: (GeoUtils.haversineKm(from.location!!, to.location!!) * settings.roadDistanceFactor)
 
     // The gravity term of the road-load equation: lower heating value of diesel, and a

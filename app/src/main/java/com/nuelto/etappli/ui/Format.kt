@@ -49,10 +49,12 @@ fun formatDuration(seconds: Int): String {
 /**
  * The drive that arrives at a stop: "124 km · 1 h 45 min". Deliberately not the leg's
  * climb — cumulative ascent next to a place name reads as the height of the place, which
- * is a different number and the one people actually want.
+ * is a different number and the one people actually want. Says so when there is no road:
+ * the map draws a straight hop there, and this is the only place that explains why.
  */
 fun formatDrive(leg: StopLeg): String =
-    "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"
+    if (!leg.hasRoad) "No drivable route"
+    else "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"
 
 private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 
