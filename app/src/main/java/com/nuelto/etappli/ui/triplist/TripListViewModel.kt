@@ -10,11 +10,14 @@ import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
 import com.nuelto.etappli.domain.EstimateBreakdown
 import com.nuelto.etappli.domain.FuelEstimator
+import com.nuelto.etappli.domain.NewPlan
 import com.nuelto.etappli.domain.TripEstimator
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class TripListUiState(
     val active: List<Trip> = emptyList(),
@@ -32,8 +35,8 @@ data class TripListUiState(
 }
 
 class TripListViewModel(
-    tripRepository: TripRepository,
-    settingsRepository: SettingsRepository,
+    private val tripRepository: TripRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     val uiState: StateFlow<TripListUiState> =
@@ -68,6 +71,22 @@ class TripListViewModel(
                 loading = false,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripListUiState())
+
+    // A double-tap must not mint two tours.
+    private var planning = false
+
+    /** A tour planned on the spot (domain/NewPlan); [onCreated] gets its id. */
+    fun planTour(onCreated: (String) -> Unit) {
+        if (planning) return
+        planning = true
+        viewModelScope.launch {
+            try {
+                onCreated(NewPlan.create(tripRepository, settingsRepository.settings().first()))
+            } finally {
+                planning = false
+            }
+        }
+    }
 
     companion object {
         val Factory = containerViewModelFactory { container ->

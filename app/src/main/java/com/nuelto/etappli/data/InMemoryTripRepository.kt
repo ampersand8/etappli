@@ -11,6 +11,7 @@ import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.CostCalculator
 import com.nuelto.etappli.domain.DateCascade
+import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -120,6 +121,7 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                     trip.copy(
                         totalCost = CostCalculator.tripTotal(stops, expenses),
                         nights = CostCalculator.tripNights(stops),
+                        region = TripName.region(stops),
                     )
                 } else {
                     trip

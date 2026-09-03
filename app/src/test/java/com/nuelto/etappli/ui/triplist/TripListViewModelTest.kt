@@ -10,8 +10,10 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
+import com.nuelto.etappli.testutil.GatedSettingsRepository
 import com.nuelto.etappli.testutil.MainDispatcherRule
 import java.time.LocalDate
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,6 +124,32 @@ class TripListViewModelTest {
         viewModel().uiState.test {
             assertEquals(setOf("t1"), awaitItem().fuelEstimates.keys)
         }
+    }
+
+    @Test
+    fun `planning a tour makes an unnamed plan from home and hands back its id`() = runTest {
+        settingsRepository.update(UserSettings(homeName = "Luzern", homeLocation = LatLng(47.05, 8.31)))
+        val created = mutableListOf<String>()
+        viewModel().planTour { created += it }
+        val trip = tripRepository.trip(created.single()).first()!!
+        assertEquals(TripStatus.PLANNED, trip.status)
+        assertEquals("", trip.name)
+        assertEquals(2, tripRepository.stops(trip.id).first().size)
+    }
+
+    @Test
+    fun `a second tap while the plan is being made mints no second plan`() = runTest {
+        val gated = GatedSettingsRepository()
+        val vm = TripListViewModel(tripRepository, gated)
+        val created = mutableListOf<String>()
+        vm.planTour { created += it }
+        vm.planTour { created += it }
+        gated.gate.complete(Unit)
+        assertEquals(1, created.size)
+        assertEquals(1, tripRepository.trips().first().size)
+        // And once made, the next tap plans another.
+        vm.planTour { created += it }
+        assertEquals(2, created.size)
     }
 
     @Test

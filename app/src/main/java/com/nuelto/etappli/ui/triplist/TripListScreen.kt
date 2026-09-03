@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.EstimateBreakdown
+import com.nuelto.etappli.domain.title
 import com.nuelto.etappli.ui.formatCurrency
 import com.nuelto.etappli.ui.formatTripDates
 import com.nuelto.etappli.ui.theme.statusColor
@@ -53,7 +54,9 @@ import com.nuelto.etappli.ui.theme.statusColor
 @Composable
 fun TripListScreen(
     onTripClick: (String) -> Unit,
-    onAddTrip: (planned: Boolean) -> Unit,
+    onLogTrip: () -> Unit,
+    // "Plan a tour" makes the tour right here; this is handed its id.
+    onTourPlanned: (tripId: String) -> Unit,
     onOpenMap: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: TripListViewModel = viewModel(factory = TripListViewModel.Factory),
@@ -84,7 +87,7 @@ fun TripListScreen(
                         ExtendedFloatingActionButton(
                             onClick = {
                                 fabMenuExpanded = false
-                                onAddTrip(true)
+                                viewModel.planTour(onTourPlanned)
                             },
                             icon = { Icon(Icons.Default.Route, contentDescription = null) },
                             text = { Text("Plan a tour") },
@@ -93,7 +96,7 @@ fun TripListScreen(
                         ExtendedFloatingActionButton(
                             onClick = {
                                 fabMenuExpanded = false
-                                onAddTrip(false)
+                                onLogTrip()
                             },
                             icon = { Icon(Icons.Default.Luggage, contentDescription = null) },
                             text = { Text("Log a trip") },
@@ -186,7 +189,7 @@ private fun TripCard(trip: Trip, totalText: String, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    trip.name,
+                    trip.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )

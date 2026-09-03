@@ -5,6 +5,7 @@ import com.nuelto.etappli.data.model.ExpenseType
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopKind
+import com.nuelto.etappli.data.model.StopRegion
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
@@ -145,6 +146,17 @@ class InMemoryTripRepositoryTest {
         )
         assertEquals(50.0, repo.trip(id).first()!!.totalCost, 1e-9)
         assertEquals(2, repo.trip(id).first()!!.nights)
+    }
+
+    @Test
+    fun `a trip is named after its stops' regions, kept up to date like the totals`() = runTest {
+        val id = addTrip()
+        assertEquals("", repo.trip(id).first()!!.region)
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0, region = StopRegion(name = "Ticino", country = "Switzerland")))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 1, region = StopRegion(name = "Valais", country = "Switzerland")))
+        assertEquals("Ticino & Valais", repo.trip(id).first()!!.region)
+        repo.deleteStop(id, "b")
+        assertEquals("Ticino", repo.trip(id).first()!!.region)
     }
 
     @Test

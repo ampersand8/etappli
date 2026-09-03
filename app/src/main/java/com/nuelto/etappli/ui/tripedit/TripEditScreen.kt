@@ -42,7 +42,6 @@ fun TripEditScreen(
                 title = {
                     Text(
                         when {
-                            state.isNew && state.isPlan -> "Plan a tour"
                             state.isNew -> "New trip"
                             state.isPlan -> "Edit plan"
                             else -> "Edit trip"
@@ -69,6 +68,7 @@ fun TripEditScreen(
                 value = state.name,
                 onValueChange = viewModel::setName,
                 label = { Text("Trip name") },
+                supportingText = { Text(state.nameHint) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -98,7 +98,6 @@ fun TripEditScreen(
             )
             Button(
                 onClick = { viewModel.save(onSaved) },
-                enabled = state.canSave,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Save")

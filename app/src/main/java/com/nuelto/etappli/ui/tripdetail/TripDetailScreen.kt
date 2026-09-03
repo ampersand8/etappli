@@ -116,6 +116,7 @@ import com.nuelto.etappli.domain.GapRow
 import com.nuelto.etappli.domain.HomeStop
 import com.nuelto.etappli.domain.StopRow
 import com.nuelto.etappli.domain.TripEstimator
+import com.nuelto.etappli.domain.title
 import com.nuelto.etappli.ui.components.DecimalField
 import com.nuelto.etappli.ui.components.DateField
 import com.nuelto.etappli.ui.components.StatusBadge
@@ -225,7 +226,7 @@ fun TripDetailScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            trip?.name ?: "",
+                            trip?.title ?: "",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
@@ -528,7 +529,7 @@ fun TripDetailScreen(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete trip?") },
-            text = { Text("\"${trip.name}\" and all its stops and expenses will be deleted.") },
+            text = { Text("\"${trip.title}\" and all its stops and expenses will be deleted.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false

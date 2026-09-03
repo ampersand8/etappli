@@ -5,14 +5,17 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.nuelto.etappli.containerViewModelFactory
+import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.TripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.domain.NewPlan
 import com.nuelto.etappli.domain.SharedPlace
 import com.nuelto.etappli.ui.nav.AddToTripRoute
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -37,11 +40,12 @@ data class AddToTripUiState(
 /**
  * The chooser a shared place lands on: which trip does this belong to? Everything about
  * the place is already parsed — the only work here is following a short link, whose
- * coordinate sits behind a redirect.
+ * coordinate sits behind a redirect, and planning a tour for the place when there is none.
  */
 class AddToTripViewModel(
     place: SharedPlace,
-    tripRepository: TripRepository,
+    private val tripRepository: TripRepository,
+    private val settingsRepository: SettingsRepository,
     private val expandLink: suspend (String) -> String? = { null },
 ) : ViewModel() {
 
@@ -77,11 +81,28 @@ class AddToTripViewModel(
         }
     }
 
+    // A double-tap must not mint two tours.
+    private var planning = false
+
+    /** A tour planned on the spot for the place (domain/NewPlan); [onCreated] gets its id. */
+    fun planTour(onCreated: (String) -> Unit) {
+        if (planning) return
+        planning = true
+        viewModelScope.launch {
+            try {
+                onCreated(NewPlan.create(tripRepository, settingsRepository.settings().first()))
+            } finally {
+                planning = false
+            }
+        }
+    }
+
     companion object {
         val Factory = containerViewModelFactory { container ->
             AddToTripViewModel(
                 createSavedStateHandle().toRoute<AddToTripRoute>().sharedPlace(),
                 container.tripRepository,
+                container.settingsRepository,
                 container.expandShareLink,
             )
         }

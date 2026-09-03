@@ -16,6 +16,7 @@ fun legacyTripStatus(endDate: LocalDate?): TripStatus =
 
 data class Trip(
     val id: String = "",
+    // What the user called it, if anything: what it is called is domain/TripName's Trip.title.
     val name: String = "",
     val startDate: LocalDate = LocalDate.now(),
     val endDate: LocalDate? = null,
@@ -29,6 +30,9 @@ data class Trip(
     // Estimate snapshot taken when the tour is started, for planned-vs-actual.
     val plannedCost: Double? = null,
     val plannedNights: Int? = null,
+    // Where it goes, denormalized from the stops' regions like the totals — the title
+    // while [name] is blank.
+    val region: String = "",
 )
 
 /**
@@ -54,6 +58,13 @@ enum class StopState { PLANNED, DONE, SKIPPED }
  * coordinate this never expires.
  */
 data class StopElevation(val at: LatLng = LatLng(0.0, 0.0), val meters: Int = 0)
+
+/**
+ * Which region a stop lies in — the canton, province or state, and the country — for
+ * naming the tour after where it goes (domain/TripName). [at] is the coordinate it was
+ * looked up for, so a moved pin invalidates it by comparison, like [StopElevation].
+ */
+data class StopRegion(val at: LatLng = LatLng(0.0, 0.0), val name: String = "", val country: String = "")
 
 /**
  * The drive from the previous stop, as Google routed it. [from]/[to] are the stop
@@ -103,6 +114,7 @@ data class Stop(
     // trip, and until the route has been fetched.
     val leg: StopLeg? = null,
     val elevation: StopElevation? = null,
+    val region: StopRegion? = null,
 )
 
 enum class ExpenseType {

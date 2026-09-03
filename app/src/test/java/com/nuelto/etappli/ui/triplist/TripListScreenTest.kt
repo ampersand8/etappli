@@ -16,6 +16,7 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import java.time.LocalDate
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -41,7 +42,8 @@ class TripListScreenTest {
         compose.setContent {
             TripListScreen(
                 onTripClick = { clicks += "trip:$it" },
-                onAddTrip = { planned -> clicks += if (planned) "plan" else "log" },
+                onLogTrip = { clicks += "log" },
+                onTourPlanned = { clicks += "planned:$it" },
                 onOpenMap = { clicks += "map" },
                 onOpenSettings = { clicks += "settings" },
                 viewModel = viewModel,
@@ -121,7 +123,10 @@ class TripListScreenTest {
         compose.onNodeWithText("Log a trip", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("New trip").performClick()
         compose.onNodeWithText("Plan a tour", useUnmergedTree = true).performClick()
-        assertEquals(listOf("map", "settings", "log", "plan"), clicks)
+        // Planning a tour makes it on the spot and hands over its id.
+        val planned = runBlocking { tripRepository.trips().first().single() }
+        assertEquals(TripStatus.PLANNED, planned.status)
+        assertEquals(listOf("map", "settings", "log", "planned:${planned.id}"), clicks)
     }
 
     @Test

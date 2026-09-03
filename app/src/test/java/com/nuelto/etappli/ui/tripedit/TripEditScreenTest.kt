@@ -1,8 +1,6 @@
 package com.nuelto.etappli.ui.tripedit
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -33,12 +31,8 @@ class TripEditScreenTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val events = mutableListOf<String>()
 
-    private fun setContent(tripId: String? = null, planned: Boolean = false) {
-        val handle = when {
-            tripId != null -> SavedStateHandle(mapOf("tripId" to tripId))
-            planned -> SavedStateHandle(mapOf("planned" to true))
-            else -> SavedStateHandle()
-        }
+    private fun setContent(tripId: String? = null) {
+        val handle = if (tripId != null) SavedStateHandle(mapOf("tripId" to tripId)) else SavedStateHandle()
         val viewModel = TripEditViewModel(handle, tripRepository)
         compose.setContent {
             TripEditScreen(
@@ -50,12 +44,11 @@ class TripEditScreenTest {
     }
 
     @Test
-    fun `new trip cannot be saved until it has a name`() {
+    fun `a new trip saves with the name typed`() {
         setContent()
         compose.onNodeWithText("New trip").assertIsDisplayed()
-        compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNodeWithText("Optional — named after its stops").assertIsDisplayed()
         compose.onNodeWithText("Trip name").performTextInput("Jura")
-        compose.onNodeWithText("Save").assertIsEnabled()
         compose.onNodeWithText("Save").performClick()
         runBlocking {
             val trip = tripRepository.trips().first().single()
@@ -65,15 +58,10 @@ class TripEditScreenTest {
     }
 
     @Test
-    fun `plan mode titles the form and saves a planned tour`() {
-        setContent(planned = true)
-        compose.onNodeWithText("Plan a tour").assertIsDisplayed()
-        compose.onNodeWithText("Planned start").assertIsDisplayed()
-        compose.onNodeWithText("Trip name").performTextInput("Ticino")
+    fun `a new trip saves without a name`() {
+        setContent()
         compose.onNodeWithText("Save").performClick()
-        runBlocking {
-            assertEquals(TripStatus.PLANNED, tripRepository.trips().first().single().status)
-        }
+        runBlocking { assertEquals("", tripRepository.trips().first().single().name) }
     }
 
     @Test
@@ -97,6 +85,7 @@ class TripEditScreenTest {
         setContent("t1")
         compose.onNodeWithText("Edit trip").assertIsDisplayed()
         compose.onNodeWithText("Old").assertIsDisplayed()
+        compose.onNodeWithText("Leave blank to call it \"Rusty Edelweiss\"").assertIsDisplayed()
         compose.onNodeWithText("Clear").performClick()
         compose.onNodeWithText("Clear").assertDoesNotExist()
         compose.onNodeWithText("Save").performClick()
@@ -104,5 +93,15 @@ class TripEditScreenTest {
             assertEquals(null, tripRepository.trip("t1").first()!!.endDate)
         }
         assertEquals(listOf("saved:t1:false"), events)
+    }
+
+    @Test
+    fun `a plan is edited under its own title, with a planned start`() {
+        runBlocking {
+            tripRepository.upsertTrip(Trip(id = "p1", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED))
+        }
+        setContent("p1")
+        compose.onNodeWithText("Edit plan").assertIsDisplayed()
+        compose.onNodeWithText("Planned start").assertIsDisplayed()
     }
 }

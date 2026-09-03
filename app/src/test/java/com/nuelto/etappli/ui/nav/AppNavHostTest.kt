@@ -88,14 +88,16 @@ class AppNavHostTest {
     }
 
     @Test
-    fun `a tour is planned from the fab menu`() {
+    fun `a tour is planned from the fab menu by adding its first stop`() {
         setContent()
         compose.onNodeWithContentDescription("New trip").performClick()
         compose.onNodeWithText("Plan a tour", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Planned start").assertIsDisplayed()
-        compose.onNodeWithText("Trip name").performTextInput("Ticino-Tour")
-        compose.onNodeWithText("Save").performClick()
-        compose.onNodeWithText("Ticino-Tour").assertIsDisplayed()
+        // No form: straight into the stop editor, over the new tour's timeline.
+        compose.onNodeWithText("New stop").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        compose.onNodeWithText("No stops yet — add where you want to go.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Trips").assertIsDisplayed()
     }
 
     @Test
@@ -219,19 +221,20 @@ class AppNavHostTest {
     }
 
     @Test
-    fun `a tour planned from the chooser comes back to it`() {
+    fun `a tour planned from the chooser takes the place as its first stop`() {
         ApplicationProvider.getApplicationContext<TestCamperApp>().container =
             AppContainer(null, InMemoryTripRepository(seed = false), InMemorySettingsRepository())
         setContent(shared)
 
         compose.onNodeWithText("Plan a tour").performClick()
-        compose.onNodeWithText("Trip name").performTextInput("Ticino")
-        compose.onNodeWithText("Save").performClick()
-
-        // Back on the chooser rather than in the new tour, with the tour now listed.
-        compose.onNodeWithText("Add to a trip").assertIsDisplayed()
-        compose.onNodeWithText("Ticino").performClick()
+        // Straight into the new tour's stop editor, with the place filled in.
         compose.onNodeWithText("New stop").assertIsDisplayed()
         compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
+
+        // Saved onto the tour's timeline; the chooser is gone from the back stack.
+        compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Trips").assertIsDisplayed()
     }
 }

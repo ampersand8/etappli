@@ -9,7 +9,6 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.StopKind
@@ -49,7 +48,12 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
         composable<TripListRoute> {
             TripListScreen(
                 onTripClick = { tripId -> navController.navigate(TripDetailRoute(tripId)) },
-                onAddTrip = { planned -> navController.navigate(TripEditRoute(planned = planned)) },
+                onLogTrip = { navController.navigate(TripEditRoute()) },
+                // A tour is planned by adding its first stop: the editor opens over its timeline.
+                onTourPlanned = { tripId ->
+                    navController.navigate(TripDetailRoute(tripId))
+                    navController.navigate(StopEditRoute(tripId))
+                },
                 onOpenMap = { navController.navigate(AllTripsMapRoute()) },
                 onOpenSettings = { navController.navigate(SettingsRoute) },
             )
@@ -71,19 +75,14 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
             TripEditScreen(
                 onBack = { navController.popBackStack() },
                 onSaved = { tripId, isNew ->
-                    // A tour planned to hold a shared place goes back to the chooser,
-                    // which now lists it; anything else opens the new trip.
-                    val fromChooser = navController.previousBackStackEntry
-                        ?.destination?.hasRoute<AddToTripRoute>() == true
                     navController.popBackStack()
-                    if (isNew && !fromChooser) navController.navigate(TripDetailRoute(tripId))
+                    if (isNew) navController.navigate(TripDetailRoute(tripId))
                 },
             )
         }
         composable<AddToTripRoute> {
             AddToTripScreen(
                 onCancel = { navController.popBackStack() },
-                onPlanTrip = { navController.navigate(TripEditRoute(planned = true)) },
                 onAddTo = navController::addToTrip,
             )
         }
