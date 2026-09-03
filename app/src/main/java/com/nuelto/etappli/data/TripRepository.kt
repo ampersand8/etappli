@@ -22,8 +22,11 @@ interface TripRepository {
     suspend fun deleteTrip(tripId: String)
     suspend fun upsertStop(stop: Stop)
 
-    /** Rewrites orderIndex to match [orderedStopIds] in one pass (one totals recompute). */
-    suspend fun reorderStops(tripId: String, orderedStopIds: List<String>)
+    /**
+     * Writes several stops as one change (one totals recompute), so nothing ever sees
+     * the plan half-moved: an edit and the shift it causes behind it land together.
+     */
+    suspend fun upsertStops(stops: List<Stop>)
     suspend fun deleteStop(tripId: String, stopId: String)
     suspend fun upsertExpense(expense: Expense)
     suspend fun deleteExpense(tripId: String, expenseId: String)

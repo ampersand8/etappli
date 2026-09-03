@@ -231,15 +231,18 @@ class TripDetailViewModel(
         }
     }
 
-    /** ±1 night on a stop; the downstream planned schedule shifts along. */
+    /** ±1 night on a stop; the downstream planned schedule shifts along, in the same write. */
     fun changeNights(stopId: String, delta: Int) {
         viewModelScope.launch {
             writeLock.withLock {
-                val stop = freshStop(stopId) ?: return@withLock
+                val stops = tripRepository.stops(tripId).first()
+                val stop = stops.find { it.id == stopId } ?: return@withLock
                 val nights = (stop.nights + delta).coerceIn(0, 365)
                 if (nights == stop.nights) return@withLock
-                tripRepository.upsertStop(stop.copy(nights = nights))
-                shiftAfter(stop.orderIndex, (nights - stop.nights).toLong())
+                tripRepository.upsertStops(
+                    listOf(stop.copy(nights = nights)) +
+                        DateCascade.shift(stops, stop.orderIndex, (nights - stop.nights).toLong()),
+                )
             }
         }
     }
@@ -248,10 +251,13 @@ class TripDetailViewModel(
     fun arrived(stopId: String) {
         viewModelScope.launch {
             writeLock.withLock {
-                val stop = freshStop(stopId) ?: return@withLock
+                val stops = tripRepository.stops(tripId).first()
+                val stop = stops.find { it.id == stopId } ?: return@withLock
                 val today = LocalDate.now()
-                tripRepository.upsertStop(stop.copy(state = StopState.DONE, arrivalDate = today))
-                shiftAfter(stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today))
+                tripRepository.upsertStops(
+                    listOf(stop.copy(state = StopState.DONE, arrivalDate = today)) +
+                        DateCascade.shift(stops, stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today)),
+                )
             }
         }
     }
@@ -283,11 +289,6 @@ class TripDetailViewModel(
         }
     }
 
-    private suspend fun shiftAfter(orderIndex: Int, days: Long) {
-        val stops = tripRepository.stops(tripId).first()
-        DateCascade.shift(stops, orderIndex, days).forEach { tripRepository.upsertStop(it) }
-    }
-
     /**
      * Drops the dragged row at [toIndex] and returns the key it carries afterwards —
      * a moved gap is renamed after the stop it now sits in front of. The rows the user
@@ -304,7 +305,9 @@ class TripDetailViewModel(
     fun insertGap(key: String) {
         val at = Timeline.insertion(uiState.value.rows, key) ?: return
         viewModelScope.launch {
-            writeLock.withLock { shiftAfter(at.orderIndex - 1, 1) }
+            writeLock.withLock {
+                tripRepository.upsertStops(DateCascade.shift(tripRepository.stops(tripId).first(), at.orderIndex - 1, 1))
+            }
         }
     }
 
@@ -321,13 +324,21 @@ class TripDetailViewModel(
         )
     }
 
-    /** Writes a rearranged timeline: the new stop order, then the dates it implies. */
+    /** Writes a rearranged timeline in one go: the new stop order and the dates it implies. */
     private fun applyRows(rows: List<TimelineRow>) {
         val start = DateCascade.start(uiState.value.stops) ?: return
         viewModelScope.launch {
             writeLock.withLock {
-                tripRepository.reorderStops(tripId, rows.filterIsInstance<StopRow>().map { it.stop.id })
-                DateCascade.resequence(rows, start).forEach { tripRepository.upsertStop(it) }
+                val dated = DateCascade.resequence(rows, start).associateBy { it.id }
+                // Onto the stops as they are now, so a leg written meanwhile is not lost.
+                val current = tripRepository.stops(tripId).first().associateBy { it.id }
+                tripRepository.upsertStops(
+                    rows.filterIsInstance<StopRow>().mapIndexedNotNull { index, row ->
+                        val stop = current[row.stop.id] ?: return@mapIndexedNotNull null
+                        stop.copy(orderIndex = index, arrivalDate = dated[stop.id]?.arrivalDate ?: stop.arrivalDate)
+                            .takeIf { it != stop }
+                    },
+                )
             }
         }
     }

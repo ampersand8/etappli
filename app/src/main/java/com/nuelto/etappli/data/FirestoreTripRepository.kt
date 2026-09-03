@@ -290,25 +290,25 @@ class FirestoreTripRepository(
         tripDoc.delete()
     }
 
-    override suspend fun upsertStop(stop: Stop) {
-        val col = trips(uid).document(stop.tripId).collection("stops")
-        val doc = if (stop.id.isBlank()) col.document() else col.document(stop.id)
-        doc.set(stop.toMap())
-        recomputeTotals(stop.tripId)
-        redatePlan(stop.tripId)
+    override suspend fun upsertStop(stop: Stop) = upsertStops(listOf(stop))
+
+    /** One batch: it reaches the local view as a whole, so no listener sees it half done. */
+    override suspend fun upsertStops(stops: List<Stop>) {
+        if (stops.isEmpty()) return
+        val batch = db.batch()
+        stops.forEach { stop ->
+            val col = trips(uid).document(stop.tripId).collection("stops")
+            batch.set(if (stop.id.isBlank()) col.document() else col.document(stop.id), stop.toMap())
+        }
+        batch.commit()
+        stops.map { it.tripId }.distinct().forEach {
+            recomputeTotals(it)
+            redatePlan(it)
+        }
     }
 
     override suspend fun deleteStop(tripId: String, stopId: String) {
         trips(uid).document(tripId).collection("stops").document(stopId).delete()
-        recomputeTotals(tripId)
-        redatePlan(tripId)
-    }
-
-    override suspend fun reorderStops(tripId: String, orderedStopIds: List<String>) {
-        val col = trips(uid).document(tripId).collection("stops")
-        orderedStopIds.forEachIndexed { index, stopId ->
-            col.document(stopId).update("orderIndex", index)
-        }
         recomputeTotals(tripId)
         redatePlan(tripId)
     }
@@ -325,14 +325,22 @@ class FirestoreTripRepository(
         recomputeTotals(tripId)
     }
 
-    /** A plan starts the day its first stop does; stop edits keep the trip doc saying so. */
+    /**
+     * No stop starts before the one in front of it leaves (DateCascade.settle), and a
+     * plan starts the day its first stop does. Both are kept true after every stop write,
+     * from the cache so it holds offline too. A finished trip is a record.
+     */
     private suspend fun redatePlan(tripId: String) {
         val tripDoc = trips(uid).document(tripId)
         val trip = runCatching { tripDoc.get(Source.CACHE).await().toTrip() }.getOrNull() ?: return
-        if (trip.status != TripStatus.PLANNED) return
+        if (trip.status == TripStatus.DONE) return
         val stops = runCatching {
             tripDoc.collection("stops").get(Source.CACHE).await().documents.map { it.toStop(tripId) }
         }.getOrNull() ?: return
+        DateCascade.settle(stops).forEach {
+            tripDoc.collection("stops").document(it.id).update("arrivalDate", it.arrivalDate.toEpochDay())
+        }
+        if (trip.status != TripStatus.PLANNED) return
         val start = DateCascade.start(stops) ?: return
         if (start != trip.startDate) tripDoc.update("startDate", start.toEpochDay())
     }

@@ -260,14 +260,27 @@ class StopEditViewModel(
 
     private var saving = false
 
+    /**
+     * Saves the stop and moves the plan behind it in the same write: a new stop takes its
+     * slot and pushes the rest back by the nights it takes, a moved departure shifts the
+     * planned schedule along. One `upsertStops` for all of it, so nothing — not the
+     * timeline, not a route being written back — ever sees the plan half-moved.
+     */
     fun save(onSaved: () -> Unit) {
         val state = _uiState.value
         if (!state.canSave || saving) return
         saving = true
         viewModelScope.launch {
             try {
-                val old = existing
-                val base = old ?: Stop(tripId = route.tripId, orderIndex = newOrderIndex())
+                val stops = tripRepository.stops(route.tripId).first()
+                // The stop as it is now, not as it was when the editor opened: a route or a
+                // height written to it meanwhile must survive the save.
+                val old = existing?.let { known -> stops.find { it.id == known.id } ?: known }
+                val at = if (old == null) slot(stops) else null
+                val base = old ?: Stop(
+                    tripId = route.tripId,
+                    orderIndex = at ?: (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1,
+                )
                 val parsed = parseDecimal(state.campingCost)
                 val nights = if (state.isStay) state.nights else 0
                 // No parseable price means "estimate at the kind's default rate" —
@@ -275,30 +288,35 @@ class StopEditViewModel(
                 val costKnown = parsed != null ||
                     state.kind == StopKind.FREE_CAMP || !state.isStay ||
                     (old != null && old.costKnown && old.campingCostTotal == 0.0 && old.kind == state.kind)
-                tripRepository.upsertStop(
-                    base.copy(
-                        name = state.savedName(),
-                        arrivalDate = state.arrivalDate,
-                        nights = nights,
-                        campingCostTotal = if (state.isStay) parsed ?: 0.0 else 0.0,
-                        location = state.location,
-                        notes = state.notes.trim(),
-                        kind = state.kind,
-                        costKnown = costKnown,
-                        placeId = state.placeId,
-                        locationCachedAt = state.locationCachedAt,
-                    ),
+                val saved = base.copy(
+                    name = state.savedName(),
+                    arrivalDate = state.arrivalDate,
+                    nights = nights,
+                    campingCostTotal = if (state.isStay) parsed ?: 0.0 else 0.0,
+                    location = state.location,
+                    notes = state.notes.trim(),
+                    kind = state.kind,
+                    costKnown = costKnown,
+                    placeId = state.placeId,
+                    locationCachedAt = state.locationCachedAt,
                 )
-                // An inserted stay pushes the rest of the plan back by the nights it takes.
-                insertAt?.let { at -> shiftAfter(at, nights.toLong()) }
-                // A moved departure shifts the downstream planned schedule along.
-                if (old != null) {
+                val writes = if (old == null) {
+                    // The stops from the slot on move down one to make room, and an inserted
+                    // stay pushes them back by the nights it takes.
+                    val shoved = stops.filter { at != null && it.orderIndex >= at }
+                        .map { it.copy(orderIndex = it.orderIndex + 1) }
+                    val pushed = insertAt?.let { DateCascade.shift(shoved, it, nights.toLong()) }
+                        .orEmpty().associateBy { it.id }
+                    shoved.map { pushed[it.id] ?: it } + saved
+                } else {
+                    // A moved departure shifts the downstream planned schedule along.
                     val days = ChronoUnit.DAYS.between(
                         old.arrivalDate.plusDays(old.nights.toLong()),
                         state.arrivalDate.plusDays(nights.toLong()),
                     )
-                    shiftAfter(old.orderIndex, days)
+                    listOf(saved) + DateCascade.shift(stops, old.orderIndex, days)
                 }
+                tripRepository.upsertStops(writes)
                 onSaved()
             } finally {
                 saving = false
@@ -306,33 +324,18 @@ class StopEditViewModel(
         }
     }
 
-    private suspend fun shiftAfter(orderIndex: Int, days: Long) {
-        DateCascade.shift(tripRepository.stops(route.tripId).first(), orderIndex, days)
-            .forEach { tripRepository.upsertStop(it) }
-    }
-
     /**
-     * New stops append — except when one is inserted in front of a row; mid-trip with
-     * check-ins, where a spontaneous stop slots in right after the last done stop; and
-     * on a plan that ends with the drive home, which a stop added to the end goes in
-     * front of, pushing it back like any insertion. Either way the stops from there on
-     * move down one.
+     * The slot a new stop takes, or null to append: the row it was inserted in front of;
+     * mid-trip with check-ins, right after the last done stop; on a plan that ends with
+     * the drive home, in front of that — pushing the plan back like any insertion.
      */
-    private suspend fun newOrderIndex(): Int {
-        val stops = tripRepository.stops(route.tripId).first()
+    private fun slot(stops: List<Stop>): Int? {
         val lastDone = stops.filter { it.state == StopState.DONE }.maxOfOrNull { it.orderIndex }
-        val at = when {
+        return when {
             insertAt != null -> insertAt
             tripStatus == TripStatus.ACTIVE && lastDone != null -> lastDone + 1
             else -> HomeStop.returning(stops)?.orderIndex?.also { insertAt = it }
-        } ?: return (stops.maxOfOrNull { it.orderIndex } ?: -1) + 1
-        shoveDown(stops, at)
-        return at
-    }
-
-    private suspend fun shoveDown(stops: List<Stop>, from: Int) {
-        stops.filter { it.orderIndex >= from }
-            .forEach { tripRepository.upsertStop(it.copy(orderIndex = it.orderIndex + 1)) }
+        }
     }
 
     fun delete(onDeleted: () -> Unit) {

@@ -102,9 +102,9 @@ class TripEditViewModel(
                 if (base.status == TripStatus.PLANNED) {
                     val days = ChronoUnit.DAYS.between(base.startDate, state.startDate)
                     if (days != 0L) {
-                        tripRepository.stops(savedId).first().forEach {
-                            tripRepository.upsertStop(it.copy(arrivalDate = it.arrivalDate.plusDays(days)))
-                        }
+                        tripRepository.upsertStops(
+                            tripRepository.stops(savedId).first().map { it.copy(arrivalDate = it.arrivalDate.plusDays(days)) },
+                        )
                     }
                 }
                 onSaved(savedId, state.isNew)

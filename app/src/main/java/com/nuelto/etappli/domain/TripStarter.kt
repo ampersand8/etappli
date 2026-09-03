@@ -45,29 +45,30 @@ object TripStarter {
 
         if (!keepPlanAsTemplate) {
             repository.upsertTrip(started)
-            stops.forEach {
-                val moved = it.copy(
-                    arrivalDate = it.arrivalDate.plusDays(shift),
-                    state = if (it.id == departed) StopState.DONE else it.state,
-                )
-                if (moved != it) repository.upsertStop(moved)
-            }
+            repository.upsertStops(
+                stops.mapNotNull { stop ->
+                    stop.copy(
+                        arrivalDate = stop.arrivalDate.plusDays(shift),
+                        state = if (stop.id == departed) StopState.DONE else stop.state,
+                    ).takeIf { it != stop }
+                },
+            )
             return tripId
         }
 
         // Fresh copies start with clean denormalized totals; the stop/expense upserts
         // below rebuild them (Firestore only recomputes on those mutation paths).
         val newId = repository.upsertTrip(started.copy(id = "", totalCost = 0.0, nights = 0))
-        stops.forEach {
-            repository.upsertStop(
+        repository.upsertStops(
+            stops.map {
                 it.copy(
                     id = "",
                     tripId = newId,
                     state = if (it.id == departed) StopState.DONE else StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
-                ),
-            )
-        }
+                )
+            },
+        )
         // Only planned costs travel to the new trip; stop links would dangle, drop them.
         expenses.filter { it.isEstimate }.forEach {
             repository.upsertExpense(
@@ -100,16 +101,16 @@ object TripStarter {
                 nights = 0,
             ),
         )
-        stops.filterNot { it.state == StopState.SKIPPED }.forEach {
-            repository.upsertStop(
+        repository.upsertStops(
+            stops.filterNot { it.state == StopState.SKIPPED }.map {
                 it.copy(
                     id = "",
                     tripId = newId,
                     state = StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
-                ),
-            )
-        }
+                )
+            },
+        )
         expenses.filter { it.isEstimate }.forEach {
             repository.upsertExpense(
                 it.copy(id = "", tripId = newId, stopId = null, date = it.date.plusDays(shift)),

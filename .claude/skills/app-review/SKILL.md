@@ -9,6 +9,7 @@ Review the current diff (`git diff` / `git diff HEAD`) against these invariants.
 ## Data invariants
 
 - **Every stop/expense mutation path recomputes trip totals.** Any new call site that writes stops or expenses must trigger `recomputeTotals(tripId)` (both `FirestoreTripRepository` and `InMemoryTripRepository`), or `Trip.totalCost`/`nights` go stale in the trip list.
+- **A stop edit and the shift it causes are one write.** Multi-stop changes go through `upsertStops` (one batch), never `upsertStop` in a loop: both repos settle the plan (`DateCascade.settle`) after every stop write, so a half-written change would be re-dated twice.
 - **Firestore writes are fire-and-forget.** Never `await()` a `set`/`update`/`delete` — with offline persistence the Task only completes on server ack, so awaiting hangs the UI offline. Reads that must work offline use `Source.CACHE` (which includes pending writes).
 - **Repository parity.** `InMemoryTripRepository` and `FirestoreTripRepository` implement the same interface and must stay behaviorally equivalent (ordering, id generation on blank id, cascade delete of stops/expenses with the trip). A change to one usually needs the mirror change.
 - **Camping cost lives on the Stop** (`campingCostTotal`). The CAMPING expense type is only for extra fees not tied to a stay; `CostCalculator.breakdown` merges both. Don't introduce double-counting.

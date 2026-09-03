@@ -62,5 +62,39 @@ object DateCascade {
         return changed
     }
 
+    /**
+     * Pushes back every PLANNED stop that arrives before the stop in front of it leaves —
+     * nobody sleeps in two places on one night — and the rest of the plan with it, so the
+     * spacing behind it survives the way [shift] would have kept it. The repositories run
+     * this after every stop write, so no path can leave a plan overlapping itself. DONE
+     * stops are never rewritten and their planned departure binds nothing: a tour can
+     * leave a place early. SKIPPED stops sit outside the chain. Returns only the changed stops.
+     */
+    fun settle(stops: List<Stop>): List<Stop> {
+        val changed = mutableListOf<Stop>()
+        var leaves: LocalDate? = null
+        var carry = 0L
+        for (stop in stops.sortedBy { it.orderIndex }) {
+            when (stop.state) {
+                StopState.SKIPPED -> continue
+                StopState.DONE -> {
+                    leaves = null
+                    carry = 0
+                }
+                StopState.PLANNED -> {
+                    var arrival = stop.arrivalDate.plusDays(carry)
+                    val earliest = leaves
+                    if (earliest != null && arrival.isBefore(earliest)) {
+                        carry += ChronoUnit.DAYS.between(arrival, earliest)
+                        arrival = earliest
+                    }
+                    if (arrival != stop.arrivalDate) changed += stop.copy(arrivalDate = arrival)
+                    leaves = arrival.plusDays(stop.nights.toLong())
+                }
+            }
+        }
+        return changed
+    }
+
     private fun departure(stop: Stop): LocalDate = stop.arrivalDate.plusDays(stop.nights.toLong())
 }

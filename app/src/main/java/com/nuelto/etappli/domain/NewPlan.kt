@@ -21,7 +21,7 @@ object NewPlan {
         today: LocalDate = LocalDate.now(),
     ): String {
         val id = repository.upsertTrip(Trip(startDate = today, status = TripStatus.PLANNED))
-        HomeStop.forNewPlan(id, settings, today).forEach { repository.upsertStop(it) }
+        repository.upsertStops(HomeStop.forNewPlan(id, settings, today))
         return id
     }
 }
