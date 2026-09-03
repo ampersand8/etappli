@@ -139,6 +139,11 @@ class FormatTest {
     }
 
     @Test
+    fun `a drive with no road says so rather than showing zero`() {
+        assertEquals("No drivable route", formatDrive(leg(0, 0)))
+    }
+
+    @Test
     fun `the drive is distance and time only, never the climb`() {
         // Cumulative ascent beside a place name reads as the height of the place.
         assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 1450)))

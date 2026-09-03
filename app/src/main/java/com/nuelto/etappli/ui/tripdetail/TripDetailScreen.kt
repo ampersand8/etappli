@@ -861,8 +861,8 @@ private fun TimelineStopRow(
 }
 
 /**
- * How far and how long the drive to this stop is, as Google routed it. Absent until the
- * route has been fetched, and while a stop edit has outdated it.
+ * How far and how long the drive to this stop is, as Google routed it — or that there is
+ * none. Absent until the route has been fetched, and while a stop edit has outdated it.
  */
 @Composable
 private fun DriveLine(leg: StopLeg?) {

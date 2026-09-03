@@ -153,17 +153,109 @@ class RouteRefresherTest {
     }
 
     @Test
-    fun `a response with the wrong number of legs writes nothing`() = runTest {
+    fun `a response with the wrong number of legs writes nothing, and is not retried drive by drive`() = runTest {
         addStop("a", here, index = 0)
         addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
 
-        val result = refresher {
-            listOf(RoutedLeg(geometry, 1, 1), RoutedLeg(geometry, 2, 2))
-        }.refresh("t1", today)
+        val result = refresher { listOf(RoutedLeg(geometry, 1, 1)) }.refresh("t1", today)
 
         assertEquals(0, result.fetched)
         assertFalse(result.touched)
-        assertNull(stop("b").leg)
+        assertEquals(listOf(listOf(here, there, elsewhere)), windows)
+        assertTrue(repository.stops("t1").first().all { it.leg == null })
+    }
+
+    @Test
+    fun `a stop with no road to it gets a leg saying so, and the rest is routed drive by drive`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
+
+        val result = refresher { window ->
+            // Nothing drives through `there`, so only the drive that avoids it has a road.
+            if (window == listOf(there, elsewhere)) listOf(RoutedLeg(geometry, 9_000, 600)) else emptyList()
+        }.refresh("t1", today)
+
+        assertEquals(2, result.fetched)
+        assertEquals(
+            listOf(listOf(here, there, elsewhere), listOf(here, there), listOf(there, elsewhere)),
+            windows,
+        )
+        val none = stop("b").leg!!
+        assertFalse(none.hasRoad)
+        assertEquals(here, none.from)
+        assertEquals(there, none.to)
+        assertEquals(today, none.fetchedAt)
+        assertEquals(9_000, stop("c").leg!!.distanceMeters)
+    }
+
+    @Test
+    fun `a drive with no road is not asked about again`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1, leg = StopLeg(from = here, to = there, fetchedAt = today))
+
+        val result = refresher { error("asked again") }.refresh("t1", today)
+
+        assertFalse(result.touched)
+        assertTrue(windows.isEmpty())
+        assertFalse(stop("b").leg!!.hasRoad)
+    }
+
+    @Test
+    fun `a two-stop trip with no road is asked only once`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+
+        val result = refresher { emptyList() }.refresh("t1", today)
+
+        assertEquals(1, result.fetched)
+        assertEquals(listOf(listOf(here, there)), windows)
+        assertFalse(stop("b").leg!!.hasRoad)
+    }
+
+    @Test
+    fun `a drive that fails while asked on its own discards the whole chain`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
+
+        val result = refresher { window ->
+            if (window == listOf(here, there)) null else emptyList()
+        }.refresh("t1", today)
+
+        assertEquals(0, result.fetched)
+        assertEquals(listOf(listOf(here, there, elsewhere), listOf(here, there)), windows)
+        assertTrue(repository.stops("t1").first().all { it.leg == null })
+    }
+
+    @Test
+    fun `a drive answered with more than one leg on its own writes nothing`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
+
+        val result = refresher { window ->
+            if (window.size == 3) emptyList() else listOf(RoutedLeg(geometry, 1, 1), RoutedLeg(geometry, 2, 2))
+        }.refresh("t1", today)
+
+        assertEquals(0, result.fetched)
+        assertTrue(repository.stops("t1").first().all { it.leg == null })
+    }
+
+    @Test
+    fun `a drive that has lost its road does not keep the climb it had`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1, leg = leg(here, there, today).copy(ascentMeters = 300, descentMeters = 100))
+        // The new stop is what triggers the re-route; the answer says the old drive has no road now.
+        addStop("c", elsewhere, index = 2)
+
+        refresher { emptyList() }.refresh("t1", today)
+
+        val none = stop("b").leg!!
+        assertFalse(none.hasRoad)
+        assertNull(none.ascentMeters)
+        assertNull(none.descentMeters)
     }
 
     @Test

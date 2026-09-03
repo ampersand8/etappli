@@ -162,6 +162,18 @@ class FuelEstimatorTest {
     }
 
     @Test
+    fun `a drive with no road falls back to the road factor`() {
+        val a = LatLng(47.0, 8.0)
+        val b = LatLng(48.0, 8.0)
+        val stops = listOf(
+            Stop(id = "a", location = a, orderIndex = 0),
+            Stop(id = "b", location = b, orderIndex = 1, leg = routeLeg(a, b, 0)),
+        )
+        val settings = UserSettings(roadDistanceFactor = 1.25)
+        assertEquals(GeoUtils.haversineKm(a, b) * 1.25, FuelEstimator.defaultTripDistanceKm(stops, settings), 1e-9)
+    }
+
+    @Test
     fun `lifting one tonne 100 m burns about 86 millilitres`() {
         assertEquals(0.086, FuelEstimator.liftLiters(1000.0, 100.0), 5e-4)
         assertEquals(0.0, FuelEstimator.liftLiters(3500.0, 0.0), 1e-12)
