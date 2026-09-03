@@ -79,8 +79,9 @@ There is no lint/format tooling configured.
   ride boards, the vehicle is left there (`TransitRide.parked`; up to three rides back when
   no road reaches that either), the road legs run to and from that spot, and the ride sits
   on the leg either side of the drive (`StopLeg.rideAfter` up, the next leg's `rideBefore`
-  down) — dotted on the map, "122 km · 2 h + cable car 24 min" in the timeline, never in
-  the fuel. A stop no ride reaches either keeps a leg with **no distance**
+  down) — dotted on the map, an icon per vehicle with the minutes in the timeline
+  (`TravelMode`; `ui/components/TravelIcons.kt` hand-draws the cable car, which the icon
+  set lacks), never in the fuel. A stop no ride reaches either keeps a leg with **no distance**
   (`StopLeg.hasRoad` false): straight hop, road factor, "No drivable route", and nothing
   asks again for 30 days.
 - **"How far from here"**: on an ACTIVE trip the NowCard replaces the planned leg with a

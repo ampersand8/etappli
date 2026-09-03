@@ -66,6 +66,18 @@ data class StopElevation(val at: LatLng = LatLng(0.0, 0.0), val meters: Int = 0)
  */
 data class StopRegion(val at: LatLng = LatLng(0.0, 0.0), val name: String = "", val country: String = "")
 
+/** What you travel on — the icon beside a drive or a ride. */
+enum class TravelMode(val label: String) {
+    CAR("car"),
+    CABLE_CAR("cable car"),
+    FUNICULAR("funicular"),
+    FERRY("ferry"),
+    TRAM("tram"),
+    BUS("bus"),
+    TRAIN("train"),
+    TRANSIT("transit"),
+}
+
 /**
  * A ride on public transport between where the vehicle is left and a stop no road reaches
  * — the cable car up to a car-free village, the ferry to an island — as Google routed it
@@ -78,8 +90,8 @@ data class TransitRide(
     val polyline: String = "",
     val distanceMeters: Int = 0,
     val durationSeconds: Int = 0,
-    // What you board, in words: "cable car", "train + bus".
-    val mode: String = "",
+    // What you board, in riding order, each once: the cable car; the train, then the bus.
+    val modes: List<TravelMode> = emptyList(),
 )
 
 /**

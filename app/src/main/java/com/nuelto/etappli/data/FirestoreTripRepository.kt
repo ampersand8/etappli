@@ -15,6 +15,7 @@ import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopRegion
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.TransitRide
+import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
@@ -125,7 +126,7 @@ class FirestoreTripRepository(
         "polyline" to polyline,
         "distanceMeters" to distanceMeters,
         "durationSeconds" to durationSeconds,
-        "mode" to mode,
+        "modes" to modes.map { it.name },
     )
 
     /** No parking spot, no ride: without it the drive cannot be told where it ends. */
@@ -136,7 +137,9 @@ class FirestoreTripRepository(
             polyline = this["polyline"] as? String ?: "",
             distanceMeters = (this["distanceMeters"] as? Number)?.toInt() ?: 0,
             durationSeconds = (this["durationSeconds"] as? Number)?.toInt() ?: 0,
-            mode = this["mode"] as? String ?: "",
+            modes = (this["modes"] as? List<*>).orEmpty().mapNotNull { name ->
+                (name as? String)?.let { runCatching { TravelMode.valueOf(it) }.getOrNull() }
+            },
         )
     }
 

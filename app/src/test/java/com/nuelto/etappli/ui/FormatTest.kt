@@ -2,6 +2,7 @@ package com.nuelto.etappli.ui
 
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.TransitRide
+import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import java.time.LocalDate
@@ -133,29 +134,39 @@ class FormatTest {
     private fun leg(meters: Int, seconds: Int, ascent: Int? = null) =
         StopLeg(distanceMeters = meters, durationSeconds = seconds, ascentMeters = ascent)
 
+    private val car = listOf(TravelMode.CAR)
+
     @Test
-    fun `a drive joins distance and duration`() {
-        assertEquals("124 km · 1 h 45 min", formatDrive(leg(124_400, 6300)))
-        assertEquals("800 m · 12 min", formatDrive(leg(800, 700)))
+    fun `a drive is the car with distance and duration`() {
+        assertEquals(listOf(DrivePart(car, "124 km · 1 h 45 min")), driveParts(leg(124_400, 6300)))
+        assertEquals("800 m · 12 min", driveParts(leg(800, 700)).single().text)
     }
 
     @Test
     fun `a drive to a stop no road reaches ends with the ride, and the one back starts with it`() {
-        val ride = TransitRide(mode = "cable car", durationSeconds = 1_440)
-        assertEquals("124 km · 1 h 45 min + cable car 24 min", formatDrive(leg(124_400, 6300).copy(rideAfter = ride)))
-        assertEquals("cable car 24 min + 136 km · 2 h", formatDrive(leg(136_000, 7200).copy(rideBefore = ride)))
+        val ride = TransitRide(modes = listOf(TravelMode.CABLE_CAR), durationSeconds = 1_440)
+        val drive = DrivePart(car, "124 km · 1 h 45 min")
+        val up = DrivePart(listOf(TravelMode.CABLE_CAR), "24 min")
+        assertEquals(listOf(drive, up), driveParts(leg(124_400, 6300).copy(rideAfter = ride)))
+        assertEquals(listOf(up, drive), driveParts(leg(124_400, 6300).copy(rideBefore = ride)))
+    }
+
+    @Test
+    fun `a ride that does not say what it is on gets the generic icon`() {
+        val parts = driveParts(leg(1_000, 60).copy(rideAfter = TransitRide(durationSeconds = 600)))
+        assertEquals(DrivePart(listOf(TravelMode.TRANSIT), "10 min"), parts.last())
     }
 
     @Test
     fun `a drive with no road says so rather than showing zero`() {
-        assertEquals("No drivable route", formatDrive(leg(0, 0)))
+        assertEquals(listOf(DrivePart(car, "No drivable route")), driveParts(leg(0, 0)))
     }
 
     @Test
     fun `the drive is distance and time only, never the climb`() {
         // Cumulative ascent beside a place name reads as the height of the place.
-        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, 1450)))
-        assertEquals("10 km · 12 min", formatDrive(leg(10_000, 700, null)))
+        assertEquals("10 km · 12 min", driveParts(leg(10_000, 700, 1450)).single().text)
+        assertEquals("10 km · 12 min", driveParts(leg(10_000, 700, null)).single().text)
     }
     private val midday = LocalDateTime.of(2026, 9, 1, 15, 47)
     private val evening = LocalDateTime.of(2026, 9, 1, 22, 30)
