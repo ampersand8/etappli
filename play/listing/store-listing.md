@@ -54,7 +54,7 @@ travel, camping, road trip, trip planner, expenses
 
 ## Contact details
 
-- Email: <CONTACT EMAIL — required, shown publicly on the listing>
+- Email: etappli@nuelto.com
 - Website: https://github.com/ampersand8/etappli (optional)
 - Privacy policy: https://github.com/ampersand8/etappli/blob/main/PRIVACY.md
 
