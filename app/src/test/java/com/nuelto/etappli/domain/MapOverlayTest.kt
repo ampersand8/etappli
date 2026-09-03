@@ -5,9 +5,11 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.StopState
+import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -221,6 +223,45 @@ class MapOverlayTest {
                 MapOverlay.routes(data(TripStatus.DONE, listOf(a, b))).single().points,
             )
         }
+    }
+
+    @Test
+    fun `a ride to a stop no road reaches is a dotted line of its own, from where the vehicle is left`() {
+        val a = stop("a", 0)
+        val parked = LatLng(46.5, 7.5)
+        val pin = LatLng(47.0, 8.0)
+        val up = TransitRide(parked = parked, polyline = Polyline.encode(listOf(parked, pin)))
+        // The road runs a → parked; the ride carries on to b's pin. A ride with no line to draw is left out.
+        val b = stop("b", 1).copy(
+            leg = StopLeg(
+                from = a.location!!, to = pin, distanceMeters = 1,
+                polyline = Polyline.encode(listOf(a.location!!, parked)),
+                rideBefore = TransitRide(polyline = ""), rideAfter = up,
+            ),
+        )
+        val routes = MapOverlay.routes(data(TripStatus.PLANNED, listOf(a, b)))
+        assertEquals(listOf(false, true), routes.map { it.ride })
+        assertEquals(listOf(LatLng(46.0, 7.0), parked), routes[0].points)
+        assertEquals(listOf(parked, pin), routes[1].points)
+        assertEquals(MapAccent.PLANNED, routes[1].accent)
+        assertFalse(routes[1].dashed)
+    }
+
+    @Test
+    fun `on an active trip a ride takes the colour of its section`() {
+        val a = stop("a", 0, state = StopState.DONE)
+        val parked = LatLng(46.5, 7.5)
+        val pin = LatLng(47.0, 8.0)
+        val b = stop("b", 1).copy(
+            leg = StopLeg(
+                from = a.location!!, to = pin, distanceMeters = 1,
+                polyline = Polyline.encode(listOf(a.location!!, parked)),
+                rideAfter = TransitRide(parked = parked, polyline = Polyline.encode(listOf(parked, pin))),
+            ),
+        )
+        val routes = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(a, b), currentStopId = "b"))
+        assertEquals(listOf(MapAccent.CURRENT, MapAccent.CURRENT), routes.map { it.accent })
+        assertEquals(listOf(false, true), routes.map { it.ride })
     }
 
     @Test

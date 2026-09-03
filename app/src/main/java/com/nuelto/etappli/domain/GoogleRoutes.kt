@@ -14,6 +14,17 @@ data class RoutedLeg(
     val durationSeconds: Int,
 )
 
+/** One step of a transit route: a walk, or a ride on one vehicle from where it is boarded. */
+data class TransitStep(
+    val polyline: String,
+    val distanceMeters: Int,
+    val durationSeconds: Int,
+    // Google's vehicle type ("GONDOLA_LIFT"); null for a walk.
+    val vehicle: String? = null,
+    // Where the ride is boarded — where a vehicle could be left. Null for a walk.
+    val departure: LatLng? = null,
+)
+
 /**
  * Google Routes API (computeRoutes): the road-following geometry, distance and driving
  * time between stops. Pure request building and lenient parsing; the HTTP call is
@@ -33,6 +44,13 @@ object GoogleRoutes {
      */
     const val FIELD_MASK = "routes.legs.distanceMeters,routes.legs.duration," +
         "routes.legs.polyline.encodedPolyline"
+
+    /** Per step: the way, the numbers, where each ride boards and on what. */
+    const val TRANSIT_FIELD_MASK = "routes.legs.steps.travelMode," +
+        "routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.distanceMeters," +
+        "routes.legs.steps.staticDuration," +
+        "routes.legs.steps.transitDetails.stopDetails.departureStop.location," +
+        "routes.legs.steps.transitDetails.transitLine.vehicle.type"
 
     /**
      * Origin, destination and at most 10 intermediates. Eleven intermediates is one of
@@ -80,6 +98,14 @@ object GoogleRoutes {
             "\"polylineQuality\":\"HIGH_QUALITY\"}"
     }
 
+    /**
+     * Public transport from [from] to [to]: how a stop no road reaches is still reached
+     * (ParkAndRide). No intermediates and no routing preference — the mode allows neither.
+     */
+    fun transitBody(from: LatLng, to: LatLng): String =
+        "{\"origin\":${waypoint(from)},\"destination\":${waypoint(to)}," +
+            "\"travelMode\":\"TRANSIT\",\"polylineQuality\":\"HIGH_QUALITY\"}"
+
     private fun waypoint(point: LatLng): String =
         "{\"location\":{\"latLng\":{\"latitude\":${point.latitude}," +
             "\"longitude\":${point.longitude}}}}"
@@ -90,14 +116,11 @@ object GoogleRoutes {
      * silently shifting every leg onto the wrong stop.
      */
     fun parseLegs(body: String): List<RoutedLeg> {
-        val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject
-        val routes = root?.get("routes") as? JsonArray ?: return emptyList()
-        val legs = (routes.firstOrNull() as? JsonObject)?.get("legs") as? JsonArray
-            ?: return emptyList()
+        val legs = firstRouteLegs(body) ?: return emptyList()
         return legs.map { element ->
             val leg = element as? JsonObject ?: return emptyList()
             RoutedLeg(
-                polyline = (leg["polyline"] as? JsonObject)?.string("encodedPolyline").orEmpty(),
+                polyline = leg.obj("polyline")?.string("encodedPolyline").orEmpty(),
                 // Proto3 JSON omits zero-valued fields, so a zero-length leg arrives
                 // with neither number present.
                 distanceMeters = leg.int("distanceMeters") ?: 0,
@@ -106,13 +129,54 @@ object GoogleRoutes {
         }
     }
 
+    /**
+     * The steps of a transit route — walks and rides, in order. Such a route has one leg,
+     * the mode allowing no intermediates. As with [parseLegs], one malformed step discards
+     * the whole response.
+     */
+    fun parseTransitSteps(body: String): List<TransitStep> {
+        val leg = firstRouteLegs(body)?.firstOrNull() as? JsonObject ?: return emptyList()
+        val steps = leg["steps"] as? JsonArray ?: return emptyList()
+        return steps.map { element ->
+            val step = element as? JsonObject ?: return emptyList()
+            val details = step.obj("transitDetails")
+            val ride = step.string("travelMode") == "TRANSIT"
+            TransitStep(
+                polyline = step.obj("polyline")?.string("encodedPolyline").orEmpty(),
+                distanceMeters = step.int("distanceMeters") ?: 0,
+                durationSeconds = step.string("staticDuration")?.let(::parseDuration) ?: 0,
+                // A ride is a ride even when Google does not say on what.
+                vehicle = if (ride) (details?.obj("transitLine")?.obj("vehicle")?.string("type") ?: "OTHER") else null,
+                departure = details?.obj("stopDetails")?.obj("departureStop")?.obj("location")?.latLng(),
+            )
+        }
+    }
+
     /** Durations are protobuf strings — seconds with optional fraction, then "s". */
     fun parseDuration(text: String): Int? =
         text.removeSuffix("s").toDoubleOrNull()?.roundToInt()
+
+    private fun firstRouteLegs(body: String): JsonArray? {
+        val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject
+        val routes = root?.get("routes") as? JsonArray ?: return null
+        return (routes.firstOrNull() as? JsonObject)?.get("legs") as? JsonArray
+    }
+
+    private fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
 
     private fun JsonObject.string(key: String): String? =
         (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
     private fun JsonObject.int(key: String): Int? =
         (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toIntOrNull()
+
+    private fun JsonObject.double(key: String): Double? =
+        (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()
+
+    private fun JsonObject.latLng(): LatLng? {
+        val latLng = obj("latLng") ?: return null
+        val lat = latLng.double("latitude") ?: return null
+        val lng = latLng.double("longitude") ?: return null
+        return LatLng(lat, lng)
+    }
 }

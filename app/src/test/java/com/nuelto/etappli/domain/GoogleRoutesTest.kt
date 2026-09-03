@@ -182,6 +182,81 @@ class GoogleRoutesTest {
         assertTrue(GoogleRoutes.parseLegs("").isEmpty())
     }
 
+    // --- transit ------------------------------------------------------------
+
+    @Test
+    fun `a transit request is origin and destination only, with no routing preference`() {
+        val body = GoogleRoutes.transitBody(LatLng(46.0, 7.0), LatLng(47.0, 8.0))
+        assertEquals(
+            """{"origin":${waypoint(46.0, 7.0)},"destination":${waypoint(47.0, 8.0)},""" +
+                """"travelMode":"TRANSIT","polylineQuality":"HIGH_QUALITY"}""",
+            body,
+        )
+        assertFalse("routingPreference" in body)
+        assertFalse("intermediates" in body)
+    }
+
+    @Test
+    fun `the transit mask asks per step for the way, the boarding point and the vehicle`() {
+        val fields = GoogleRoutes.TRANSIT_FIELD_MASK.split(",")
+        assertTrue(fields.all { it.startsWith("routes.legs.steps.") })
+        assertTrue("routes.legs.steps.transitDetails.stopDetails.departureStop.location" in fields)
+        assertTrue("routes.legs.steps.transitDetails.transitLine.vehicle.type" in fields)
+        assertTrue("routes.legs.steps.polyline.encodedPolyline" in fields)
+        assertTrue("routes.legs.steps.staticDuration" in fields)
+        assertTrue("routes.legs.steps.travelMode" in fields)
+    }
+
+    private fun transitResponse(vararg steps: String) =
+        """{"routes":[{"legs":[{"steps":[${steps.joinToString(",")}]}]}]}"""
+
+    private val walk =
+        """{"travelMode":"WALK","distanceMeters":120,"staticDuration":"90s","polyline":{"encodedPolyline":"abc"}}"""
+
+    private val gondola =
+        """{"travelMode":"TRANSIT","distanceMeters":2572,"staticDuration":"720s","polyline":{"encodedPolyline":"def"},""" +
+            """"transitDetails":{"stopDetails":{"departureStop":{"location":{"latLng":{"latitude":46.356603,"longitude":8.046011}}}},""" +
+            """"transitLine":{"vehicle":{"type":"GONDOLA_LIFT"}}}}"""
+
+    @Test
+    fun `transit steps come back in order, walks without a vehicle and rides with where they board`() {
+        val steps = GoogleRoutes.parseTransitSteps(transitResponse(walk, gondola, walk))
+        assertEquals(3, steps.size)
+        assertEquals(TransitStep("abc", 120, 90), steps[0])
+        assertEquals(TransitStep("def", 2572, 720, "GONDOLA_LIFT", LatLng(46.356603, 8.046011)), steps[1])
+        assertEquals(steps[0], steps[2])
+    }
+
+    @Test
+    fun `a ride that says neither what nor where is still a ride, just not one to park for`() {
+        val bare = TransitStep("", 0, 0, "OTHER", null)
+        assertEquals(listOf(bare), GoogleRoutes.parseTransitSteps(transitResponse("""{"travelMode":"TRANSIT"}""")))
+        listOf(
+            """{"latLng":{"latitude":"46.3","longitude":8.0}}""",
+            """{"latLng":{"latitude":46.3}}""",
+            """{"latLng":[]}""",
+        ).forEach { location ->
+            assertEquals(
+                listOf(bare),
+                GoogleRoutes.parseTransitSteps(
+                    transitResponse(
+                        """{"travelMode":"TRANSIT","transitDetails":{"stopDetails":{"departureStop":{"location":$location}}}}""",
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `one malformed step or nothing routable is no transit route`() {
+        assertTrue(GoogleRoutes.parseTransitSteps(transitResponse(walk, "42")).isEmpty())
+        assertTrue(GoogleRoutes.parseTransitSteps("""{"routes":[{"legs":[{}]}]}""").isEmpty())
+        assertTrue(GoogleRoutes.parseTransitSteps("""{"routes":[{"legs":[{"steps":{}}]}]}""").isEmpty())
+        assertTrue(GoogleRoutes.parseTransitSteps("""{"routes":[{"legs":[]}]}""").isEmpty())
+        assertTrue(GoogleRoutes.parseTransitSteps("""{"routes":[{"legs":[42]}]}""").isEmpty())
+        assertTrue(GoogleRoutes.parseTransitSteps("{}").isEmpty())
+    }
+
     // --- durations ----------------------------------------------------------
 
     @Test

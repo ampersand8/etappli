@@ -1,6 +1,7 @@
 package com.nuelto.etappli.ui
 
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import java.text.NumberFormat
@@ -49,12 +50,20 @@ fun formatDuration(seconds: Int): String {
 /**
  * The drive that arrives at a stop: "124 km · 1 h 45 min". Deliberately not the leg's
  * climb — cumulative ascent next to a place name reads as the height of the place, which
- * is a different number and the one people actually want. Says so when there is no road:
- * the map draws a straight hop there, and this is the only place that explains why.
+ * is a different number and the one people actually want. A ride either side of the road
+ * is spelled out ("+ cable car 24 min"), and when there is no way at all it says so: the
+ * map draws a straight hop there, and this is the only place that explains why.
  */
 fun formatDrive(leg: StopLeg): String =
     if (!leg.hasRoad) "No drivable route"
-    else "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"
+    else listOfNotNull(
+        leg.rideBefore?.let(::formatRide),
+        "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}",
+        leg.rideAfter?.let(::formatRide),
+    ).joinToString(" + ")
+
+/** A ride to a stop no road reaches: "cable car 24 min". */
+fun formatRide(ride: TransitRide): String = "${ride.mode} ${formatDuration(ride.durationSeconds)}"
 
 private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 

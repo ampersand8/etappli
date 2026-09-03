@@ -30,14 +30,17 @@ class RouteRefresherTest {
     private val repository = InMemoryTripRepository(seed = false)
     private val windows = mutableListOf<List<LatLng>>()
     private val sampled = mutableListOf<List<LatLng>>()
+    private val transitAsks = mutableListOf<Pair<LatLng, LatLng>>()
 
     private fun refresher(
         heights: suspend (List<LatLng>) -> List<Double>? = { null },
+        transit: suspend (LatLng, LatLng) -> List<TransitStep>? = { _, _ -> emptyList() },
         route: suspend (List<LatLng>) -> List<RoutedLeg>?,
     ) = RouteRefresher(
         repository,
         { points -> windows += points; route(points) },
         { points -> sampled += points; heights(points) },
+        { from, to -> transitAsks += from to to; transit(from, to) },
     )
 
     private suspend fun addStop(
@@ -241,6 +244,134 @@ class RouteRefresherTest {
 
         assertEquals(0, result.fetched)
         assertTrue(repository.stops("t1").first().all { it.leg == null })
+    }
+
+    // --- park and ride --------------------------------------------------------
+
+    private val valley = LatLng(46.3566, 8.046)
+    private val town = LatLng(46.32, 7.99)
+
+    /** Home to Riederalp by public transport: a train from town, then the cable car from the valley. */
+    private val toRiederalp = listOf(
+        TransitStep("", 100, 80),
+        TransitStep(geometry, 100_000, 3_600, "LONG_DISTANCE_TRAIN", town),
+        TransitStep("", 50, 40),
+        TransitStep(geometry, 2_572, 720, "GONDOLA_LIFT", valley),
+        TransitStep(geometry, 300, 240),
+    )
+
+    /** Drives as Google answers them: one leg for each listed window, no road for anything else. */
+    private fun roads(vararg legs: Pair<List<LatLng>, Int>): suspend (List<LatLng>) -> List<RoutedLeg>? =
+        { window -> legs.firstOrNull { it.first == window }?.let { listOf(RoutedLeg(geometry, it.second, 600)) } ?: emptyList() }
+
+    @Test
+    fun `a stop no road reaches is driven to as far as the road goes, then ridden to`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
+
+        val result = refresher(
+            transit = { _, _ -> toRiederalp },
+            route = roads(listOf(here, valley) to 120_000, listOf(valley, elsewhere) to 136_000),
+        ).refresh("t1", today)
+
+        assertEquals(2, result.fetched)
+        assertEquals(listOf(here to there), transitAsks)
+        assertEquals(
+            listOf(listOf(here, there, elsewhere), listOf(here, there), listOf(here, valley), listOf(valley, elsewhere)),
+            windows,
+        )
+        val up = stop("b").leg!!
+        assertTrue(up.hasRoad)
+        assertEquals(here, up.from)
+        assertEquals(there, up.to)
+        assertEquals(120_000, up.distanceMeters)
+        assertNull(up.rideBefore)
+        val ride = up.rideAfter!!
+        assertEquals(valley, ride.parked)
+        assertEquals("cable car", ride.mode)
+        assertEquals(960, ride.durationSeconds)
+        assertEquals(2_872, ride.distanceMeters)
+        // The next drive sets out from where the vehicle was left, after the ride back down.
+        val down = stop("c").leg!!
+        assertEquals(there, down.from)
+        assertEquals(136_000, down.distanceMeters)
+        assertEquals(ride, down.rideBefore)
+        assertNull(down.rideAfter)
+    }
+
+    @Test
+    fun `when no road reaches the last ride's boarding point either, the vehicle is left one ride earlier`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+
+        refresher(transit = { _, _ -> toRiederalp }, route = roads(listOf(here, town) to 100_000)).refresh("t1", today)
+
+        val ride = stop("b").leg!!.rideAfter!!
+        assertEquals(town, ride.parked)
+        assertEquals("train + cable car", ride.mode)
+        assertEquals(listOf(listOf(here, there), listOf(here, valley), listOf(here, town)), windows)
+    }
+
+    @Test
+    fun `a stop no ride reaches either is out of reach, after three tries at most`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        val rides = List(5) { TransitStep(geometry, 1_000, 600, "BUS", LatLng(47.0 + it, 9.0)) }
+
+        val result = refresher(transit = { _, _ -> rides }) { emptyList() }.refresh("t1", today)
+
+        assertEquals(1, result.fetched)
+        assertFalse(stop("b").leg!!.hasRoad)
+        assertNull(stop("b").leg!!.rideAfter)
+        // The stop itself, then the three boarding points nearest it.
+        assertEquals(listOf(there, LatLng(51.0, 9.0), LatLng(50.0, 9.0), LatLng(49.0, 9.0)), windows.map { it.last() })
+    }
+
+    @Test
+    fun `a transit lookup that fails discards the whole chain`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+        addStop("c", elsewhere, index = 2)
+
+        val result = refresher(transit = { _, _ -> null }, route = roads(listOf(there, elsewhere) to 9_000))
+            .refresh("t1", today)
+
+        assertEquals(0, result.fetched)
+        assertTrue(repository.stops("t1").first().all { it.leg == null })
+    }
+
+    @Test
+    fun `a drive to a parking spot that fails discards the whole chain`() = runTest {
+        addStop("a", here, index = 0)
+        addStop("b", there, index = 1)
+
+        val result = refresher(transit = { _, _ -> toRiederalp }) { window ->
+            if (window == listOf(here, valley)) null else emptyList()
+        }.refresh("t1", today)
+
+        assertEquals(0, result.fetched)
+        assertNull(stop("b").leg)
+    }
+
+    @Test
+    fun `a window after a stop no road reaches is not asked for whole, and sets out from the vehicle`() = runTest {
+        // Twelve stops fill the first window; the twelfth has no road, so the second would start there.
+        repeat(13) { addStop("s$it", LatLng(46.0 + it, 8.0), index = it) }
+        val offRoad = LatLng(57.0, 8.0)
+        val parked = LatLng(56.9, 8.0)
+        val steps = listOf(TransitStep(geometry, 1_000, 600, "FUNICULAR", parked))
+
+        val result = refresher(transit = { _, _ -> steps }) { window ->
+            if (offRoad in window) emptyList() else window.zipWithNext().map { RoutedLeg(geometry, 1, 1) }
+        }.refresh("t1", today)
+
+        assertEquals(12, result.fetched)
+        assertEquals(listOf(LatLng(56.0, 8.0) to offRoad), transitAsks)
+        assertFalse(listOf(offRoad, LatLng(58.0, 8.0)) in windows)
+        assertTrue(listOf(parked, LatLng(58.0, 8.0)) in windows)
+        assertEquals(parked, stop("s11").leg!!.rideAfter!!.parked)
+        assertEquals(stop("s11").leg!!.rideAfter, stop("s12").leg!!.rideBefore)
     }
 
     @Test

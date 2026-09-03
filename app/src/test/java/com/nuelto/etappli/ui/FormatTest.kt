@@ -1,6 +1,7 @@
 package com.nuelto.etappli.ui
 
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import java.time.LocalDate
@@ -136,6 +137,13 @@ class FormatTest {
     fun `a drive joins distance and duration`() {
         assertEquals("124 km · 1 h 45 min", formatDrive(leg(124_400, 6300)))
         assertEquals("800 m · 12 min", formatDrive(leg(800, 700)))
+    }
+
+    @Test
+    fun `a drive to a stop no road reaches ends with the ride, and the one back starts with it`() {
+        val ride = TransitRide(mode = "cable car", durationSeconds = 1_440)
+        assertEquals("124 km · 1 h 45 min + cable car 24 min", formatDrive(leg(124_400, 6300).copy(rideAfter = ride)))
+        assertEquals("cable car 24 min + 136 km · 2 h", formatDrive(leg(136_000, 7200).copy(rideBefore = ride)))
     }
 
     @Test

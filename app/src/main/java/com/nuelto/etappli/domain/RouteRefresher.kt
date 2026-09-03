@@ -5,6 +5,7 @@ import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TransitRide
 import java.time.LocalDate
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,9 @@ class RouteRefresher(
     // Null-returning by default: elevation is a second, optional service, and a leg
     // without a climb figure still draws and still costs.
     private val heights: suspend (points: List<LatLng>) -> List<Double>? = { null },
+    // Public transport to a stop no road reaches (ParkAndRide). Empty by default: without
+    // it such a stop is simply out of reach.
+    private val transit: suspend (from: LatLng, to: LatLng) -> List<TransitStep>? = { _, _ -> emptyList() },
 ) {
 
     suspend fun refresh(tripId: String, today: LocalDate = LocalDate.now()): Result {
@@ -50,20 +54,22 @@ class RouteRefresher(
 
         var fetched = 0
         drives.forEachIndexed { index, (from, to) ->
-            // Null where there is no road: written all the same, as a leg with no distance.
+            // No drive where there is no road: written all the same, as a leg with no distance.
             val routed = legs[index]
-            val climb = routed?.let { climb(it.polyline) }
+            val climb = routed.drive?.let { climb(it.polyline) }
             val leg = StopLeg(
                 // The coordinates the route was actually computed between. A stop edited
                 // while the request was in flight must invalidate this leg on the next
                 // pass, not quietly adopt it.
                 from = from.location!!,
                 to = to.location!!,
-                polyline = routed?.polyline.orEmpty(),
-                distanceMeters = routed?.distanceMeters ?: 0,
-                durationSeconds = routed?.durationSeconds ?: 0,
+                polyline = routed.drive?.polyline.orEmpty(),
+                distanceMeters = routed.drive?.distanceMeters ?: 0,
+                durationSeconds = routed.drive?.durationSeconds ?: 0,
                 ascentMeters = climb?.ascentMeters?.roundToInt(),
                 descentMeters = climb?.descentMeters?.roundToInt(),
+                rideBefore = routed.rideBefore,
+                rideAfter = routed.rideAfter,
                 fetchedAt = today,
             )
             if (write(tripId, to.id) { it.copy(leg = leg.keepingClimbOf(it.leg)) }) fetched++
@@ -126,29 +132,60 @@ class RouteRefresher(
         return true
     }
 
+    /** One drive as fetched: the road, and the rides either side of it; no road at all when [drive] is null. */
+    private class Routed(
+        val drive: RoutedLeg?,
+        val rideBefore: TransitRide? = null,
+        val rideAfter: TransitRide? = null,
+    )
+
     /**
-     * One entry per drive, null where Google found no road. A stop it cannot drive to —
-     * Riederalp is car-free — empties the whole window's answer, so such a window is then
-     * asked drive by drive to keep the roads the other drives do have. Null altogether on
-     * the first call that fails, so a half-routed trip is never written.
+     * One entry per drive. A stop Google cannot drive to — Riederalp is car-free — empties
+     * the whole window's answer, so such a window is then asked drive by drive, and the
+     * drive that has no road goes [ParkAndRide]. Null altogether on the first call that
+     * fails, so a half-routed trip is never written.
      */
-    private suspend fun fetchAll(points: List<LatLng>): List<RoutedLeg?>? {
-        val legs = mutableListOf<RoutedLeg?>()
+    private suspend fun fetchAll(points: List<LatLng>): List<Routed>? {
+        val legs = mutableListOf<Routed>()
+        // The ride up to the stop before, when no road reached it: the next drive sets out
+        // from where the vehicle was left, not from the stop.
+        var parked: TransitRide? = null
         GoogleRoutes.windows(points).forEach { window ->
-            val fetched = route(window) ?: return null
+            // Not worth asking for whole when it would set out from a stop no road reaches.
+            val fetched = if (parked == null) route(window) ?: return null else null
             when {
-                fetched.size == window.size - 1 -> legs += fetched
+                fetched != null && fetched.size == window.size - 1 -> legs += fetched.map { Routed(it) }
                 // One leg per pair, or the response cannot be lined up with the stops.
-                fetched.isNotEmpty() -> return null
+                fetched != null && fetched.isNotEmpty() -> return null
                 else -> window.zipWithNext().forEach { (from, to) ->
+                    val origin = parked?.parked ?: from
                     // A two-point window already was that one drive: no need to ask twice.
-                    val pair = if (window.size == 2) fetched else (route(listOf(from, to)) ?: return null)
-                    if (pair.size > 1) return null
-                    legs += pair.firstOrNull()
+                    val direct = fetched?.takeIf { window.size == 2 }
+                        ?: (route(listOf(origin, to)) ?: return null)
+                    if (direct.size > 1) return null
+                    val routed = direct.firstOrNull()?.let { Routed(it, rideBefore = parked) }
+                        ?: parkAndRide(origin, to, rideBefore = parked)
+                        ?: return null
+                    legs += routed
+                    parked = routed.rideAfter
                 }
             }
         }
         return legs
+    }
+
+    /**
+     * The drive to a stop no road reaches: by road to where its last ride boards, then the
+     * ride — or one ride further back when no road reaches that either. Null when a call
+     * failed; a [Routed] with no drive when there is no way at all.
+     */
+    private suspend fun parkAndRide(origin: LatLng, to: LatLng, rideBefore: TransitRide?): Routed? {
+        val steps = transit(origin, to) ?: return null
+        ParkAndRide.candidates(steps).forEach { candidate ->
+            val drive = route(listOf(origin, candidate.parked)) ?: return null
+            drive.singleOrNull()?.let { return Routed(it, rideBefore, ParkAndRide.ride(candidate)) }
+        }
+        return Routed(null, rideBefore)
     }
 
     private suspend fun climb(polyline: String): Climb? {

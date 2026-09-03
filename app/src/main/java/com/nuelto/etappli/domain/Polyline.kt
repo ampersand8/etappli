@@ -1,9 +1,10 @@
 package com.nuelto.etappli.domain
 
 import com.nuelto.etappli.data.model.LatLng
+import kotlin.math.roundToInt
 
 /**
- * Google's encoded polyline algorithm, decode half. Hand-rolled rather than pulled in
+ * Google's encoded polyline algorithm. Hand-rolled rather than pulled in
  * with `android-maps-utils`, which is not a dependency and whose `PolyUtil` would drag
  * the decode out of `domain/` — where it is covered and mutation-tested — into the
  * Android-only half of the app.
@@ -26,6 +27,30 @@ object Polyline {
             points += LatLng(lat / PRECISION, lng / PRECISION)
         }
         return points
+    }
+
+    /** The inverse of [decode], for joining several of Google's lines into one (ParkAndRide). */
+    fun encode(points: List<LatLng>): String = buildString {
+        var lat = 0
+        var lng = 0
+        points.forEach { point ->
+            val nextLat = (point.latitude * PRECISION).roundToInt()
+            val nextLng = (point.longitude * PRECISION).roundToInt()
+            chunk(nextLat - lat)
+            chunk(nextLng - lng)
+            lat = nextLat
+            lng = nextLng
+        }
+    }
+
+    /** One zig-zag-encoded delta, five bits a character, the continuation bit on all but the last. */
+    private fun StringBuilder.chunk(delta: Int) {
+        var value = if (delta < 0) (delta shl 1).inv() else delta shl 1
+        while (value >= 0x20) {
+            append(((0x20 or (value and 0x1f)) + 63).toChar())
+            value = value shr 5
+        }
+        append((value + 63).toChar())
     }
 
     /** One zig-zag-encoded delta at a time, so latitude and longitude share the reader. */

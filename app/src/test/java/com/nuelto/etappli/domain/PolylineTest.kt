@@ -25,6 +25,20 @@ class PolylineTest {
     }
 
     @Test
+    fun `google's worked example encodes back to its string, and a line survives the round trip`() {
+        val points = listOf(LatLng(38.5, -120.2), LatLng(40.7, -120.95), LatLng(43.252, -126.453))
+        assertEquals("_p~iF~ps|U_ulLnnqC_mqNvxq`@", Polyline.encode(points))
+        assertEquals("_ibE~hbE", Polyline.encode(listOf(LatLng(1.0, -1.0))))
+        // A delta of exactly one continuation chunk's worth still needs its second character.
+        assertEquals("_@?", Polyline.encode(listOf(LatLng(0.00016, 0.0))))
+        assertPoint(0.00016, 0.0, Polyline.decode("_@?").single())
+        assertEquals("", Polyline.encode(emptyList()))
+        val back = Polyline.decode(Polyline.encode(points))
+        assertEquals(3, back.size)
+        back.forEachIndexed { index, point -> assertPoint(points[index].latitude, points[index].longitude, point) }
+    }
+
+    @Test
     fun `an empty string decodes to no points`() {
         assertEquals(emptyList<LatLng>(), Polyline.decode(""))
     }

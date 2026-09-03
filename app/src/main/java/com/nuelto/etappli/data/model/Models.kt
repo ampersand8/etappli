@@ -67,6 +67,22 @@ data class StopElevation(val at: LatLng = LatLng(0.0, 0.0), val meters: Int = 0)
 data class StopRegion(val at: LatLng = LatLng(0.0, 0.0), val name: String = "", val country: String = "")
 
 /**
+ * A ride on public transport between where the vehicle is left and a stop no road reaches
+ * — the cable car up to a car-free village, the ferry to an island — as Google routed it
+ * (domain/ParkAndRide). Lives on the leg either side of the drive: see [StopLeg].
+ */
+data class TransitRide(
+    // Where the vehicle waits: the valley station, the ferry port — the end of the road.
+    val parked: LatLng = LatLng(0.0, 0.0),
+    // Encoded polyline from [parked] up to the stop, rides and walks together.
+    val polyline: String = "",
+    val distanceMeters: Int = 0,
+    val durationSeconds: Int = 0,
+    // What you board, in words: "cable car", "train + bus".
+    val mode: String = "",
+)
+
+/**
  * The drive from the previous stop, as Google routed it. [from]/[to] are the stop
  * coordinates the route was computed between, so a reorder or a moved pin invalidates
  * the leg by simple comparison rather than by hoping something remembered to clear it.
@@ -79,8 +95,8 @@ data class StopLeg(
     val to: LatLng = LatLng(0.0, 0.0),
     // Encoded polyline, decoded for drawing by domain/Polyline.
     val polyline: String = "",
-    // Zero when Google found no drivable road between the two (a car-free village) — an
-    // answer worth keeping too, so the same drive is not asked about again for 30 days.
+    // Zero when no road reaches the stop and no ride does either — an answer worth
+    // keeping too, so the same drive is not asked about again for 30 days.
     val distanceMeters: Int = 0,
     val durationSeconds: Int = 0,
     // Cumulative climb along the leg, from an open DEM — null until it is fetched, and
@@ -88,9 +104,14 @@ data class StopLeg(
     // its Elevation API forbids storing results at all.
     val ascentMeters: Int? = null,
     val descentMeters: Int? = null,
+    // Rides either side of the drive where a stop has no road (domain/ParkAndRide): down
+    // from the stop before to where the vehicle was left, and up from where it is left to
+    // this one. The road then runs between the parking spots; [from]/[to] stay the stops'.
+    val rideBefore: TransitRide? = null,
+    val rideAfter: TransitRide? = null,
     val fetchedAt: LocalDate = LocalDate.now(),
 ) {
-    /** False for a drive Google could not route: the map keeps its straight hop. */
+    /** False for a drive Google could route neither by road nor by ride: a straight hop. */
     val hasRoad: Boolean get() = distanceMeters > 0
 }
 
