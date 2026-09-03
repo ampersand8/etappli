@@ -2,6 +2,7 @@ package com.nuelto.etappli.domain
 
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.TransitRide
+import com.nuelto.etappli.data.model.TravelMode
 
 /**
  * Drive as far as the road goes, then ride: how a stop no road reaches — Riederalp, up its
@@ -29,23 +30,23 @@ object ParkAndRide {
             .take(MAX_ATTEMPTS)
             .map { Candidate(steps[it].departure!!, steps.subList(it, steps.size)) }
 
-    /** The rest of the way as one ride: joined geometry, summed numbers, the vehicles in words. */
+    /** The rest of the way as one ride: joined geometry, summed numbers, the vehicles boarded. */
     fun ride(candidate: Candidate): TransitRide = TransitRide(
         parked = candidate.parked,
         polyline = Polyline.encode(candidate.steps.flatMap { Polyline.decode(it.polyline) }),
         distanceMeters = candidate.steps.sumOf { it.distanceMeters },
         durationSeconds = candidate.steps.sumOf { it.durationSeconds },
-        mode = candidate.steps.mapNotNull { it.vehicle }.map(::vehicleName).distinct().joinToString(" + "),
+        modes = candidate.steps.mapNotNull { it.vehicle }.map(::mode).distinct(),
     )
 
-    /** Google's vehicle types in plain words. */
-    fun vehicleName(type: String): String = when {
-        type == "GONDOLA_LIFT" || type == "CABLE_CAR" -> "cable car"
-        type == "FUNICULAR" -> "funicular"
-        type == "FERRY" -> "ferry"
-        type == "TRAM" -> "tram"
-        "BUS" in type || type == "SHARE_TAXI" -> "bus"
-        "RAIL" in type || "TRAIN" in type || type == "SUBWAY" -> "train"
-        else -> "transit"
+    /** Google's vehicle types as what you board. */
+    fun mode(type: String): TravelMode = when {
+        type == "GONDOLA_LIFT" || type == "CABLE_CAR" -> TravelMode.CABLE_CAR
+        type == "FUNICULAR" -> TravelMode.FUNICULAR
+        type == "FERRY" -> TravelMode.FERRY
+        type == "TRAM" -> TravelMode.TRAM
+        "BUS" in type || type == "SHARE_TAXI" -> TravelMode.BUS
+        "RAIL" in type || "TRAIN" in type || type == "SUBWAY" -> TravelMode.TRAIN
+        else -> TravelMode.TRANSIT
     }
 }

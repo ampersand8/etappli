@@ -2,6 +2,7 @@ package com.nuelto.etappli.ui
 
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.TransitRide
+import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import java.text.NumberFormat
@@ -47,23 +48,29 @@ fun formatDuration(seconds: Int): String {
     }
 }
 
-/**
- * The drive that arrives at a stop: "124 km · 1 h 45 min". Deliberately not the leg's
- * climb — cumulative ascent next to a place name reads as the height of the place, which
- * is a different number and the one people actually want. A ride either side of the road
- * is spelled out ("+ cable car 24 min"), and when there is no way at all it says so: the
- * map draws a straight hop there, and this is the only place that explains why.
- */
-fun formatDrive(leg: StopLeg): String =
-    if (!leg.hasRoad) "No drivable route"
-    else listOfNotNull(
-        leg.rideBefore?.let(::formatRide),
-        "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}",
-        leg.rideAfter?.let(::formatRide),
-    ).joinToString(" + ")
+/** One piece of the line under a stop: what you are on, and how far or how long. */
+data class DrivePart(val modes: List<TravelMode>, val text: String)
 
-/** A ride to a stop no road reaches: "cable car 24 min". */
-fun formatRide(ride: TransitRide): String = "${ride.mode} ${formatDuration(ride.durationSeconds)}"
+/**
+ * The drive that arrives at a stop, piece by piece: the car with "124 km · 1 h 45 min",
+ * and a ride either side of the road with its minutes. Deliberately not the leg's climb —
+ * cumulative ascent next to a place name reads as the height of the place, which is a
+ * different number and the one people actually want. When there is no way at all it says
+ * so: the map draws a straight hop there, and this is the only place that explains why.
+ */
+fun driveParts(leg: StopLeg): List<DrivePart> {
+    val car = listOf(TravelMode.CAR)
+    if (!leg.hasRoad) return listOf(DrivePart(car, "No drivable route"))
+    return listOfNotNull(
+        leg.rideBefore?.let(::ridePart),
+        DrivePart(car, "${formatDistance(leg.distanceMeters)} · ${formatDuration(leg.durationSeconds)}"),
+        leg.rideAfter?.let(::ridePart),
+    )
+}
+
+/** A ride that does not say what it is on still gets an icon: the generic one. */
+private fun ridePart(ride: TransitRide) =
+    DrivePart(ride.modes.ifEmpty { listOf(TravelMode.TRANSIT) }, formatDuration(ride.durationSeconds))
 
 private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 

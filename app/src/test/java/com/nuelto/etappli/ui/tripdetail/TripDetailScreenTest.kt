@@ -40,6 +40,8 @@ import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TransitRide
+import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
@@ -689,8 +691,30 @@ class TripDetailScreenTest {
             )
         }
         setContent("p1")
-        compose.onNodeWithTag("timeline").performScrollToNode(hasText("\u2192 124 km \u00b7 1 h 45 min"))
-        compose.onNodeWithText("\u2192 124 km \u00b7 1 h 45 min", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("124 km \u00b7 1 h 45 min"))
+        compose.onNodeWithText("124 km \u00b7 1 h 45 min", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("car", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a stop reached by cable car shows the ride with its icon`() {
+        seedPlan()
+        runBlocking {
+            val s2 = tripRepository.stops("p1").first().first { it.id == "s2" }
+            tripRepository.upsertStop(
+                s2.copy(
+                    leg = StopLeg(
+                        from = LatLng(47.05, 8.31), to = LatLng(46.16, 8.79),
+                        distanceMeters = 124_000, durationSeconds = 6_300,
+                        rideAfter = TransitRide(modes = listOf(TravelMode.CABLE_CAR), durationSeconds = 1_440),
+                    ),
+                ),
+            )
+        }
+        setContent("p1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("24 min"))
+        compose.onNodeWithText("24 min", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("cable car", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -698,7 +722,7 @@ class TripDetailScreenTest {
         seedPlan()
         setContent("p1")
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camping Delta"))
-        compose.onAllNodes(hasText("\u2192", substring = true)).assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("car", useUnmergedTree = true).assertCountEquals(0)
     }
     @Test
     fun `a stop shows how high it sits`() {

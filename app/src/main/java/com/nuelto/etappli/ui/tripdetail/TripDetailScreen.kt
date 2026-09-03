@@ -125,7 +125,8 @@ import com.nuelto.etappli.ui.components.rememberReorderState
 import com.nuelto.etappli.ui.components.reorderable
 import com.nuelto.etappli.ui.formatCurrency
 import com.nuelto.etappli.ui.formatDate
-import com.nuelto.etappli.ui.formatDrive
+import com.nuelto.etappli.ui.driveParts
+import com.nuelto.etappli.ui.components.modeIcon
 import com.nuelto.etappli.ui.tripedit.displayName
 import com.nuelto.etappli.ui.formatTripDates
 import com.nuelto.etappli.ui.map.TripMap
@@ -862,16 +863,23 @@ private fun TimelineStopRow(
 
 /**
  * How far and how long the drive to this stop is, as Google routed it — or that there is
- * none. Absent until the route has been fetched, and while a stop edit has outdated it.
+ * none — with an icon for what you are on: the car, and a ride's vehicle either side of
+ * it. Absent until the route has been fetched, and while a stop edit has outdated it.
  */
 @Composable
 private fun DriveLine(leg: StopLeg?) {
     if (leg == null) return
-    Text(
-        "\u2192 ${formatDrive(leg)}",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        driveParts(leg).forEach { part ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                part.modes.forEach { mode ->
+                    Icon(modeIcon(mode), contentDescription = mode.label, modifier = Modifier.size(14.dp), tint = color)
+                }
+                Text(part.text, style = MaterialTheme.typography.labelSmall, color = color)
+            }
+        }
+    }
 }
 
 /**

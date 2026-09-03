@@ -5,6 +5,7 @@ import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopElevation
 import com.nuelto.etappli.data.model.StopLeg
+import com.nuelto.etappli.data.model.TravelMode
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
@@ -289,7 +290,7 @@ class RouteRefresherTest {
         assertNull(up.rideBefore)
         val ride = up.rideAfter!!
         assertEquals(valley, ride.parked)
-        assertEquals("cable car", ride.mode)
+        assertEquals(listOf(TravelMode.CABLE_CAR), ride.modes)
         assertEquals(960, ride.durationSeconds)
         assertEquals(2_872, ride.distanceMeters)
         // The next drive sets out from where the vehicle was left, after the ride back down.
@@ -309,7 +310,7 @@ class RouteRefresherTest {
 
         val ride = stop("b").leg!!.rideAfter!!
         assertEquals(town, ride.parked)
-        assertEquals("train + cable car", ride.mode)
+        assertEquals(listOf(TravelMode.TRAIN, TravelMode.CABLE_CAR), ride.modes)
         assertEquals(listOf(listOf(here, there), listOf(here, valley), listOf(here, town)), windows)
     }
 
