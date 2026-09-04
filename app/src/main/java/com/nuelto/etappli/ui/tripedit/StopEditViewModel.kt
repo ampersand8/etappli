@@ -152,12 +152,13 @@ class StopEditViewModel(
         }
     }
 
-    /** A place shared into the app: what the map picker delivers, minus the Places clock. */
+    /** A place shared into the app: what the map picker delivers — minus the Places clock,
+     *  unless the coordinate had to be looked up there because the link only named the place. */
     private fun applyShared() {
         val name = route.placeName.orEmpty()
         val at = if (route.lat != null && route.lon != null) LatLng(route.lat, route.lon) else null
         if (at != null) {
-            return setPickedLocation(at, name, "", route.placeId.orEmpty(), fromPlaces = false)
+            return setPickedLocation(at, name, "", route.placeId.orEmpty(), fromPlaces = route.fromPlaces)
         }
         // No coordinate, but a place id can still fetch one: PlaceCacheSweeper picks up a
         // stop that has an id and nowhere to be.

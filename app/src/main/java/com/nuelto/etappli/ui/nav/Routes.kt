@@ -28,6 +28,9 @@ data class StopEditRoute(
     // Sharing a place says you are not standing at it: no GPS fix on top, even when the
     // share turned out to carry neither a name nor a coordinate.
     val fromShare: Boolean = false,
+    // The shared coordinate was looked up on the Places API, not lifted from the link, so
+    // it carries the §14.3 clock like a picked place (SharedPlace.fromPlaces).
+    val fromPlaces: Boolean = false,
 )
 
 /**

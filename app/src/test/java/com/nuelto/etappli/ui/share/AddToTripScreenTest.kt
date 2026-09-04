@@ -12,7 +12,9 @@ import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.domain.PlaceSuggestion
 import com.nuelto.etappli.domain.SharedPlace
+import com.nuelto.etappli.testutil.FakePlaceSearch
 import com.nuelto.etappli.testutil.FakeShareLinkResolver
 import com.nuelto.etappli.testutil.TestCamperApp
 import java.time.LocalDate
@@ -20,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +37,7 @@ class AddToTripScreenTest {
 
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val resolver = FakeShareLinkResolver()
+    private val search = FakePlaceSearch()
     private var cancelled = 0
     private val added = mutableListOf<Pair<String, SharedPlace>>()
 
@@ -42,7 +46,9 @@ class AddToTripScreenTest {
             AddToTripScreen(
                 onCancel = { cancelled++ },
                 onAddTo = { tripId, shared -> added += tripId to shared },
-                viewModel = AddToTripViewModel(place, tripRepository, InMemorySettingsRepository(), resolver::expand),
+                viewModel = AddToTripViewModel(
+                    place, tripRepository, InMemorySettingsRepository(), resolver::expand, search::find,
+                ),
             )
         }
     }
@@ -84,6 +90,23 @@ class AddToTripScreenTest {
         seedTrips()
         setContent(SharedPlace(name = "Camping Delta"))
         compose.onNodeWithText("No spot in that link — pick the place on the map after.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a name with no spot is looked up, and the trips wait for the answer`() {
+        seedTrips()
+        search.gated = true
+        search.found = listOf(PlaceSuggestion("Zielhaus am Klausenpass", "Spiringen", LatLng(46.8695, 8.8543), "ChIJz"))
+        setContent(SharedPlace("Zielhaus am Klausenpass"))
+        compose.onNodeWithText("Finding the place on Google Maps…").assertIsDisplayed()
+        compose.onNodeWithText("Ticino").assertIsNotEnabled()
+
+        search.gates.single().complete(Unit)
+        compose.onNodeWithText("Pin from Google Maps.").assertIsDisplayed()
+        compose.onNodeWithText("Ticino").performClick()
+        val filed = added.single().second
+        assertEquals(LatLng(46.8695, 8.8543), filed.location)
+        assertTrue(filed.fromPlaces)
     }
 
     @Test

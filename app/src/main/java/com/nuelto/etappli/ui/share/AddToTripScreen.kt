@@ -78,7 +78,7 @@ fun AddToTripScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (state.expanding) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (state.expandFailed) {
                         TextButton(onClick = viewModel::expand) { Text("Try again") }
                     }
@@ -92,9 +92,9 @@ fun AddToTripScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                // Not while the link is still being followed: choosing now would file the
-                // stop without the coordinate that is one redirect away.
-                val ready = !state.expanding
+                // Not while the link is still being followed or the place looked up: choosing
+                // now would file the stop without the coordinate that is one call away.
+                val ready = !state.busy
                 tripSection("On the road", TripStatus.ACTIVE, state.active, ready) { onAddTo(it, state.place) }
                 tripSection("Planned tours", TripStatus.PLANNED, state.planned, ready) { onAddTo(it, state.place) }
                 tripSection("Done", TripStatus.DONE, state.done, ready) { onAddTo(it, state.place) }
@@ -125,6 +125,7 @@ fun AddToTripScreen(
 /** What we know about the place, in the order that matters to somebody about to camp. */
 private fun status(state: AddToTripUiState): String = when {
     state.expanding -> "Opening the Google Maps link…"
+    state.locating -> "Finding the place on Google Maps…"
     state.expandFailed -> "Couldn't open that link. Check your connection."
     state.place.approximate -> "Approximate spot — check the pin on the map after."
     state.place.location != null -> "Pin from Google Maps."
