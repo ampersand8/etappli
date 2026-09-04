@@ -207,6 +207,7 @@ private fun NavController.addToTrip(tripId: String, place: SharedPlace) {
             placeName = place.name.ifBlank { null },
             placeId = place.placeId.ifBlank { null },
             fromShare = true,
+            fromPlaces = place.fromPlaces,
         ),
     )
 }

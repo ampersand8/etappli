@@ -6,7 +6,9 @@ import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
+import com.nuelto.etappli.domain.PlaceSuggestion
 import com.nuelto.etappli.domain.SharedPlace
+import com.nuelto.etappli.testutil.FakePlaceSearch
 import com.nuelto.etappli.testutil.FakeShareLinkResolver
 import com.nuelto.etappli.testutil.GatedSettingsRepository
 import com.nuelto.etappli.testutil.MainDispatcherRule
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -28,9 +31,12 @@ class AddToTripViewModelTest {
     private val tripRepository = InMemoryTripRepository(seed = false)
     private val settingsRepository = InMemorySettingsRepository()
     private val resolver = FakeShareLinkResolver()
+    private val search = FakePlaceSearch()
 
     private fun viewModel(place: SharedPlace) =
-        AddToTripViewModel(place, tripRepository, settingsRepository, resolver::expand)
+        AddToTripViewModel(place, tripRepository, settingsRepository, resolver::expand, search::find)
+
+    private val zielhaus = PlaceSuggestion("Zielhaus am Klausenpass", "Spiringen", LatLng(46.8695, 8.8543), "ChIJz")
 
     private suspend fun trip(name: String, status: TripStatus, start: LocalDate = LocalDate.of(2026, 6, 1)) {
         tripRepository.upsertTrip(Trip(id = name, name = name, startDate = start, status = status))
@@ -55,8 +61,106 @@ class AddToTripViewModelTest {
     fun `a share that already has a coordinate never touches the network`() {
         val vm = viewModel(SharedPlace("Camping X", LatLng(46.5, 8.3)))
         assertEquals(emptyList<String>(), resolver.requests)
-        assertFalse(vm.uiState.value.expanding)
+        assertTrue(search.finds.isEmpty())
+        assertFalse(vm.uiState.value.busy)
         assertEquals("Camping X", vm.uiState.value.title)
+    }
+
+    // --- a name and no spot: the Maps app's links carry only an ftid ----------------------
+
+    @Test
+    fun `a name with no spot is looked up near home, and the one hit is the place`() = runTest {
+        settingsRepository.update(UserSettings(homeName = "Luzern", homeLocation = LatLng(47.05, 8.31)))
+        search.gated = true
+        search.found = listOf(zielhaus)
+        val vm = viewModel(SharedPlace("Zielhaus am Klausenpass"))
+
+        assertTrue(vm.uiState.value.locating)
+        assertTrue(vm.uiState.value.busy)
+        assertFalse(vm.uiState.value.expanding)
+        assertEquals(listOf("Zielhaus am Klausenpass" to LatLng(47.05, 8.31)), search.finds)
+
+        search.gates.single().complete(Unit)
+        val state = vm.uiState.value
+        assertEquals(LatLng(46.8695, 8.8543), state.place.location)
+        assertEquals("ChIJz", state.place.placeId)
+        assertEquals("Zielhaus am Klausenpass", state.place.name)
+        assertTrue(state.place.fromPlaces)
+        assertFalse(state.locating)
+        assertFalse(state.expandFailed)
+    }
+
+    @Test
+    fun `a link that only names the place is followed, then looked up`() {
+        resolver.result = "https://www.google.com/maps/place/Zielhaus+am+Klausenpass/" +
+            "data=!4m2!3m1!1s0x479a:0x6a7b?utm_source=mstt_1&entry=gps"
+        search.found = listOf(zielhaus)
+        val vm = viewModel(SharedPlace(link = "https://maps.app.goo.gl/x1"))
+        assertEquals(listOf("Zielhaus am Klausenpass" to null), search.finds)
+        assertEquals(LatLng(46.8695, 8.8543), vm.uiState.value.place.location)
+        assertEquals("", vm.uiState.value.place.link)
+        assertFalse(vm.uiState.value.busy)
+    }
+
+    @Test
+    fun `without a place search a name stays unpinned, and nothing is tried or reported`() {
+        val vm = AddToTripViewModel(SharedPlace("Zielhaus am Klausenpass"), tripRepository, settingsRepository)
+        assertNull(vm.uiState.value.place.location)
+        assertFalse(vm.uiState.value.busy)
+        assertFalse(vm.uiState.value.expandFailed)
+        vm.expand()
+        assertFalse(vm.uiState.value.busy)
+    }
+
+    @Test
+    fun `a link that could not be followed is not looked up yet`() {
+        viewModel(SharedPlace("Zielhaus am Klausenpass", link = "https://maps.app.goo.gl/x1"))
+        assertTrue(search.finds.isEmpty())
+    }
+
+    @Test
+    fun `several hits pin nothing, and a pinned share or one with an id asks for none`() {
+        search.found = listOf(zielhaus, zielhaus.copy(id = "ChIJother"))
+        val vm = viewModel(SharedPlace("Camping Seeblick"))
+        assertNull(vm.uiState.value.place.location)
+        assertFalse(vm.uiState.value.place.fromPlaces)
+        assertFalse(vm.uiState.value.expandFailed)
+        assertEquals(1, search.finds.size)
+
+        viewModel(SharedPlace("Camping X", LatLng(46.5, 8.3)))
+        viewModel(SharedPlace("Camping X", placeId = "ChIJ1"))
+        assertEquals(1, search.finds.size)
+    }
+
+    @Test
+    fun `a lookup that did not come back can be tried again`() {
+        search.found = null
+        val vm = viewModel(SharedPlace("Zielhaus am Klausenpass"))
+        assertTrue(vm.uiState.value.expandFailed)
+        assertFalse(vm.uiState.value.locating)
+
+        search.found = listOf(zielhaus)
+        search.gated = true
+        vm.expand()
+        assertTrue(vm.uiState.value.locating)
+        assertFalse(vm.uiState.value.expandFailed)
+        search.gates.single().complete(Unit)
+        assertFalse(vm.uiState.value.expandFailed)
+        assertEquals(LatLng(46.8695, 8.8543), vm.uiState.value.place.location)
+        assertEquals(2, search.finds.size)
+
+        // Pinned: nothing left to look up.
+        vm.expand()
+        assertEquals(2, search.finds.size)
+    }
+
+    @Test
+    fun `an approximate pin is looked up near itself and made exact`() {
+        search.found = listOf(PlaceSuggestion("Titisee", "", LatLng(47.8918, 8.1454), "ChIJt"))
+        val vm = viewModel(SharedPlace("Titisee", LatLng(47.89, 8.14), approximate = true))
+        assertEquals(listOf("Titisee" to LatLng(47.89, 8.14)), search.finds)
+        assertEquals(LatLng(47.8918, 8.1454), vm.uiState.value.place.location)
+        assertFalse(vm.uiState.value.place.approximate)
     }
 
     @Test

@@ -16,10 +16,17 @@ import com.nuelto.etappli.AppContainer
 import com.nuelto.etappli.data.InMemorySettingsRepository
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.LatLng
+import com.nuelto.etappli.domain.PlaceSearch
+import com.nuelto.etappli.domain.PlaceSuggestion
 import com.nuelto.etappli.domain.SharedPlace
+import com.nuelto.etappli.testutil.FakePlaceSearch
 import com.nuelto.etappli.testutil.TestCamperApp
 import com.nuelto.etappli.ui.map.LocalMapProvider
+import com.nuelto.etappli.ui.map.MapProvider
 import com.nuelto.etappli.ui.map.PlaceholderMapProvider
+import java.time.LocalDate
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -211,6 +218,32 @@ class AppNavHostTest {
         // Saving lands on that trip's timeline, with the stop on it.
         compose.onNodeWithText("Camping Kirnbergsee").assertIsDisplayed()
         compose.onAllNodesWithText("Camping Grimselblick")[0].assertIsDisplayed()
+    }
+
+    @Test
+    fun `a share that only names the place is looked up, and saved with the pin it found`() {
+        // What the Maps app's link comes down to: a name, an ftid, and no coordinate.
+        val search = FakePlaceSearch().apply {
+            found = listOf(PlaceSuggestion("Zielhaus am Klausenpass", "Spiringen", LatLng(46.8695, 8.8543), "ChIJz"))
+        }
+        val repository = InMemoryTripRepository()
+        ApplicationProvider.getApplicationContext<TestCamperApp>().container = AppContainer(
+            null, repository, InMemorySettingsRepository(),
+            mapProvider = object : MapProvider by PlaceholderMapProvider {
+                override fun placeSearch(): PlaceSearch = search
+            },
+        )
+        setContent(SharedPlace("Zielhaus am Klausenpass"))
+        compose.onNodeWithText("Pin from Google Maps.").assertIsDisplayed()
+        compose.onNodeWithText("Schwarzwald").performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
+
+        // Located, so the route and the height can be fetched for it — and on the Places clock.
+        val stop = runBlocking { repository.stops("demo-blackforest").first() }
+            .single { it.name == "Zielhaus am Klausenpass" }
+        assertEquals(LatLng(46.8695, 8.8543), stop.location)
+        assertEquals("ChIJz", stop.placeId)
+        assertEquals(LocalDate.now(), stop.locationCachedAt)
     }
 
     @Test

@@ -20,7 +20,28 @@ data class SharedPlace(
     val link: String = "",
     /** The coordinate is where the map camera sat, not the place — it can be kilometres out. */
     val approximate: Boolean = false,
+    /** The coordinate was looked up on the Places API rather than lifted from the link, so
+     *  the §14.3 clock applies to it like to a picked place. */
+    val fromPlaces: Boolean = false,
 ) {
+    /**
+     * A name and nowhere to put it — the Maps app's links carry only an ftid, which nothing
+     * turns into a coordinate — or a pin that is only the map camera. Not while a link is
+     * still to be followed, and not for a place id, which fetches its own coordinate
+     * ([PlaceCacheSweeper]).
+     */
+    val needsLookup: Boolean
+        get() = link.isBlank() && name.isNotBlank() && placeId.isBlank() && (location == null || approximate)
+
+    /**
+     * Folds in the one place Text Search found for [name] ([PlaceSearch.find], the way the
+     * picker opens a submitted name). Unchanged for no hit, or one with no coordinate.
+     */
+    fun locatedBy(hit: PlaceSuggestion?): SharedPlace {
+        val at = hit?.location ?: return this
+        return copy(location = at, placeId = hit.id.ifBlank { placeId }, approximate = false, fromPlaces = true)
+    }
+
     /**
      * Folds in what following [link] produced. Returns this unchanged — [link] included, so
      * the fetch can be retried — when the redirect was unreachable or named nowhere.

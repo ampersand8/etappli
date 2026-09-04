@@ -267,13 +267,18 @@ MVVM + repository, hand-rolled DI — no Hilt, no Room. Package root:
   `approximate`; a place id is kept **only** from `query_place_id` (never an ftid or cid —
   a wrong one would have PlaceCacheSweeper delete the pin 30 days on); redirects are
   followed only for four allowlisted short-link hosts, by `location/ShareLinkResolver`
-  (one HEAD, redirects off). `MainActivity` offers the result to `domain/ShareIntake` on
-  the container — not to the Activity, since in Firebase mode the share must outlive the
-  sign-in screen — and `AppNavHost` routes it **once** into `AddToTripRoute`, after which
-  it rides the back stack. `ui/share/AddToTripScreen` picks the trip; that opens
-  `StopEditRoute` with the place args over a pushed `TripDetailRoute`, so Save lands on
-  the timeline. A shared coordinate **never** gets `locationCachedAt`: it came from a
-  link, not from the Places API, so no §14.3 clock applies to it.
+  (one HEAD, redirects off). **The Maps app's links name the place and pin nothing** (an
+  ftid only, which nothing turns into a coordinate), so the chooser looks such a share up
+  by name — `AddToTripViewModel` via Text Search (`PlaceSearch.find`), one hit or nothing,
+  biased to the approximate pin or home. That coordinate *is* from the Places API, so
+  `SharedPlace.fromPlaces` rides into `StopEditRoute` and starts the §14.3 clock; without
+  it the stop has no location and so no route. `MainActivity` offers the result to
+  `domain/ShareIntake` on the container — not to the Activity, since in Firebase mode the
+  share must outlive the sign-in screen — and `AppNavHost` routes it **once** into
+  `AddToTripRoute`, after which it rides the back stack. `ui/share/AddToTripScreen` picks
+  the trip; that opens `StopEditRoute` with the place args over a pushed `TripDetailRoute`,
+  so Save lands on the timeline. A coordinate lifted from the link itself **never** gets
+  `locationCachedAt`: it did not come from the Places API, so no §14.3 clock applies to it.
 - **Navigation** (`ui/nav/`): type-safe kotlinx-serialization routes. The location picker
   returns its result through the **previous** back-stack entry's `SavedStateHandle` under
   `PICKED_LOCATION_KEY` (a `DoubleArray`); `AppNavHost` observes it and feeds

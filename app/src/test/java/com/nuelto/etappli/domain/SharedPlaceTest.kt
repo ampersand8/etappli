@@ -285,6 +285,48 @@ class SharedPlaceTest {
     }
 
     @Test
+    fun `the Maps app's link names the place and pins nothing, so the name is looked up`() {
+        val redirect = "https://www.google.com/maps/place/Zielhaus+am+Klausenpass/" +
+            "data=!4m2!3m1!1s0x479a7a1b2c3d4e5f:0x6a7b8c9d0e1f2a3b?utm_source=mstt_1&entry=gps&g_ep=CAESBzI"
+        val expanded = parse("https://maps.app.goo.gl/aBcD1234")!!.expandedWith(redirect)
+        assertEquals("Zielhaus am Klausenpass", expanded.name)
+        assertNull(expanded.location)
+        assertEquals("", expanded.placeId)
+        assertEquals("", expanded.link)
+        assertTrue(expanded.needsLookup)
+    }
+
+    @Test
+    fun `only a name with no spot, or an approximate one, needs looking up`() {
+        assertTrue(SharedPlace("Zielhaus am Klausenpass").needsLookup)
+        assertTrue(SharedPlace("Titisee", LatLng(47.89, 8.14), approximate = true).needsLookup)
+        assertFalse(SharedPlace("Titisee", LatLng(47.89, 8.14)).needsLookup)
+        // Not before the link has been followed; a place id fetches its own coordinate.
+        assertFalse(SharedPlace("Camping X", link = "https://maps.app.goo.gl/x1").needsLookup)
+        assertFalse(SharedPlace("Camping X", placeId = "ChIJCyinolJ-hUcR").needsLookup)
+        assertFalse(SharedPlace(location = LatLng(46.5, 8.3), approximate = true).needsLookup)
+        assertFalse(SharedPlace().needsLookup)
+    }
+
+    @Test
+    fun `the one place found for the name becomes the pin, on the Places clock`() {
+        val shared = SharedPlace("Titisee", LatLng(47.89, 8.14), approximate = true)
+        val located = shared.locatedBy(PlaceSuggestion("Titisee", "Baden-Württemberg", LatLng(47.8918, 8.1454), "ChIJ1"))
+        assertEquals("Titisee", located.name)
+        assertEquals(LatLng(47.8918, 8.1454), located.location)
+        assertEquals("ChIJ1", located.placeId)
+        assertFalse(located.approximate)
+        assertTrue(located.fromPlaces)
+        assertFalse(located.needsLookup)
+        // No hit, or one that has no coordinate, changes nothing.
+        assertEquals(shared, shared.locatedBy(null))
+        assertEquals(shared, shared.locatedBy(PlaceSuggestion("Titisee", "")))
+        // A hit without an id keeps the one the share had.
+        val byId = SharedPlace("X", placeId = "ChIJ2").locatedBy(PlaceSuggestion("X", "", LatLng(1.0, 2.0)))
+        assertEquals("ChIJ2", byId.placeId)
+    }
+
+    @Test
     fun `expanding a link folds the redirect in and keeps the name`() {
         val short = parse("Camping Grimselblick\nhttps://maps.app.goo.gl/aBcD1234")!!
         val expanded = short.expandedWith(

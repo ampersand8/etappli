@@ -48,6 +48,7 @@ class StopEditViewModelTest {
         lon: Double? = 8.332,
         placeName: String? = "Camping Grimselblick",
         placeId: String? = "ChIJCyinolJ-hUcR",
+        fromPlaces: Boolean = false,
     ) = StopEditViewModel(
         SavedStateHandle(
             mapOf(
@@ -57,6 +58,7 @@ class StopEditViewModelTest {
                 "placeName" to placeName,
                 "placeId" to placeId,
                 "fromShare" to true,
+                "fromPlaces" to fromPlaces,
             ),
         ),
         tripRepository,
@@ -614,6 +616,14 @@ class StopEditViewModelTest {
         assertNull(state.locationCachedAt)
         // Somewhere to be already: no unasked-for GPS fix on top of it.
         assertFalse(state.autoLocatePending)
+    }
+
+    @Test
+    fun `a shared place that had to be looked up on Google carries the Places clock`() {
+        val state = sharedViewModel(fromPlaces = true).uiState.value
+        assertEquals(LatLng(46.5601, 8.332), state.location)
+        assertEquals("ChIJCyinolJ-hUcR", state.placeId)
+        assertEquals(LocalDate.now(), state.locationCachedAt)
     }
 
     @Test
