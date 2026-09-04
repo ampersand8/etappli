@@ -282,4 +282,58 @@ class GooglePlacesTest {
         assertEquals(emptyList<String>(), GooglePlaces.preferredTypes(StopKind.HOME))
     }
 
+
+    // --- the search as submitted (Text Search) --------------------------------
+
+    @Test
+    fun `a submitted search asks for a page of located places around the map centre`() {
+        assertEquals(
+            """{"textQuery":"camping","pageSize":20,""" +
+                """"locationBias":{"circle":{"center":{"latitude":46.95,"longitude":7.45},""" +
+                """"radius":50000.0}}}""",
+            GooglePlaces.searchBody("camping", LatLng(46.95, 7.45)),
+        )
+        assertEquals(
+            """{"textQuery":"say \"hi\"","pageSize":20}""",
+            GooglePlaces.searchBody("say \"hi\"", near = null),
+        )
+    }
+
+    @Test
+    fun `found places come back located, in Google's order, with nothing more`() {
+        val found = GooglePlaces.parseSearch(
+            response(place(id = "a", name = "Camping Alpenblick"), place(id = "b", name = "Camping Manor Farm")),
+        )
+        assertEquals(listOf("Camping Alpenblick", "Camping Manor Farm"), found.map { it.name })
+        assertEquals(LatLng(46.1712, 8.7936), found.first().location)
+        assertEquals("a", found.first().id)
+        assertEquals("Via Respini 7, 6600 Locarno, Switzerland", found.first().label)
+        assertNull(found.first().details)
+    }
+
+    @Test
+    fun `a found place without a coordinate is no pin`() {
+        val found = GooglePlaces.parseSearch(response(place(id = "a", location = null), place(id = "b")))
+        assertEquals(listOf("b"), found.map { it.id })
+    }
+
+    @Test
+    fun `at most twenty pins, and none from an error body or junk`() {
+        val many = response(*Array(21) { place(id = "p$it") })
+        assertEquals(20, GooglePlaces.parseSearch(many).size)
+        assertTrue(GooglePlaces.parseSearch("""{"error":{"message":"nope"}}""").isEmpty())
+        assertTrue(GooglePlaces.parseSearch("not json").isEmpty())
+        assertTrue(GooglePlaces.parseSearch("""{"places":"x"}""").isEmpty())
+        assertTrue(GooglePlaces.parseSearch("""{"places":[]}""").isEmpty())
+    }
+
+    @Test
+    fun `the search field mask stays in the tier a pin needs`() {
+        val fields = GooglePlaces.SEARCH_FIELD_MASK.split(",")
+        assertEquals(
+            listOf("places.id", "places.displayName", "places.formattedAddress", "places.location"),
+            fields,
+        )
+        assertEquals("https://places.googleapis.com/v1/places:searchText", GooglePlaces.SEARCH_URL)
+    }
 }

@@ -50,6 +50,13 @@ interface PlaceSearch {
     suspend fun search(query: String, near: LatLng?, prefer: StopKind?): List<PlaceSuggestion>?
 
     /**
+     * A search as submitted rather than typed: everything matching [query], each with a
+     * coordinate, so the hits can be pins. A kind of place ("camping") gives many around
+     * [near]; a name gives the one. Null when the lookup failed; empty = no matches.
+     */
+    suspend fun find(query: String, near: LatLng?): List<PlaceSuggestion>?
+
+    /**
      * Fills in the coordinate of a hit that came back without one. A provider whose
      * search already returns coordinates just hands the hit straight back.
      */

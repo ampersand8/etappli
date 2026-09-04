@@ -30,6 +30,11 @@ class LocationPickerViewModelTest {
     private val lauterbrunnen =
         PlaceSuggestion("Lauterbrunnen", "Bern, Switzerland", LatLng(46.5939043, 7.9078016))
 
+    private val alpenblick =
+        PlaceSuggestion("Camping Alpenblick", "Unterseen", LatLng(46.68, 7.83), "ChIJa")
+    private val manorFarm =
+        PlaceSuggestion("Camping Manor Farm", "Unterseen", LatLng(46.69, 7.82), "ChIJb")
+
     private fun viewModel() = LocationPickerViewModel(search)
 
     @Test
@@ -43,7 +48,7 @@ class LocationPickerViewModelTest {
 
         advanceTimeBy(2)
         assertEquals(listOf("Lauter" to bern), search.requests)
-        assertEquals("Lauterbrunnen", vm.uiState.value.results.single().name)
+        assertEquals("Lauterbrunnen", vm.uiState.value.predictions.single().name)
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
         assertEquals("Lauter", vm.uiState.value.query)
     }
@@ -65,12 +70,12 @@ class LocationPickerViewModelTest {
         val vm = viewModel()
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
-        assertEquals(1, vm.uiState.value.results.size)
+        assertEquals(1, vm.uiState.value.predictions.size)
 
         vm.setQuery("  La  ", bern)
         advanceTimeBy(1_000)
         assertEquals(1, search.requests.size)
-        assertTrue(vm.uiState.value.results.isEmpty())
+        assertTrue(vm.uiState.value.predictions.isEmpty())
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
     }
 
@@ -85,7 +90,7 @@ class LocationPickerViewModelTest {
         search.result = emptyList()
         search.gates.single().complete(Unit)
         assertEquals(PlaceSearchStatus.EMPTY, vm.uiState.value.status)
-        assertTrue(vm.uiState.value.results.isEmpty())
+        assertTrue(vm.uiState.value.predictions.isEmpty())
     }
 
     @Test
@@ -93,13 +98,13 @@ class LocationPickerViewModelTest {
         val vm = viewModel()
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
-        assertEquals(1, vm.uiState.value.results.size)
+        assertEquals(1, vm.uiState.value.predictions.size)
 
         search.result = null
         vm.setQuery("Grindelwald", bern)
         advanceTimeBy(301)
         assertEquals(PlaceSearchStatus.UNAVAILABLE, vm.uiState.value.status)
-        assertTrue(vm.uiState.value.results.isEmpty())
+        assertTrue(vm.uiState.value.predictions.isEmpty())
     }
 
     @Test
@@ -115,7 +120,7 @@ class LocationPickerViewModelTest {
         val vm = viewModel()
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
-        vm.select(vm.uiState.value.results.single())
+        vm.select(vm.uiState.value.predictions.single())
         assertEquals(lauterbrunnen, vm.uiState.value.selected)
 
         vm.setQuery("Grindelwald", bern)
@@ -128,7 +133,7 @@ class LocationPickerViewModelTest {
         val vm = viewModel()
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
-        vm.select(vm.uiState.value.results.single())
+        vm.select(vm.uiState.value.predictions.single())
         vm.setQuery("La", bern)
         assertNull(vm.uiState.value.selected)
     }
@@ -150,7 +155,7 @@ class LocationPickerViewModelTest {
         advanceTimeBy(1_000)
         assertEquals("Lauterbrunnen", vm.uiState.value.query)
         assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
-        assertTrue(vm.uiState.value.results.isEmpty())
+        assertTrue(vm.uiState.value.predictions.isEmpty())
     }
 
     @Test
@@ -162,7 +167,7 @@ class LocationPickerViewModelTest {
         vm.setQuery("grimsel", bern)
         advanceTimeBy(301)
 
-        vm.select(vm.uiState.value.results.single())
+        vm.select(vm.uiState.value.predictions.single())
         val selected = vm.uiState.value.selected!!
         assertEquals(LatLng(46.5606, 8.3376), selected.location)
         // The name the user picked from the list survives the lookup.
@@ -179,7 +184,7 @@ class LocationPickerViewModelTest {
         vm.setQuery("grimsel", bern)
         advanceTimeBy(301)
 
-        vm.select(vm.uiState.value.results.single())
+        vm.select(vm.uiState.value.predictions.single())
         assertNull(vm.uiState.value.selected?.location)
         assertEquals(PlaceSearchStatus.UNAVAILABLE, vm.uiState.value.status)
     }
@@ -272,7 +277,7 @@ class LocationPickerViewModelTest {
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
         assertNull(vm.uiState.value.selected)
-        assertEquals(1, vm.uiState.value.results.size)
+        assertEquals(1, vm.uiState.value.predictions.size)
     }
 
     @Test
@@ -321,13 +326,167 @@ class LocationPickerViewModelTest {
         val vm = viewModel()
         vm.setQuery("Lauter", bern)
         advanceTimeBy(301)
-        vm.select(vm.uiState.value.results.single())
+        vm.select(vm.uiState.value.predictions.single())
         assertNotNull(vm.uiState.value.selected)
 
         vm.clearSelection()
         assertNull(vm.uiState.value.selected)
         assertNull(vm.uiState.value.photo)
         assertEquals("Lauter", vm.uiState.value.query)
-        assertEquals(1, vm.uiState.value.results.size)
+        assertEquals(1, vm.uiState.value.predictions.size)
+    }
+
+    // --- the search as submitted ---------------------------------------------
+
+    @Test
+    fun `the search as submitted locates its hits as pins and closes the list`() = runTest {
+        search.found = listOf(alpenblick, manorFarm)
+        val vm = viewModel()
+        vm.setQuery("camping", bern)
+        advanceTimeBy(301)
+        assertEquals(1, vm.uiState.value.predictions.size)
+
+        vm.search(bern)
+        assertEquals(listOf("camping" to bern), search.finds)
+        assertEquals(listOf(alpenblick, manorFarm), vm.uiState.value.results)
+        assertTrue(vm.uiState.value.predictions.isEmpty())
+        assertNull(vm.uiState.value.selected)
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
+        assertEquals("camping", vm.uiState.value.query)
+    }
+
+    @Test
+    fun `submitting cancels the typing lookup still pending`() = runTest {
+        search.found = listOf(alpenblick, manorFarm)
+        val vm = viewModel()
+        vm.setQuery("camping", bern)
+        vm.search(bern)
+        advanceTimeBy(1_000)
+        assertTrue(search.requests.isEmpty())
+        assertEquals(2, vm.uiState.value.results.size)
+    }
+
+    @Test
+    fun `a search that finds one place opens it`() = runTest {
+        search.found = listOf(alpenblick)
+        search.resolved = { it.copy(details = PlaceDetails(rating = 4.6)) }
+        val vm = viewModel()
+        vm.setQuery("alpenblick", bern)
+        vm.search(bern)
+        assertEquals(listOf(alpenblick), vm.uiState.value.results)
+        assertEquals(4.6, vm.uiState.value.selected!!.details!!.rating!!, 1e-9)
+        assertTrue(vm.uiState.value.expanded)
+    }
+
+    @Test
+    fun `a submitted search reads as searching, then empty or unavailable`() = runTest {
+        search.gated = true
+        val vm = viewModel()
+        vm.setQuery("nirgendwo", bern)
+        vm.search(bern)
+        assertEquals(PlaceSearchStatus.SEARCHING, vm.uiState.value.status)
+        search.found = emptyList()
+        search.gates.single().complete(Unit)
+        assertEquals(PlaceSearchStatus.EMPTY, vm.uiState.value.status)
+        assertTrue(vm.uiState.value.results.isEmpty())
+
+        search.gated = false
+        search.found = null
+        vm.search(bern)
+        assertEquals(PlaceSearchStatus.UNAVAILABLE, vm.uiState.value.status)
+    }
+
+    @Test
+    fun `a blank query, or no backend, submits nothing`() = runTest {
+        val vm = viewModel()
+        vm.setQuery("  ", bern)
+        vm.search(bern)
+        assertTrue(search.finds.isEmpty())
+
+        val offline = LocationPickerViewModel()
+        offline.setQuery("camping", bern)
+        offline.search(bern)
+        assertEquals(PlaceSearchStatus.IDLE, offline.uiState.value.status)
+    }
+
+    @Test
+    fun `pins stay while typing on and while choosing, and go with a short query`() = runTest {
+        search.found = listOf(alpenblick, manorFarm)
+        val vm = viewModel()
+        vm.setQuery("camping", bern)
+        vm.search(bern)
+        vm.setQuery("camping interlaken", bern)
+        advanceTimeBy(301)
+        assertEquals(2, vm.uiState.value.results.size)
+        assertEquals(1, vm.uiState.value.predictions.size)
+
+        vm.select(vm.uiState.value.predictions.single())
+        assertEquals(2, vm.uiState.value.results.size)
+
+        vm.setQuery("ca", bern)
+        assertTrue(vm.uiState.value.results.isEmpty())
+    }
+
+    @Test
+    fun `a place chosen while the search is still out is not overridden by its one hit`() = runTest {
+        search.gated = true
+        search.found = listOf(alpenblick)
+        val vm = viewModel()
+        vm.setQuery("alpenblick", bern)
+        vm.search(bern)
+        vm.select(manorFarm.copy(details = PlaceDetails(rating = 4.0)))
+        search.gates.single().complete(Unit)
+        advanceTimeBy(1_000)
+        assertEquals("Camping Manor Farm", vm.uiState.value.selected?.name)
+        assertTrue(vm.uiState.value.results.isEmpty())
+    }
+
+    // --- back ----------------------------------------------------------------
+
+    @Test
+    fun `back shrinks the card, then drops the choice, then clears the search, then gives up`() = runTest {
+        search.found = listOf(alpenblick, manorFarm)
+        val vm = viewModel()
+        assertFalse(vm.uiState.value.canGoBack)
+        assertFalse(vm.back())
+
+        vm.setQuery("camping", bern)
+        vm.search(bern)
+        vm.select(alpenblick)
+        assertTrue(vm.uiState.value.expanded)
+
+        assertTrue(vm.back())
+        assertFalse(vm.uiState.value.expanded)
+        assertEquals(alpenblick, vm.uiState.value.selected)
+
+        assertTrue(vm.back())
+        assertNull(vm.uiState.value.selected)
+        assertEquals(2, vm.uiState.value.results.size)
+
+        assertTrue(vm.back())
+        assertEquals(LocationPickerUiState(), vm.uiState.value)
+        assertFalse(vm.back())
+    }
+
+    @Test
+    fun `a typed fragment is also something to go back from`() {
+        val vm = viewModel()
+        vm.setQuery("ca", bern)
+        assertTrue(vm.uiState.value.canGoBack)
+        assertTrue(vm.back())
+        assertEquals("", vm.uiState.value.query)
+    }
+
+    @Test
+    fun `the card opens in full again for the next choice`() {
+        val vm = viewModel()
+        vm.select(alpenblick)
+        vm.setExpanded(false)
+        assertFalse(vm.uiState.value.expanded)
+        vm.dropPin(LatLng(46.5, 7.9))
+        assertTrue(vm.uiState.value.expanded)
+        vm.setExpanded(false)
+        vm.select(manorFarm)
+        assertTrue(vm.uiState.value.expanded)
     }
 }

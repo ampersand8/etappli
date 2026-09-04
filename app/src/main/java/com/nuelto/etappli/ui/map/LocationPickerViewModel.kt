@@ -17,15 +17,26 @@ import kotlinx.coroutines.launch
 
 data class LocationPickerUiState(
     val query: String = "",
+    // What the typing so far could mean: a list to pick from, located once picked.
+    val predictions: List<PlaceSuggestion> = emptyList(),
+    // What a submitted search found, each with a coordinate: the pins on the map.
     val results: List<PlaceSuggestion> = emptyList(),
     val status: PlaceSearchStatus = PlaceSearchStatus.IDLE,
     val selected: PlaceSuggestion? = null,
     val photo: ByteArray? = null,
-)
+    // The chosen place's card shows everything, or shrinks to a strip so the map around
+    // the place can be looked at.
+    val expanded: Boolean = true,
+) {
+    /** Whether back has something of the picker's own to undo before it closes it. */
+    val canGoBack: Boolean
+        get() = selected != null || query.isNotEmpty() || results.isNotEmpty()
+}
 
 /**
- * Debounced place search for the picker map: hits land as markers so you can pick the
- * one in the right spot. Search is additive — the crosshair keeps working without it.
+ * The picker map's search, the way a maps app works: typing offers predictions, the
+ * search as submitted drops pins, and a pin, a prediction or a POI opens a card. Search
+ * is additive — pressing and holding the map keeps working without it.
  */
 class LocationPickerViewModel(
     private val placeSearch: PlaceSearch? = null,
@@ -38,7 +49,7 @@ class LocationPickerViewModel(
     val uiState: StateFlow<LocationPickerUiState> = _uiState
 
     /** One lookup per pause, never for a fragment. [near] is the current map center, so
-     *  hits rank around what you are looking at. */
+     *  hits rank around what you are looking at. The pins stay: they are behind the list. */
     fun setQuery(value: String, near: LatLng?, prefer: StopKind? = null) {
         searchJob?.cancel()
         _uiState.update { it.copy(query = value) }
@@ -46,6 +57,7 @@ class LocationPickerViewModel(
         if (query.length < MIN_QUERY_LENGTH) {
             _uiState.update {
                 it.copy(
+                    predictions = emptyList(),
                     results = emptyList(),
                     selected = null,
                     photo = null,
@@ -61,7 +73,7 @@ class LocationPickerViewModel(
             val found = search.search(query, near, prefer)
             _uiState.update {
                 it.copy(
-                    results = found.orEmpty(),
+                    predictions = found.orEmpty(),
                     selected = null,
                     photo = null,
                     status = when {
@@ -74,7 +86,42 @@ class LocationPickerViewModel(
         }
     }
 
-    /** Back to the results, keeping the query — the card is otherwise a dead end. */
+    /**
+     * The search as submitted: everything it matches, located, as pins. A single hit — a
+     * name, as a rule — is opened straight away, the way a maps app does.
+     */
+    fun search(near: LatLng?) {
+        searchJob?.cancel()
+        val query = _uiState.value.query.trim()
+        if (query.isEmpty()) return
+        val search = placeSearch ?: return
+        searchJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    predictions = emptyList(),
+                    selected = null,
+                    photo = null,
+                    status = PlaceSearchStatus.SEARCHING,
+                )
+            }
+            val found = search.find(query, near)
+            // Done: opening the one hit must not cancel this very job.
+            searchJob = null
+            _uiState.update {
+                it.copy(
+                    results = found.orEmpty(),
+                    status = when {
+                        found == null -> PlaceSearchStatus.UNAVAILABLE
+                        found.isEmpty() -> PlaceSearchStatus.EMPTY
+                        else -> PlaceSearchStatus.IDLE
+                    },
+                )
+            }
+            found?.singleOrNull()?.let(::select)
+        }
+    }
+
+    /** Back to the pins or the list, keeping the query — the card is otherwise a dead end. */
     fun clearSelection() = _uiState.update { it.copy(selected = null, photo = null) }
 
     fun clearSearch() {
@@ -82,9 +129,29 @@ class LocationPickerViewModel(
         _uiState.value = LocationPickerUiState()
     }
 
+    /** The card in full, or shrunk to a strip that leaves the map to look at. */
+    fun setExpanded(expanded: Boolean) = _uiState.update { it.copy(expanded = expanded) }
+
+    /**
+     * Back peels the picker's own layers off, innermost first: a full card shrinks to a
+     * strip, a strip goes away, a search is cleared. False = nothing left to undo, so the
+     * picker itself closes.
+     */
+    fun back(): Boolean {
+        val state = _uiState.value
+        when {
+            state.selected != null && state.expanded -> setExpanded(false)
+            state.selected != null -> clearSelection()
+            state.canGoBack -> clearSearch()
+            else -> return false
+        }
+        return true
+    }
+
     /**
      * A prediction names a place but knows neither where it is nor what it is like, and
-     * a tapped POI knows only the former, so choosing either needs a second lookup.
+     * a pin or a tapped POI knows only the former, so choosing any of them needs a second
+     * lookup. The pins stay: they are where the place was found among.
      */
     fun select(place: PlaceSuggestion) {
         // A search still in flight would otherwise land and clear the choice.
@@ -93,6 +160,7 @@ class LocationPickerViewModel(
             it.copy(
                 selected = place,
                 photo = null,
+                expanded = true,
                 status = if (place.location == null) PlaceSearchStatus.SEARCHING else PlaceSearchStatus.IDLE,
             )
         }
@@ -130,7 +198,11 @@ class LocationPickerViewModel(
     fun dropPin(at: LatLng) {
         searchJob?.cancel()
         _uiState.update {
-            it.copy(selected = PlaceSuggestion(name = "", label = "", location = at), photo = null)
+            it.copy(
+                selected = PlaceSuggestion(name = "", label = "", location = at),
+                photo = null,
+                expanded = true,
+            )
         }
     }
 

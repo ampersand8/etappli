@@ -92,6 +92,21 @@ class FakePlaceSearch : PlaceSearch {
 
     override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? = resolved(suggestion)
 
+    val finds = mutableListOf<Pair<String, LatLng?>>()
+
+    /** What a submitted search locates; by default nothing is out there. */
+    var found: List<PlaceSuggestion>? = emptyList()
+
+    override suspend fun find(query: String, near: LatLng?): List<PlaceSuggestion>? {
+        finds += query to near
+        if (gated) {
+            val gate = CompletableDeferred<Unit>()
+            gates += gate
+            gate.await()
+        }
+        return found
+    }
+
     override suspend fun search(
         query: String,
         near: LatLng?,

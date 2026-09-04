@@ -120,6 +120,16 @@ There is no lint/format tooling configured.
   Predictions carry no coordinate, so `PlaceSearch.resolve` fetches it via Place Details
   when a hit is chosen, inside the same billed session token. Tapping a POI Google already
   draws (`onPOIClick`) picks it directly — it arrives with both id and coordinate.
+- **Typing predicts, submitting drops pins.** The search as submitted (IME action or the
+  field's icon) goes to Text Search (`PlaceSearch.find`, `GooglePlaces.searchBody`, Pro-tier
+  field mask only — Place Details still fetches the rest for the one chosen): a name gives
+  the one place, which opens by itself; a kind of place ("camping") gives up to 20 located
+  hits, shown as hollow pins plus a strip of cards along the bottom and framed by the
+  camera. The chosen place's card opens in full and shrinks to a strip
+  (`LocationPickerUiState.expanded`); system back peels the layers innermost first
+  (`LocationPickerViewModel.back`: card → strip → pins → search) before the picker closes.
+  `MapProvider.Canvas` takes `contentPadding` so the camera centres a pin within what the
+  strip leaves visible.
 - **Places coordinates expire.** SST §14.3 caps caching one at 30 days, so such stops carry
   `placeId` + `locationCachedAt`, and `domain/PlaceCacheSweeper` (run from
   TripDetailViewModel) refreshes them via Place Details or **deletes** them. Coordinates
