@@ -64,4 +64,34 @@ class CurrentStopTest {
         val first = stop("first", 1, arrival = today.plusDays(1))
         assertEquals("first", CurrentStop.of(listOf(home, first), today))
     }
+
+    @Test
+    fun `next is the first planned stop past the check-in line, whatever the date says`() {
+        val here = stop("here", 0, StopState.DONE, arrival = today.minusDays(1), nights = 2)
+        assertEquals("next", CurrentStop.next(listOf(stop("later", 2), stop("next", 1), here))!!.id)
+        assertEquals("restored", CurrentStop.next(listOf(stop("restored", 0), here.copy(orderIndex = 1)))!!.id)
+        assertNull(CurrentStop.next(listOf(here, stop("skipped", 1, StopState.SKIPPED))))
+        assertNull(CurrentStop.next(emptyList()))
+    }
+
+    @Test
+    fun `heading is the next stop unless you are mid-stay`() {
+        val stops = listOf(stop("here", 0, StopState.DONE, arrival = today.minusDays(1), nights = 2), stop("next", 1))
+        assertNull(CurrentStop.heading(stops, today))
+        assertEquals("next", CurrentStop.heading(stops, today.plusDays(1))!!.id)
+        // Nothing planned: nowhere to head for, mid-stay or not.
+        assertNull(CurrentStop.heading(stops.take(1), today.plusDays(5)))
+        // A zero-night check-in never holds the heading.
+        val visited = stop("visited", 0, StopState.DONE, nights = 0)
+        assertEquals("next", CurrentStop.heading(listOf(visited, stop("next", 1)), today)!!.id)
+    }
+
+    @Test
+    fun `shortening the stay with the stepper is the check-out`() {
+        val here = stop("here", 0, StopState.DONE, arrival = today.minusDays(1), nights = 3)
+        assertNull(CurrentStop.heading(listOf(here, stop("next", 1)), today))
+        val shortened = listOf(here.copy(nights = 1), stop("next", 1))
+        assertEquals("next", CurrentStop.heading(shortened, today)!!.id)
+        assertEquals("next", CurrentStop.of(shortened, today))
+    }
 }

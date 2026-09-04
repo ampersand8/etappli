@@ -19,6 +19,7 @@ import com.nuelto.etappli.domain.PlaceCacheSweeper
 import com.nuelto.etappli.domain.RegionResolver
 import com.nuelto.etappli.domain.RoutedLeg
 import com.nuelto.etappli.domain.RouteRefresher
+import com.nuelto.etappli.domain.RouteTracker
 import com.nuelto.etappli.testutil.MainDispatcherRule
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -551,13 +552,16 @@ class TripDetailViewModelTest {
 
     private fun locatingViewModel(
         fix: suspend () -> LatLng?,
+        startTracking: () -> Unit = {},
+        tracker: RouteTracker? = null,
         drive: suspend (LatLng, LatLng) -> RoutedLeg?,
     ) = TripDetailViewModel(
         SavedStateHandle(mapOf("tripId" to "t1")),
         tripRepository,
         settingsRepository,
         currentLocation = fix,
-        drive = drive,
+        tracker = tracker ?: RouteTracker(tripRepository, drive = drive),
+        startTracking = startTracking,
     )
 
     @Test
@@ -650,6 +654,68 @@ class TripDetailViewModelTest {
         vm.refreshDriveFromHere()
         assertEquals(1, calls)
         assertNull(vm.uiState.value.driveFromHere)
+    }
+
+    // --- tracking ----------------------------------------------------------------------
+
+    @Test
+    fun `the opening fix lands on the track of the stop you are heading for`() = runTest {
+        seedOnTheRoad()
+        var here = hereFix
+        val vm = locatingViewModel({ here }) { _, _ -> null }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+        here = LatLng(46.8, 8.3)
+        vm.refreshDriveFromHere()
+
+        assertEquals(listOf(hereFix, LatLng(46.8, 8.3)), stops().single().track)
+    }
+
+    @Test
+    fun `tracking follows what the service records and drops on check-in`() = runTest {
+        seedOnTheRoad()
+        val tracker = RouteTracker(tripRepository)
+        val vm = locatingViewModel({ hereFix }, tracker = tracker) { _, _ -> null }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        assertFalse(vm.uiState.value.tracking)
+
+        tracker.recording("t1")
+        assertTrue(vm.uiState.value.tracking)
+        tracker.recording("other")
+        assertFalse(vm.uiState.value.tracking)
+
+        tracker.recording("t1")
+        vm.arrived("s1")
+        assertFalse(vm.uiState.value.tracking)
+    }
+
+    @Test
+    fun `opening the trip starts the service, but not once you have checked in`() = runTest {
+        seedOnTheRoad()
+        var starts = 0
+        val vm = locatingViewModel({ hereFix }, startTracking = { starts++ }) { _, _ -> null }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+        assertEquals(1, starts)
+
+        vm.arrived("s1")
+        vm.refreshDriveFromHere()
+        assertEquals(1, starts)
+    }
+
+    @Test
+    fun `a tour started ahead of its date does not start the service before the day`() = runTest {
+        seedOnTheRoad()
+        tripRepository.upsertTrip(tripRepository.trip("t1").first()!!.copy(startDate = LocalDate.now().plusDays(1)))
+        var starts = 0
+        val vm = locatingViewModel({ hereFix }, startTracking = { starts++ }) { _, _ -> RoutedLeg("", 90_000, 5_400) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.refreshDriveFromHere()
+
+        assertEquals(0, starts)
+        // The distance still reads; nothing lands on the track.
+        assertEquals(90_000, vm.uiState.value.driveFromHere!!.distanceMeters)
+        assertTrue(stops().single().track.isEmpty())
     }
 
 }

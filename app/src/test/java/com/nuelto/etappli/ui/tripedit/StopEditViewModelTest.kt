@@ -595,6 +595,23 @@ class StopEditViewModelTest {
     }
 
     @Test
+    fun `a stop added mid-drive takes over the fixes recorded so far`() = runTest {
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Trip", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(Stop(id = "done", tripId = "t1", name = "Done", orderIndex = 0, state = StopState.DONE))
+        val track = listOf(LatLng(46.9, 8.5), LatLng(46.8, 8.6))
+        tripRepository.upsertStop(Stop(id = "up", tripId = "t1", name = "Upcoming", orderIndex = 1, track = track))
+        val vm = newStopViewModel()
+        vm.setName("Spontan")
+        vm.save {}
+        // The FAB slots it in front of the old heading, so the drive underway now arrives here.
+        val stops = tripRepository.stops("t1").first()
+        assertEquals(track, stops.single { it.name == "Spontan" }.track)
+        assertTrue(stops.single { it.id == "up" }.track.isEmpty())
+    }
+
+    @Test
     fun `an active trip without check-ins keeps appending`() = runTest {
         tripRepository.upsertTrip(
             Trip(id = "t1", name = "Trip", startDate = LocalDate.of(2026, 8, 20), status = TripStatus.ACTIVE),

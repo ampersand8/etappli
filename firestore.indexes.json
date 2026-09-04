@@ -1,0 +1,10 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "stops",
+      "fieldPath": "track",
+      "indexes": []
+    }
+  ]
+}

@@ -35,6 +35,8 @@ Google Sign-In + Firestore sync automatically.
    Choose **production mode** and a region close to you (e.g. `europe-west6`, Zürich).
 2. In the **Rules** tab, paste the contents of [`firestore.rules`](firestore.rules)
    and publish.
+3. **Indexes → Single field → Add exemption**: collection group `stops`, field `track`, every
+   index off — or Firestore indexes every GPS fix ([`firestore.indexes.json`](firestore.indexes.json) says the same for the CLI, which this repo does not deploy with).
 
 ## 4. Rebuild and verify
 

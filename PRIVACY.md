@@ -1,6 +1,6 @@
 # Privacy Policy — Etappli
 
-Last updated: 1 September 2026
+Last updated: 4 September 2026
 
 Etappli ("the app") is a personal trip log for camper travel. This policy
 describes what the app stores and who else sees it.
@@ -14,9 +14,12 @@ describes what the app stores and who else sees it.
   and the coordinates of the stops you pick.
 - **Your settings**: currency, fuel consumption and price, vehicle mass, and your home
   location if you set one.
-- **Your device's location**, only at the moment you tap "I'm here" or ask how far the
-  next stop is. It is used to fill in a stop's coordinates or to measure a distance.
-  The app has no background location access and does not track your movement.
+- **Your device's location**, at the moment you tap "I'm here" or "Track this drive" —
+  to fill in a stop's coordinates or measure a distance — and every few minutes while a
+  drive of an active trip is tracked: after you open the app on a travelling day, until
+  you check in at the next stop. Tracking is shown by an ongoing notification and the
+  fixes are stored as the trip's route. Nothing is tracked while no trip is active, and
+  the app never asks for background location access.
 
 Everything is stored in Google Firebase (Cloud Firestore) under the developer's Firebase
 project, and cached on your device so the app works offline.

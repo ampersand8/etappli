@@ -34,11 +34,15 @@ object LiveDrive {
     fun arrived(from: LatLng, to: LatLng): Boolean =
         GeoUtils.haversineKm(from, to) * 1000 < ARRIVED_WITHIN_METERS
 
-    /** True when nothing usable is held for this fix and this destination. */
-    fun needsFetch(current: DriveFromHere?, from: LatLng, to: LatLng): Boolean = when {
-        current == null -> true
+    /**
+     * True when the last route asked for does not answer this fix and this destination.
+     * Keyed on where it was asked from and to, whatever came of it: a failed ask must not
+     * be repeated on every fix.
+     */
+    fun needsFetch(askedFrom: LatLng?, askedTo: LatLng?, from: LatLng, to: LatLng): Boolean = when {
+        askedFrom == null -> true
         // A different destination is a different question, however little you moved.
-        current.to != to -> true
-        else -> GeoUtils.haversineKm(current.from, from) * 1000 >= REFRESH_AFTER_METERS
+        askedTo != to -> true
+        else -> GeoUtils.haversineKm(askedFrom, from) * 1000 >= REFRESH_AFTER_METERS
     }
 }

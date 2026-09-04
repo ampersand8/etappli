@@ -153,6 +153,13 @@ data class Stop(
     val leg: StopLeg? = null,
     val elevation: StopElevation? = null,
     val region: StopRegion? = null,
+    // The way actually driven here: GPS fixes taken every few minutes while this was the
+    // stop being headed for (domain/RouteTracker), complete once checked in. Drawn instead
+    // of [leg] once there are two — the road you took, not the one Google suggested.
+    // Appended in place (TripRepository.appendTrack); a whole-stop write carries what it
+    // loaded, so never write a Stop you did not just read (every writer here re-reads
+    // first; a second device would lose fixes).
+    val track: List<LatLng> = emptyList(),
 )
 
 enum class ExpenseType {

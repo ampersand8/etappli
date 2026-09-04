@@ -5,6 +5,7 @@ import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.domain.DriveFromHere
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -98,3 +99,13 @@ fun formatArrival(durationSeconds: Int, now: LocalDateTime): String {
 fun formatDriveFromHere(distanceMeters: Int, durationSeconds: Int, now: LocalDateTime): String =
     "${formatDistance(distanceMeters)} · ${formatDuration(durationSeconds)} from here · " +
         formatArrival(durationSeconds, now)
+
+/**
+ * The tracking notification: where you are heading, and how far it still is once a route
+ * has come back — no arrival clock, which would drift between posts.
+ */
+fun formatTrackingTitle(stopName: String): String = "Heading for $stopName"
+
+fun formatTrackingText(drive: DriveFromHere?): String =
+    drive?.let { "${formatDistance(it.distanceMeters)} · ${formatDuration(it.durationSeconds)}" }
+        ?: "Recording the way as you go"

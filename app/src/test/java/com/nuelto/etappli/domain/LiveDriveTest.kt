@@ -31,28 +31,30 @@ class LiveDriveTest {
     }
 
     @Test
-    fun `nothing held means fetch`() {
-        assertTrue(LiveDrive.needsFetch(null, here, there))
+    fun `nothing asked yet means fetch`() {
+        assertTrue(LiveDrive.needsFetch(null, null, here, there))
     }
 
     @Test
     fun `a different destination is fetched however little you moved`() {
         val held = drive(here, there)
         // One metre from the recorded fix, but heading somewhere else now.
-        assertTrue(LiveDrive.needsFetch(held, north(here, 1.0), LatLng(47.0, 8.0)))
+        assertTrue(LiveDrive.needsFetch(held.from, held.to, north(here, 1.0), LatLng(47.0, 8.0)))
     }
 
     @Test
-    fun `staying put does not spend a route`() {
+    fun `staying put does not spend a route, whatever the last ask came back with`() {
         val held = drive(here, there)
-        assertFalse(LiveDrive.needsFetch(held, here, there))
-        assertFalse(LiveDrive.needsFetch(held, north(here, 1_999.0), there))
+        assertFalse(LiveDrive.needsFetch(held.from, held.to, here, there))
+        assertFalse(LiveDrive.needsFetch(held.from, held.to, north(here, 1_999.0), there))
+        // Keyed on the ask, not the answer: a failed one is not repeated on every fix.
+        assertFalse(LiveDrive.needsFetch(here, there, north(here, 1_999.0), there))
     }
 
     @Test
     fun `moving the refresh distance fetches again`() {
         val held = drive(here, there)
-        assertTrue(LiveDrive.needsFetch(held, north(here, 2_001.0), there))
+        assertTrue(LiveDrive.needsFetch(held.from, held.to, north(here, 2_001.0), there))
         assertEquals(2_000.0, LiveDrive.REFRESH_AFTER_METERS, 1e-9)
     }
 }

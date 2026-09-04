@@ -11,8 +11,6 @@ import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.TripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.domain.DriveFromHere
-import com.nuelto.etappli.domain.LiveDrive
-import com.nuelto.etappli.domain.RoutedLeg
 import com.nuelto.etappli.data.model.Expense
 import com.nuelto.etappli.data.model.ExpenseType
 import com.nuelto.etappli.data.model.Stop
@@ -33,8 +31,10 @@ import com.nuelto.etappli.domain.PlaceCacheSweeper
 import com.nuelto.etappli.domain.RegionResolver
 import com.nuelto.etappli.domain.RouteCache
 import com.nuelto.etappli.domain.RouteRefresher
+import com.nuelto.etappli.domain.RouteTracker
 import com.nuelto.etappli.domain.Timeline
 import com.nuelto.etappli.domain.TimelineRow
+import com.nuelto.etappli.domain.Tracks
 import com.nuelto.etappli.domain.TripEstimator
 import com.nuelto.etappli.domain.TripStarter
 import com.nuelto.etappli.domain.VignetteTable
@@ -42,7 +42,6 @@ import com.nuelto.etappli.location.PlaceNameResolver
 import com.nuelto.etappli.ui.nav.TripDetailRoute
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -73,6 +72,8 @@ data class TripDetailUiState(
     // Live distance to the stop you are heading for, from the last GPS fix. Null until
     // one is taken, and again once you are there.
     val driveFromHere: DriveFromHere? = null,
+    // The background service is recording this trip's drive.
+    val tracking: Boolean = false,
     val vignetteSuggestions: List<VignetteTable.Choice> = emptyList(),
     val settings: UserSettings = UserSettings(),
     val loading: Boolean = true,
@@ -93,8 +94,11 @@ class TripDetailViewModel(
     private val regionResolver: RegionResolver? = null,
     // One-shot GPS fix; null unless the screen has the location permission.
     private val currentLocation: suspend () -> LatLng? = { null },
-    // A single route, for "how far is it from here". Never stored — see DriveFromHere.
-    private val drive: suspend (from: LatLng, to: LatLng) -> RoutedLeg? = { _, _ -> null },
+    // Where the active trip is heading and how far that still is. Shared with the
+    // tracking service, which keeps feeding it fixes once this screen is gone.
+    private val tracker: RouteTracker = RouteTracker(tripRepository),
+    // Starts the tracking service; a no-op without the platform.
+    private val startTracking: () -> Unit = {},
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle.toRoute<TripDetailRoute>().tripId
@@ -125,16 +129,14 @@ class TripDetailViewModel(
         }
     }
 
-    private val liveDrive = MutableStateFlow<DriveFromHere?>(null)
-
     val uiState: StateFlow<TripDetailUiState> =
         combine(
             tripRepository.trip(tripId),
             tripRepository.stops(tripId),
             tripRepository.expenses(tripId),
             settingsRepository.settings(),
-            liveDrive,
-        ) { trip, stops, expenses, settings, fromHere ->
+            tracker.state,
+        ) { trip, stops, expenses, settings, tracking ->
             val planning = trip != null && trip.status != TripStatus.DONE
             val currentId = if (trip?.status == TripStatus.ACTIVE) {
                 CurrentStop.of(stops, LocalDate.now())
@@ -142,6 +144,7 @@ class TripDetailViewModel(
                 null
             }
             val current = stops.find { it.id == currentId }
+            val heading = current != null && current.state == StopState.PLANNED
             TripDetailUiState(
                 trip = trip,
                 stops = stops,
@@ -153,8 +156,10 @@ class TripDetailViewModel(
                 currentStopId = currentId,
                 drives = RouteCache.byStop(stops),
                 // Once you have checked in you are there, so how far away it is stops
-                // being a question — whatever the last fix said.
-                driveFromHere = fromHere?.takeIf { current?.state != StopState.DONE },
+                // being a question — whatever the last fix said. Matched on the target,
+                // which may be the parking spot of a ride rather than the pin.
+                driveFromHere = tracking.drive?.takeIf { heading && it.to == Tracks.target(stops, current!!) },
+                tracking = heading && tracking.recordingTripId == tripId,
                 vignetteSuggestions = if (planning) vignetteSuggestions(stops, expenses) else emptyList(),
                 settings = settings,
                 loading = false,
@@ -165,31 +170,26 @@ class TripDetailViewModel(
     private var locating = false
 
     /**
-     * Takes a GPS fix and asks Google how far the stop you are heading for is from it.
-     * Silent about every failure — no permission, no fix, no signal — because the card
-     * simply falls back to the planned drive.
+     * Takes a GPS fix and hands it to the tracker, which asks Google how far the stop you
+     * are heading for is from it. Silent about every failure — no permission, no fix, no
+     * signal — because the card simply falls back to the planned drive.
      */
     fun refreshDriveFromHere() {
         val state = uiState.value
+        val trip = state.trip ?: return
         val stop = state.stops.find { it.id == state.currentStopId } ?: return
         // No route is worth buying for somewhere you have already arrived.
         if (stop.state == StopState.DONE) return
-        val target = stop.location ?: return
         if (locating) return
+        // The permission just landed or the trip just opened. The service is what keeps
+        // going once the screen is gone: it checks the permission itself and stops when
+        // nothing is underway — but is not asked before the tour's day, or its notification
+        // would flash on every open of a tour started ahead of its date.
+        if (!LocalDate.now().isBefore(trip.startDate)) startTracking()
         locating = true
         viewModelScope.launch {
             try {
-                val here = currentLocation() ?: return@launch
-                if (LiveDrive.arrived(here, target)) {
-                    liveDrive.value = null
-                    return@launch
-                }
-                // Drop an answer to a different question before asking the new one, or a
-                // failed fetch would leave the old stop's distance on screen.
-                if (liveDrive.value?.to != target) liveDrive.value = null
-                if (!LiveDrive.needsFetch(liveDrive.value, here, target)) return@launch
-                val leg = drive(here, target) ?: return@launch
-                liveDrive.value = DriveFromHere(here, target, leg.distanceMeters, leg.durationSeconds)
+                currentLocation()?.let { tracker.fix(it, tripId) }
             } finally {
                 locating = false
             }
@@ -409,7 +409,8 @@ class TripDetailViewModel(
                     RegionResolver(container.tripRepository, PlaceNameResolver(it)::region)
                 },
                 container.currentLocation,
-                container.mapProvider::drive,
+                container.tracker,
+                container.startTracking,
             )
         }
     }
