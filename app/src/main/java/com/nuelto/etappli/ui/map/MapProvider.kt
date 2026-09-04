@@ -2,6 +2,7 @@ package com.nuelto.etappli.ui.map
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -68,9 +69,11 @@ interface MapProvider {
     fun rememberCamera(start: LatLng?, zoom: Double): MapCamera
 
     /**
-     * Draws [markers] and [routes]. [onMarkerClick] gets (tripId, stopId) and returns
-     * true when it consumed the tap; [onLongPress] gets the point pressed and held,
-     * which is how a spot with no name gets chosen.
+     * Draws [markers] and [routes]. [contentPadding] is the part of the surface something
+     * else covers, so the camera centres and frames within what can actually be seen.
+     * [onMarkerClick] gets (tripId, stopId) and returns true when it consumed the tap;
+     * [onLongPress] gets the point pressed and held, which is how a spot with no name
+     * gets chosen.
      */
     @Composable
     fun Canvas(
@@ -78,6 +81,7 @@ interface MapProvider {
         markers: List<MapMarker>,
         routes: List<MapRoute>,
         modifier: Modifier,
+        contentPadding: PaddingValues = PaddingValues(),
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)? = null,
         onLongPress: ((LatLng) -> Unit)? = null,
         onPoiClick: ((PlaceSuggestion) -> Unit)? = null,
@@ -106,6 +110,7 @@ object PlaceholderMapProvider : MapProvider {
         markers: List<MapMarker>,
         routes: List<MapRoute>,
         modifier: Modifier,
+        contentPadding: PaddingValues,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
         onPoiClick: ((PlaceSuggestion) -> Unit)?,

@@ -18,6 +18,12 @@ object GooglePlaces {
 
     const val AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
     const val MAX_SUGGESTIONS = 8
+    const val SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+    const val MAX_RESULTS = 20
+
+    // Pro tier: what a pin and its card need. Rating or photos would move every search
+    // into Enterprise; Place Details fetches them for the one hit that is chosen.
+    const val SEARCH_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.location"
 
     /** Place Details for one id, used to refresh an expired coordinate. */
     fun detailsUrl(placeId: String, sessionToken: String? = null): String =
@@ -50,16 +56,26 @@ object GooglePlaces {
         sessionToken: String,
         types: List<String> = emptyList(),
     ): String {
-        val bias = near?.let {
-            ",\"locationBias\":{\"circle\":{\"center\":{\"latitude\":${it.latitude}," +
-                "\"longitude\":${it.longitude}},\"radius\":$BIAS_RADIUS_M}}"
-        }.orEmpty()
         val filter = types.takeIf { it.isNotEmpty() }
             ?.joinToString(",", ",\"includedPrimaryTypes\":[", "]") { it.jsonString() }
             .orEmpty()
         return "{\"input\":${input.jsonString()},\"sessionToken\":${sessionToken.jsonString()}" +
-            "$bias$filter}"
+            "${bias(near)}$filter}"
     }
+
+    /**
+     * Text Search, for the query as submitted: it locates what it finds, so the hits can
+     * be pins. It answers a name with the one place and a kind of place with up to
+     * [MAX_RESULTS] of them around [near] — Google Maps' own two-sided behaviour, which
+     * is why the typing still goes through autocomplete. No session: it is not billed as one.
+     */
+    fun searchBody(query: String, near: LatLng?): String =
+        "{\"textQuery\":${query.jsonString()},\"pageSize\":$MAX_RESULTS${bias(near)}}"
+
+    private fun bias(near: LatLng?): String = near?.let {
+        ",\"locationBias\":{\"circle\":{\"center\":{\"latitude\":${it.latitude}," +
+            "\"longitude\":${it.longitude}},\"radius\":$BIAS_RADIUS_M}}"
+    }.orEmpty()
 
     /**
      * Google's own categories for what the user says they are after. Free camping is not
@@ -96,6 +112,13 @@ object GooglePlaces {
             ?: return null
         val label = (format?.get("secondaryText") as? JsonObject)?.string("text").orEmpty()
         return PlaceSuggestion(name = name, label = label, location = null, id = id)
+    }
+
+    /** A Text Search body: the located places, in Google's order. Lenient like the rest. */
+    fun parseSearch(body: String): List<PlaceSuggestion> {
+        val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject
+        val places = root?.get("places") as? JsonArray ?: return emptyList()
+        return places.mapNotNull(::suggestion).take(MAX_RESULTS)
     }
 
     /** A Place Details body, for refreshing one expired coordinate. */

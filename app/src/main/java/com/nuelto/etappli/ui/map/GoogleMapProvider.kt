@@ -1,6 +1,7 @@
 package com.nuelto.etappli.ui.map
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -89,6 +90,7 @@ object GoogleMapProvider : MapProvider {
         markers: List<MapMarker>,
         routes: List<MapRoute>,
         modifier: Modifier,
+        contentPadding: PaddingValues,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
         onPoiClick: ((PlaceSuggestion) -> Unit)?,
@@ -96,6 +98,7 @@ object GoogleMapProvider : MapProvider {
         GoogleMap(
             modifier = modifier,
             cameraPositionState = (camera as GoogleCamera).state,
+            contentPadding = contentPadding,
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
             onMapLongClick = { at -> onLongPress?.invoke(LatLng(at.latitude, at.longitude)) },
             // The aires, campsites and huts Google already draws are choosable directly.

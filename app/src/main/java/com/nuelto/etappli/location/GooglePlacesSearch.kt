@@ -48,6 +48,12 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
             null,
         )?.let(GooglePlaces::parseAutocomplete)
 
+    override suspend fun find(query: String, near: LatLng?): List<PlaceSuggestion>? =
+        withContext(Dispatchers.IO) {
+            post(GooglePlaces.SEARCH_URL, GooglePlaces.searchBody(query, near), GooglePlaces.SEARCH_FIELD_MASK)
+                ?.let(GooglePlaces::parseSearch)
+        }
+
     override suspend fun resolve(suggestion: PlaceSuggestion): PlaceSuggestion? {
         // Already complete: a hit that has both a coordinate and what the place is like.
         if (suggestion.location != null && suggestion.details != null) return suggestion
