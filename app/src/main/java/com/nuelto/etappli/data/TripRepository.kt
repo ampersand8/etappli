@@ -1,6 +1,7 @@
 package com.nuelto.etappli.data
 
 import com.nuelto.etappli.data.model.Expense
+import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.Trip
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,13 @@ interface TripRepository {
      */
     suspend fun upsertStops(stops: List<Stop>)
     suspend fun deleteStop(tripId: String, stopId: String)
+
+    /**
+     * Adds one fix to a stop's track without rewriting the stop: an atomic append that
+     * cannot clobber an edit made meanwhile. Nothing priced or dated changes, so neither
+     * totals nor plan are touched.
+     */
+    suspend fun appendTrack(tripId: String, stopId: String, point: LatLng)
     suspend fun upsertExpense(expense: Expense)
     suspend fun deleteExpense(tripId: String, expenseId: String)
 }

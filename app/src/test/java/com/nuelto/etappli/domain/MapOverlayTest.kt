@@ -308,4 +308,84 @@ class MapOverlayTest {
         assertEquals(Polyline.decode(current), routes[1].points)
         assertEquals(Polyline.decode(ahead), routes[2].points)
     }
+
+    // --- routes: the way actually driven --------------------------------------
+
+    private val fixes = listOf(LatLng(46.3, 7.2), LatLng(46.6, 7.7))
+
+    @Test
+    fun `a tracked drive is drawn from its fixes with the pins at both ends`() {
+        val a = stop("a", 0, state = StopState.DONE)
+        val b = stop("b", 1, state = StopState.DONE).road(a, roadAB).copy(track = fixes)
+        val points = MapOverlay.routes(data(TripStatus.DONE, listOf(a, b))).single().points
+        assertEquals(listOf(a.location!!) + fixes + b.location!!, points)
+    }
+
+    @Test
+    fun `one fix keeps the road`() {
+        val a = stop("a", 0)
+        val b = stop("b", 1).road(a, roadAB).copy(track = fixes.take(1))
+        assertEquals(Polyline.decode(roadAB), MapOverlay.routes(data(TripStatus.DONE, listOf(a, b))).single().points)
+    }
+
+    @Test
+    fun `the drive to the first stop leads in from its first fix`() {
+        val first = stop("a", 0).copy(track = fixes)
+        val next = stop("b", 1)
+        // Underway: the fixes solid green, then dashed green straight on to the pin.
+        val routes = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(first, next)))
+        assertEquals(listOf(MapAccent.CURRENT, MapAccent.CURRENT, MapAccent.PLANNED), routes.map { it.accent })
+        assertEquals(listOf(false, true, true), routes.map { it.dashed })
+        assertEquals(fixes, routes[0].points)
+        assertEquals(listOf(fixes.last(), first.location), routes[1].points)
+        // Drawn even while it is the only stop on the map.
+        assertEquals(routes.take(2), MapOverlay.routes(data(TripStatus.ACTIVE, listOf(first))))
+        // Once checked in it is grey, to the pin.
+        val arrived = first.copy(state = StopState.DONE)
+        val checkedIn = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(arrived, next)))
+        assertEquals(listOf(MapAccent.DONE, MapAccent.CURRENT), checkedIn.map { it.accent })
+        assertEquals(fixes + arrived.location!!, checkedIn[0].points)
+        assertFalse(checkedIn[0].dashed)
+        val finished = MapOverlay.routes(data(TripStatus.DONE, listOf(arrived, next.copy(state = StopState.DONE))))
+        assertEquals(fixes + arrived.location!!, finished[0].points)
+        assertEquals(MapAccent.DONE, finished[0].accent)
+        // A lone fix leads nowhere.
+        assertTrue(MapOverlay.routes(data(TripStatus.ACTIVE, listOf(first.copy(track = fixes.take(1))))).isEmpty())
+    }
+
+    @Test
+    fun `an unlocated stop's fixes fold into the next drive`() {
+        val a = stop("a", 0, state = StopState.DONE)
+        val nowhere = stop("x", 1, location = null, state = StopState.DONE).copy(track = fixes.take(1))
+        val b = stop("b", 2, state = StopState.DONE).copy(track = fixes.drop(1))
+        val points = MapOverlay.routes(data(TripStatus.DONE, listOf(a, nowhere, b))).single().points
+        assertEquals(listOf(a.location!!) + fixes + b.location!!, points)
+    }
+
+    @Test
+    fun `the drive underway is the track so far and the rest of the road, dashed`() {
+        val a = stop("a", 0, state = StopState.DONE)
+        val track = listOf(LatLng(46.2, 7.1), LatLng(46.45, 7.35))
+        val b = stop("b", 1).road(a, roadAB).copy(track = track)
+        val routes = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(a, b), currentStopId = "b"))
+        assertEquals(listOf(MapAccent.CURRENT, MapAccent.CURRENT), routes.map { it.accent })
+        assertEquals(listOf(false, true), routes.map { it.dashed })
+        assertEquals(listOf(a.location!!) + track, routes[0].points)
+        // Joins the road at (46.4, 7.3), its nearest vertex, and follows it to the end.
+        assertEquals(listOf(track.last()) + Polyline.decode(roadAB).drop(1), routes[1].points)
+
+        // With no road the rest is a straight line to the pin; a ride still rides along.
+        val parked = LatLng(46.9, 7.9)
+        val ride = TransitRide(parked = parked, polyline = Polyline.encode(listOf(parked, b.location!!)))
+        val noRoad = b.copy(leg = StopLeg(from = a.location!!, to = b.location!!, distanceMeters = 1, rideAfter = ride))
+        val straight = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(a, noRoad), currentStopId = "b"))
+        assertEquals(listOf(false, false, true), straight.map { it.ride })
+        assertEquals(listOf(track.last(), b.location), straight[1].points)
+        assertEquals(listOf(parked, b.location), straight[2].points)
+
+        // Without a track the current leg is the road it always was.
+        val untracked = MapOverlay.routes(data(TripStatus.ACTIVE, listOf(a, b.copy(track = emptyList())), currentStopId = "b"))
+        assertEquals(Polyline.decode(roadAB), untracked.single().points)
+        assertFalse(untracked.single().dashed)
+    }
 }

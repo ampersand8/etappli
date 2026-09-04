@@ -106,7 +106,7 @@ Under **Policy → App content**. All of these are required before any track can
 | --- | --- | --- | --- | --- |
 | Email address | Yes (Google Sign-In) | No | Yes | Account management |
 | User IDs | Yes (Firebase uid) | No | Yes | Account management |
-| Approximate / precise location | Yes, only on explicit tap | No | No | App functionality |
+| Approximate / precise location | Yes — on tap, and every few minutes while a drive is tracked (foreground service with an ongoing notification) | No | No | App functionality |
 | Other user-generated content (trips, stops, notes, costs) | Yes | No | Yes | App functionality |
 
 Encrypted in transit: **yes**. Users can request deletion: **yes**. No data is used for
@@ -123,7 +123,7 @@ signing key, which is what the September 2026 deadline is about.
 `play/listing/store-listing.md`, upload the graphics from `play/listing/`) and passes a
 review that can take days.
 
-## 6. After the first upload — two things will otherwise be broken
+## 6. After the first upload — three things will otherwise be broken
 
 1. **Google Sign-In.** The installed app is signed by Google's app signing key, not your
    upload key, so its fingerprint is unknown to Firebase and sign-in fails. Copy the
@@ -136,6 +136,11 @@ review that can take days.
    to production, at minimum restrict the key to the four APIs it needs (Maps SDK for
    Android, Places API (New), Routes API) and set a billing budget alert and per-API
    quota caps in Google Cloud Console.
+3. **The release waits for the foreground-service declaration.** The bundle declares the
+   `location` foreground-service type, so once it is uploaded Policy → App content grows a
+   *Foreground service permissions* item that has to be completed before the release rolls
+   out. Use case: tracking the drive between the stops of an active trip, started by the
+   user opening the app, visible as an ongoing notification.
 
 ## Developer verification (the deadline in the mail)
 

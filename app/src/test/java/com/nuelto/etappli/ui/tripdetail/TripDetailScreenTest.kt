@@ -6,6 +6,7 @@ import android.Manifest
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.nuelto.etappli.domain.RoutedLeg
+import com.nuelto.etappli.domain.RouteTracker
 import org.robolectric.Shadows.shadowOf
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -154,11 +155,11 @@ class TripDetailScreenTest {
             tripRepository,
             settingsRepository,
         ),
-        // Answers any permission request with this, so the grant flow can be driven.
-        permissionAnswer: Boolean? = null,
+        // What each permission request is answered with, so the grant flow can be driven.
+        permissions: Map<String, Boolean> = emptyMap(),
     ) {
         val registryOwner = object : ActivityResultRegistryOwner {
-            override val activityResultRegistry = answeringRegistry(permissionAnswer ?: false)
+            override val activityResultRegistry = answeringRegistry(permissions)
         }
         compose.setContent {
             CompositionLocalProvider(
@@ -797,12 +798,13 @@ class TripDetailScreenTest {
             .grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
-    private fun locatingViewModel(fix: LatLng?, leg: RoutedLeg?) = TripDetailViewModel(
+    private fun locatingViewModel(fix: LatLng?, leg: RoutedLeg?, recording: Boolean = false) = TripDetailViewModel(
         SavedStateHandle(mapOf("tripId" to "a1")),
         tripRepository,
         settingsRepository,
         currentLocation = { fix },
-        drive = { _, _ -> leg },
+        // The service reports itself on the tracker; here it is simply said to be running.
+        tracker = RouteTracker(tripRepository, drive = { _, _ -> leg }).apply { if (recording) recording("a1") },
     )
 
     @Test
@@ -820,8 +822,8 @@ class TripDetailScreenTest {
         seedActive()
         setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).assertIsDisplayed()
-        compose.onAllNodesWithText("from here", substring = true).assertCountEquals(1)
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodesWithText("from here", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -844,16 +846,28 @@ class TripDetailScreenTest {
         compose.onAllNodesWithText("from here", substring = true).assertCountEquals(0)
     }
 
-    /** A registry that answers a permission request immediately, without a system dialog. */
+    private val fine = Manifest.permission.ACCESS_FINE_LOCATION
+    private val coarse = Manifest.permission.ACCESS_COARSE_LOCATION
+    private val notifications = Manifest.permission.POST_NOTIFICATIONS
+
+    // Every permission asked for, in the order it was asked, through either launcher.
+    private val requested = mutableListOf<String>()
+
+    /** A registry that answers a permission request immediately from [answers], without a system dialog. */
     @Suppress("UNCHECKED_CAST")
-    private fun answeringRegistry(granted: Boolean) = object : ActivityResultRegistry() {
+    private fun answeringRegistry(answers: Map<String, Boolean>) = object : ActivityResultRegistry() {
         override fun <I, O> onLaunch(
             requestCode: Int,
             contract: ActivityResultContract<I, O>,
             input: I,
             options: ActivityOptionsCompat?,
         ) {
-            dispatchResult(requestCode, granted as O)
+            // RequestPermission asks for one name and gets a Boolean; RequestMultiplePermissions
+            // asks for an array and gets a map.
+            val names = if (input is String) listOf(input) else (input as Array<*>).map { it as String }
+            requested += names
+            val granted = names.associateWith { answers[it] == true }
+            dispatchResult(requestCode, (if (input is String) granted.getValue(input) else granted) as O)
         }
     }
 
@@ -863,10 +877,10 @@ class TripDetailScreenTest {
         setContent(
             "a1",
             locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
-            permissionAnswer = true,
+            permissions = mapOf(fine to true, coarse to true),
         )
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).performClick()
         compose.onNodeWithText("47 km · 55 min from here", substring = true, useUnmergedTree = true)
             .assertIsDisplayed()
     }
@@ -877,11 +891,104 @@ class TripDetailScreenTest {
         setContent(
             "a1",
             locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
-            permissionAnswer = false,
+            permissions = mapOf(fine to false, coarse to false),
         )
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).performClick()
         compose.onAllNodesWithText("47 km", substring = true).assertCountEquals(0)
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a coarse-only answer says precise location is needed`() {
+        seedActive()
+        setContent(
+            "a1",
+            locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
+            permissions = mapOf(coarse to true),
+        )
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("Precise location needed to track", useUnmergedTree = true).assertIsDisplayed()
+        // Both were asked for together; no track, so nothing to notify about.
+        assertEquals(listOf(fine, coarse), requested)
+    }
+
+    @Test
+    fun `a coarse-only grant made earlier is seen on open`() {
+        seedActive()
+        shadowOf(ApplicationProvider.getApplicationContext<Application>()).grantPermissions(coarse)
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Precise location needed to track", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `granting location goes on to ask for the notification`() {
+        seedActive()
+        setContent(
+            "a1",
+            locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)),
+            permissions = mapOf(fine to true, coarse to true),
+        )
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).performClick()
+        assertEquals(listOf(fine, coarse, notifications), requested)
+    }
+
+    @Test
+    fun `while this drive is recorded the distance says so`() {
+        seedActive()
+        grantLocation()
+        setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300), recording = true))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Tracking · 47 km · 55 min from here", substring = true, useUnmergedTree = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun `recording without a route still says the drive is tracked`() {
+        seedActive()
+        grantLocation()
+        setContent("a1", locatingViewModel(fix = null, leg = null, recording = true))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Tracking this drive", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the notification is offered while tracking without it, and gone once granted`() {
+        seedActive()
+        grantLocation()
+        setContent(
+            "a1",
+            locatingViewModel(fix = null, leg = null, recording = true),
+            permissions = mapOf(notifications to true),
+        )
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Show tracking as a notification", useUnmergedTree = true).performClick()
+        assertEquals(listOf(notifications), requested)
+        compose.onAllNodesWithText("Show tracking as a notification").assertCountEquals(0)
+    }
+
+    @Test
+    fun `nothing offers a notification while nothing is tracked, or once it is allowed`() {
+        seedActive()
+        grantLocation()
+        setContent("a1", locatingViewModel(fix = null, leg = null))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onAllNodesWithText("Show tracking as a notification").assertCountEquals(0)
+        compose.onAllNodesWithText("Tracking this drive").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a notification already allowed is not offered`() {
+        seedActive()
+        grantLocation()
+        shadowOf(ApplicationProvider.getApplicationContext<Application>()).grantPermissions(notifications)
+        setContent("a1", locatingViewModel(fix = null, leg = null, recording = true))
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Tracking this drive", useUnmergedTree = true).assertIsDisplayed()
+        compose.onAllNodesWithText("Show tracking as a notification").assertCountEquals(0)
     }
 
     @Test
@@ -919,7 +1026,7 @@ class TripDetailScreenTest {
         }
         setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onAllNodesWithText("Show distance from here").assertCountEquals(0)
+        compose.onAllNodesWithText("Track this drive").assertCountEquals(0)
     }
 
     @Test
@@ -995,7 +1102,7 @@ class TripDetailScreenTest {
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Locarno"))
         compose.onNodeWithText("TONIGHT").assertIsDisplayed()
         compose.onNodeWithText("Navigate").assertIsDisplayed()
-        compose.onNodeWithText("Show distance from here", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("Track this drive", useUnmergedTree = true).assertIsDisplayed()
         compose.onAllNodesWithText("Checked in", useUnmergedTree = true).assertCountEquals(0)
     }
 }

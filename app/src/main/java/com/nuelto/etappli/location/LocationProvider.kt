@@ -10,8 +10,8 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * One-shot GPS fix for "use current position" — the app never tracks continuously.
- * Caller is responsible for holding ACCESS_FINE_LOCATION before calling.
+ * One-shot GPS fix for "use current position"; the fixes of a tracked drive come from
+ * [TrackingService]. Caller is responsible for holding ACCESS_FINE_LOCATION before calling.
  */
 class LocationProvider(private val context: Context) {
 

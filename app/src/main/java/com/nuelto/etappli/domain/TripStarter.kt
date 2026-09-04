@@ -108,6 +108,7 @@ object TripStarter {
                     tripId = newId,
                     state = StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
+                    track = emptyList(),
                 )
             },
         )

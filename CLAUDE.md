@@ -85,14 +85,39 @@ There is no lint/format tooling configured.
   (`StopLeg.hasRoad` false): straight hop, road factor, "No drivable route", and nothing
   asks again for 30 days.
 - **"How far from here"**: on an ACTIVE trip the NowCard replaces the planned leg with a
-  live route from the current GPS fix to the stop you are heading for (`domain/DriveFromHere`
-  + `LiveDrive` rules, `MapProvider.drive`). Never stored — it is true for one fix.
-  `LiveDrive` throttles it: no refetch under 2 km of movement, and nothing shown once you
-  are within 150 m. The line also carries the arrival time (`formatArrival`, rounded to the
-  minute like `formatDuration` so the two agree), read at composition — no ticker, because
-  an endless `LaunchedEffect` would leave the Compose test clock busy forever. Checking in
-  clears it in the combine: you are there, so distance stops being a question. The
-  permission is asked for on tap, never on opening a trip.
+  live route from the last GPS fix to the stop you are heading for. The fix/route logic is
+  `RouteTracker.fix` (one implementation, shared with the tracking service): every fix
+  goes to the app's one `RouteTracker` (`AppContainer.tracker`), which buys the route
+  (`MapProvider.drive`) and publishes it as `RouteTracker.state.drive`, a
+  `domain/DriveFromHere`. Never stored — it is true for one fix. `LiveDrive` throttles it,
+  keyed on where the last route was *asked* from and to, whatever came of it — so a stop
+  with no road never buys a route per fix: no refetch under 2 km of movement, and nothing
+  shown once you are within 150 m. The line also carries the arrival time (`formatArrival`,
+  rounded to the minute like `formatDuration` so the two agree), read at composition — no
+  ticker, because an endless `LaunchedEffect` would leave the Compose test clock busy
+  forever. Checking in clears it in the combine: you are there, so distance stops being a
+  question. The permission is asked for on tap, never on opening a trip.
+- **Tracking the way driven** (`domain/RouteTracker`, `domain/Tracks`,
+  `location/TrackingService`): the *heading* is the stop an ACTIVE trip is driving to
+  (`CurrentStop.heading` — `CurrentStop.of` while it is still PLANNED; mid-stay there is
+  none, and the −1 on the nights stepper is the check-out), *underway* only from the tour's
+  start date on. While one is underway a foreground service takes a fix every
+  `Tracks.FIX_INTERVAL_MS` (2 min, HIGH_ACCURACY — deliberate: a road trace needs GPS and
+  the cadence duty-cycles it), appends it atomically to `Stop.track`
+  (`TripRepository.appendTrack`), and keeps an ongoing notification saying how far the
+  heading still is — about one Routes call per fix on the road, ~30/h, well inside the
+  Essentials free tier for one user. The service starts when the app is open with a heading
+  underway (`MainActivity.TrackingTrigger`, and the NowCard when the permission lands) and
+  stops itself when nothing is underway. Android 12+ refuses a location FGS started from
+  the background, so there is no `ACCESS_BACKGROUND_LOCATION`, no WorkManager, no boot
+  receiver and `START_NOT_STICKY`: **a drive on a day the app is never opened is not
+  recorded.** Both repositories run `Tracks.settle` after every stop write — fixes belong
+  to the drive underway, whichever stop it now arrives at. A track of two or more points is
+  drawn instead of the leg (`MapOverlay`: the drive underway is the track so far plus the
+  rest of the road from the last fix, dashed); an arrival fix (within 150 m) is never
+  recorded, or the evening fix at the campsite would turn the routed road into a straight
+  line. **Never write a `Stop` you did not just read**: a whole-stop write carries the
+  track it loaded, so every writer re-reads first (a second device would lose fixes).
 - **Elevation is not Google**: its Elevation API forbids storing results, so height comes
   from Open-Meteo (Copernicus DEM) via `domain/Elevation`. Two different numbers:
   `Stop.elevation` is **how high the stop is**, one point, stable, and the only one shown

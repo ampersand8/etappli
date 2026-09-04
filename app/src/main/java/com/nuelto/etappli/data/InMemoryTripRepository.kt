@@ -11,6 +11,7 @@ import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.CostCalculator
 import com.nuelto.etappli.domain.DateCascade
+import com.nuelto.etappli.domain.Tracks
 import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
 import java.util.UUID
@@ -73,6 +74,7 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         withIds.map { it.tripId }.distinct().forEach {
             recomputeTotals(it)
             redatePlan(it)
+            settleTracks(it)
         }
     }
 
@@ -80,6 +82,20 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         stopsFlow.update { list -> list.filterNot { it.id == stopId } }
         recomputeTotals(tripId)
         redatePlan(tripId)
+        settleTracks(tripId)
+    }
+
+    override suspend fun appendTrack(tripId: String, stopId: String, point: LatLng) {
+        stopsFlow.update { list ->
+            list.map { stop ->
+                // Firestore's arrayUnion drops an element present anywhere in the array.
+                if (stop.id == stopId && stop.tripId == tripId && point !in stop.track) {
+                    stop.copy(track = stop.track + point)
+                } else {
+                    stop
+                }
+            }
+        }
     }
 
     override suspend fun upsertExpense(expense: Expense) {
@@ -106,6 +122,12 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
         if (trip.status != TripStatus.PLANNED) return
         val start = DateCascade.start(stopsFlow.value.filter { it.tripId == tripId }) ?: return
         tripsFlow.update { list -> list.map { if (it.id == tripId) it.copy(startDate = start) else it } }
+    }
+
+    /** Fixes belong to the drive underway whichever stop it now arrives at — see Tracks.settle. */
+    private fun settleTracks(tripId: String) {
+        val settled = Tracks.settle(stopsFlow.value.filter { it.tripId == tripId }).associateBy { it.id }
+        stopsFlow.update { list -> list.map { settled[it.id] ?: it } }
     }
 
     private fun recomputeTotals(tripId: String) {

@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.content.pm.PackageManager
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.border
@@ -200,9 +201,19 @@ fun TripDetailScreen(
         }
     }
 
-    // "How far from here" needs a fix. Asked for on tap rather than on open: a permission
+    // Tracking the drive needs a fix. Asked for on tap rather than on open: a permission
     // dialog the moment a trip is opened is not a trade the user agreed to.
     val locationContext = LocalContext.current
+    // One expression on one line: Robolectric runs sdk 35, and an if/else would leave the
+    // other branch's line uncovered.
+    var notificationsGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(locationContext, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> notificationsGranted = granted }
+    // The ongoing notification is what makes tracking visible; the service records without it.
+    fun askNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 && !notificationsGranted) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
     var locationGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -211,9 +222,23 @@ fun TripDetailScreen(
             ) == PackageManager.PERMISSION_GRANTED,
         )
     }
+    // Coarse alone is a 2 km grid, no track: the card then says what is missing.
+    var coarseOnly by remember {
+        mutableStateOf(
+            !locationGranted && ContextCompat.checkSelfPermission(
+                locationContext,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    // Both at once — a fine-only request is ignored on some Android 12 builds.
     val locationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> locationGranted = granted }
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        coarseOnly = !locationGranted && result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (locationGranted) askNotifications()
+    }
     // Keyed on the grant too, so answering the dialog is what triggers the first fix —
     // the launcher callback only has to record it.
     LaunchedEffect(state.currentStopId, locationGranted) {
@@ -432,11 +457,18 @@ fun TripDetailScreen(
                             stop = row.stop,
                             leg = state.drives[row.stop.id],
                             fromHere = state.driveFromHere,
+                            tracking = state.tracking,
+                            preciseNeeded = coarseOnly,
                             onLocate = if (locationGranted) {
                                 null
                             } else {
-                                { locationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+                                {
+                                    locationPermission.launch(
+                                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                                    )
+                                }
                             },
+                            onNotify = if (state.tracking && !notificationsGranted) ::askNotifications else null,
                             settings = state.settings,
                             onClick = { onEditStop(trip.id, row.stop.id) },
                             onChangeNights = { delta -> viewModel.changeNights(row.stop.id, delta) },
@@ -587,8 +619,14 @@ private fun NowCard(
     stop: Stop,
     leg: StopLeg?,
     fromHere: DriveFromHere?,
+    // The background service is recording this drive.
+    tracking: Boolean,
+    // Only coarse location was granted, which gives no track.
+    preciseNeeded: Boolean,
     // Null once the location permission is held; otherwise, what to call to ask for it.
     onLocate: (() -> Unit)?,
+    // Asks to show the tracking as a notification; null once it may, or with nothing tracked.
+    onNotify: (() -> Unit)?,
     settings: UserSettings,
     onClick: () -> Unit,
     onChangeNights: (Int) -> Unit,
@@ -608,14 +646,15 @@ private fun NowCard(
                 fontWeight = FontWeight.Bold,
             )
             // Where you are beats where you came from: on the stop you are driving to, the
-            // live distance replaces the planned leg rather than sitting beside it.
+            // live distance replaces the planned leg rather than sitting beside it. The
+            // ViewModel has already matched [fromHere] to this stop's target.
             when {
-                fromHere != null && fromHere.to == stop.location -> Text(
+                fromHere != null -> Text(
                     // "now" is read at composition: opening the trip gives a current
                     // answer, and every state change refreshes it. It does not tick on
                     // its own — an endless timer in a LaunchedEffect would leave the
                     // Compose test clock permanently busy.
-                    formatDriveFromHere(
+                    (if (tracking) "Tracking · " else "") + formatDriveFromHere(
                         fromHere.distanceMeters,
                         fromHere.durationSeconds,
                         LocalDateTime.now(),
@@ -623,13 +662,27 @@ private fun NowCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = ActiveGreen,
                 )
+                // Says what the permission buys: the track, not just a number.
                 onLocate != null && stop.location != null && stop.state != StopState.DONE -> Text(
-                    "Show distance from here",
+                    if (preciseNeeded) "Precise location needed to track" else "Track this drive",
                     style = MaterialTheme.typography.labelSmall,
                     color = ActiveGreen,
                     modifier = Modifier.clickable(onClick = onLocate),
                 )
+                tracking -> Text(
+                    "Tracking this drive",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ActiveGreen,
+                )
                 else -> DriveLine(leg)
+            }
+            if (onNotify != null) {
+                Text(
+                    "Show tracking as a notification",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ActiveGreen,
+                    modifier = Modifier.clickable(onClick = onNotify),
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),

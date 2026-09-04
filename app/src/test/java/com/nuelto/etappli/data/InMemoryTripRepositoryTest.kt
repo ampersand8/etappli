@@ -276,6 +276,81 @@ class InMemoryTripRepositoryTest {
     }
 
 
+    private suspend fun stop(tripId: String, id: String) = repo.stops(tripId).first().single { it.id == id }
+
+    @Test
+    fun `append track adds fixes in order and drops a point already on the track`() = runTest {
+        val id = addTrip()
+        repo.upsertStop(Stop(id = "s1", tripId = id, nights = 2, campingCostTotal = 50.0))
+        val a = LatLng(46.0, 7.0)
+        val b = LatLng(46.1, 7.1)
+        repo.appendTrack(id, "s1", a)
+        repo.appendTrack(id, "s1", b)
+        repo.appendTrack(id, "s1", b)
+        // Like Firestore's arrayUnion: a point present anywhere is not added again.
+        repo.appendTrack(id, "s1", a)
+        assertEquals(listOf(a, b), stop(id, "s1").track)
+        // An unknown stop, or the right stop on the wrong trip, is a no-op.
+        repo.appendTrack(id, "nope", a)
+        repo.appendTrack("other", "s1", b)
+        assertEquals(listOf("s1"), repo.stops(id).first().map { it.id })
+        assertEquals(listOf(a, b), stop(id, "s1").track)
+        assertEquals(50.0, repo.trip(id).first()!!.totalCost, 1e-9)
+        assertEquals(2, repo.trip(id).first()!!.nights)
+    }
+
+    @Test
+    fun `fixes follow the drive underway when the plan changes`() = runTest {
+        val start = LocalDate.of(2026, 9, 4)
+        val id = repo.upsertTrip(Trip(id = "tour", name = "Tour", startDate = start, status = TripStatus.ACTIVE))
+        repo.upsertStop(Stop(id = "a", tripId = id, orderIndex = 0, arrivalDate = start, state = StopState.DONE, nights = 0))
+        repo.upsertStop(Stop(id = "b", tripId = id, orderIndex = 1, arrivalDate = start))
+        repo.upsertStop(Stop(id = "c", tripId = id, orderIndex = 2, arrivalDate = start.plusDays(1)))
+        val fixes = listOf(LatLng(46.0, 7.0), LatLng(46.1, 7.1))
+        fixes.forEach { repo.appendTrack(id, "b", it) }
+        assertEquals(fixes, stop(id, "b").track)
+
+        // A stop inserted in front of the heading takes the fixes over.
+        repo.upsertStops(
+            listOf(
+                Stop(id = "n", tripId = id, orderIndex = 1, arrivalDate = start),
+                stop(id, "b").copy(orderIndex = 2),
+                stop(id, "c").copy(orderIndex = 3),
+            ),
+        )
+        assertEquals(fixes, stop(id, "n").track)
+        assertTrue(stop(id, "b").track.isEmpty())
+
+        // Dragged back in front, it takes them back.
+        repo.upsertStops(listOf(stop(id, "b").copy(orderIndex = 1), stop(id, "n").copy(orderIndex = 2)))
+        assertEquals(fixes, stop(id, "b").track)
+        assertTrue(stop(id, "n").track.isEmpty())
+
+        // Skipped, it hands them on; restored, it takes them back.
+        repo.upsertStop(stop(id, "b").copy(state = StopState.SKIPPED))
+        assertEquals(fixes, stop(id, "n").track)
+        assertTrue(stop(id, "b").track.isEmpty())
+        repo.upsertStop(stop(id, "b").copy(state = StopState.PLANNED))
+        assertEquals(fixes, stop(id, "b").track)
+        assertTrue(stop(id, "n").track.isEmpty())
+    }
+
+    @Test
+    fun `deleting the checked-in stop hands the fixes to the stop now heading`() = runTest {
+        val start = LocalDate.of(2026, 9, 4)
+        val id = repo.upsertTrip(Trip(id = "tour", name = "Tour", startDate = start, status = TripStatus.ACTIVE))
+        // Restored behind the check-in line, the checked-in stop, and the heading with fixes.
+        repo.upsertStop(Stop(id = "r", tripId = id, orderIndex = 0, arrivalDate = start))
+        repo.upsertStop(Stop(id = "d", tripId = id, orderIndex = 1, arrivalDate = start, state = StopState.DONE, nights = 0))
+        repo.upsertStop(Stop(id = "h", tripId = id, orderIndex = 2, arrivalDate = start.plusDays(1)))
+        val fixes = listOf(LatLng(46.0, 7.0), LatLng(46.1, 7.1))
+        fixes.forEach { repo.appendTrack(id, "h", it) }
+
+        repo.deleteStop(id, "d")
+        assertEquals(fixes, stop(id, "r").track)
+        assertTrue(stop(id, "h").track.isEmpty())
+    }
+
     @Test
     fun `a plan starts the day its first stop does`() = runTest {
         val start = LocalDate.of(2026, 9, 2)

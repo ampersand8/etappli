@@ -13,9 +13,11 @@ import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.SettingsRepository
 import com.nuelto.etappli.data.TripRepository
 import com.nuelto.etappli.data.model.LatLng
+import com.nuelto.etappli.domain.RouteTracker
 import com.nuelto.etappli.domain.ShareIntake
 import com.nuelto.etappli.location.LocationProvider
 import com.nuelto.etappli.location.ShareLinkResolver
+import com.nuelto.etappli.location.TrackingService
 import com.nuelto.etappli.ui.map.PlaceholderMapProvider
 import com.nuelto.etappli.ui.map.MapProvider
 
@@ -38,6 +40,10 @@ class AppContainer(
     val shareIntake: ShareIntake = ShareIntake(),
     // Follows a shared short link to the Maps URL behind it; null without a connection.
     val expandShareLink: suspend (String) -> String? = { null },
+    // Follows the drive underway: the track, and how far the next stop is. See domain/RouteTracker.
+    val tracker: RouteTracker = RouteTracker(tripRepository, mapProvider::drive),
+    // Starts the background tracking service where the platform allows it; a no-op in tests.
+    val startTracking: () -> Unit = {},
 ) {
     val firebaseEnabled: Boolean get() = authRepository != null
 
@@ -46,9 +52,10 @@ class AppContainer(
             mapProvider: MapProvider = PlaceholderMapProvider,
             currentLocation: suspend () -> LatLng? = { null },
             expandShareLink: suspend (String) -> String? = { null },
+            startTracking: () -> Unit = {},
         ) = AppContainer(
             null, InMemoryTripRepository(), InMemorySettingsRepository(), mapProvider, currentLocation,
-            expandShareLink = expandShareLink,
+            expandShareLink = expandShareLink, startTracking = startTracking,
         )
     }
 }
@@ -68,7 +75,8 @@ open class CamperApp : Application() {
         val map = googleMapProvider(this) ?: PlaceholderMapProvider
         val locate: suspend () -> LatLng? = { LocationProvider(this).currentLocation() }
         val expand: suspend (String) -> String? = { ShareLinkResolver.expand(it) }
-        return firebaseContainer(this, map, locate, expand) ?: AppContainer.inMemory(map, locate, expand)
+        val track = { TrackingService.start(this) }
+        return firebaseContainer(this, map, locate, expand, track) ?: AppContainer.inMemory(map, locate, expand, track)
     }
 }
 

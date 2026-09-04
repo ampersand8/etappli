@@ -3,6 +3,7 @@ package com.nuelto.etappli.data
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
@@ -23,6 +24,7 @@ import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.legacyTripStatus
 import com.nuelto.etappli.domain.CostCalculator
 import com.nuelto.etappli.domain.DateCascade
+import com.nuelto.etappli.domain.Tracks
 import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -106,6 +108,7 @@ class FirestoreTripRepository(
         "region" to region?.let {
             mapOf("at" to GeoPoint(it.at.latitude, it.at.longitude), "name" to it.name, "country" to it.country)
         },
+        "track" to track.map { GeoPoint(it.latitude, it.longitude) },
     )
 
     private fun StopLeg.toMap() = mapOf(
@@ -191,6 +194,9 @@ class FirestoreTripRepository(
                 stored["name"] as? String ?: "",
                 stored["country"] as? String ?: "",
             )
+        },
+        track = (get("track") as? List<*>).orEmpty().mapNotNull { point ->
+            (point as? GeoPoint)?.let { LatLng(it.latitude, it.longitude) }
         },
     )
 
@@ -304,6 +310,7 @@ class FirestoreTripRepository(
         stops.map { it.tripId }.distinct().forEach {
             recomputeTotals(it)
             redatePlan(it)
+            settleTracks(it)
         }
     }
 
@@ -311,6 +318,12 @@ class FirestoreTripRepository(
         trips(uid).document(tripId).collection("stops").document(stopId).delete()
         recomputeTotals(tripId)
         redatePlan(tripId)
+        settleTracks(tripId)
+    }
+
+    override suspend fun appendTrack(tripId: String, stopId: String, point: LatLng) {
+        trips(uid).document(tripId).collection("stops").document(stopId)
+            .update("track", FieldValue.arrayUnion(GeoPoint(point.latitude, point.longitude)))
     }
 
     override suspend fun upsertExpense(expense: Expense) {
@@ -343,6 +356,21 @@ class FirestoreTripRepository(
         if (trip.status != TripStatus.PLANNED) return
         val start = DateCascade.start(stops) ?: return
         if (start != trip.startDate) tripDoc.update("startDate", start.toEpochDay())
+    }
+
+    /**
+     * Fixes belong to the drive underway whichever stop it now arrives at — see
+     * Tracks.settle. From the cache, like [redatePlan], so it holds offline too.
+     */
+    private suspend fun settleTracks(tripId: String) {
+        val tripDoc = trips(uid).document(tripId)
+        val stops = runCatching {
+            tripDoc.collection("stops").get(Source.CACHE).await().documents.map { it.toStop(tripId) }
+        }.getOrNull() ?: return
+        Tracks.settle(stops).forEach { stop ->
+            tripDoc.collection("stops").document(stop.id)
+                .update("track", stop.track.map { GeoPoint(it.latitude, it.longitude) })
+        }
     }
 
     /**

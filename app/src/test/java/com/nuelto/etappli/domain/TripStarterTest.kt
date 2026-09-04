@@ -3,6 +3,7 @@ package com.nuelto.etappli.domain
 import com.nuelto.etappli.data.InMemoryTripRepository
 import com.nuelto.etappli.data.model.Expense
 import com.nuelto.etappli.data.model.ExpenseType
+import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.StopKind
 import com.nuelto.etappli.data.model.StopState
@@ -169,6 +170,23 @@ class TripStarterTest {
         assertEquals(newStart, copied.date)
         assertNull(copied.stopId)
         assertEquals(2, repo.expenses(doneId).first().size)
+    }
+
+    @Test
+    fun `plan again leaves the way driven behind`() = runTest {
+        val driven = listOf(LatLng(46.0, 7.0), LatLng(46.5, 7.5))
+        val doneId = repo.upsertTrip(
+            Trip(id = "done", name = "Driven", startDate = LocalDate.of(2025, 9, 12), status = TripStatus.DONE),
+        )
+        repo.upsertStop(
+            Stop(
+                id = "d1", tripId = doneId, name = "Durance", arrivalDate = LocalDate.of(2025, 9, 12),
+                orderIndex = 0, state = StopState.DONE, track = driven,
+            ),
+        )
+        val newId = TripStarter.planAgain(repo, doneId, LocalDate.of(2026, 9, 12))
+        assertTrue(repo.stops(newId).first().single().track.isEmpty())
+        assertEquals(driven, repo.stops(doneId).first().single().track)
     }
 
     @Test

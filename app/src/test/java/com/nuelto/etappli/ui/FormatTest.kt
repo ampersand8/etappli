@@ -1,10 +1,12 @@
 package com.nuelto.etappli.ui
 
+import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.StopLeg
 import com.nuelto.etappli.data.model.TransitRide
 import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
+import com.nuelto.etappli.domain.DriveFromHere
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -211,6 +213,14 @@ class FormatTest {
             "arrive ${at(22, 30)} on ${formatDate(LocalDate.of(2026, 9, 3))}",
             formatArrival(2 * 24 * 3_600, evening),
         )
+    }
+
+    @Test
+    fun `the tracking notification names the stop and, once routed, how far it is`() {
+        assertEquals("Heading for Camping Delta", formatTrackingTitle("Camping Delta"))
+        val drive = DriveFromHere(LatLng(46.9, 8.5), LatLng(46.16, 8.79), 47_000, 3_300)
+        assertEquals("47 km · 55 min", formatTrackingText(drive))
+        assertEquals("Recording the way as you go", formatTrackingText(null))
     }
 
 }
