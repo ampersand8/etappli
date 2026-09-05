@@ -1,6 +1,7 @@
 package com.nuelto.etappli.data.model
 
 import java.time.LocalDate
+import java.time.LocalTime
 
 data class LatLng(
     val latitude: Double,
@@ -133,6 +134,9 @@ data class Stop(
     val name: String = "",
     val location: LatLng? = null,
     val arrivalDate: LocalDate = LocalDate.now(),
+    // The time of day you got there, stamped at check-in (domain/Stay) — [arrivalDate] is
+    // then the day. Null while planned, and for stops checked in before it was recorded.
+    val arrivalTime: LocalTime? = null,
     val nights: Int = 1,
     val campingCostTotal: Double = 0.0,
     val orderIndex: Int = 0,

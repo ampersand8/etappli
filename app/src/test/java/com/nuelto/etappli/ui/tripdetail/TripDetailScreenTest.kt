@@ -49,10 +49,14 @@ import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.testutil.TestCamperApp
 import com.nuelto.etappli.ui.map.LocalMapProvider
 import com.nuelto.etappli.ui.map.PlaceholderMapProvider
+import com.nuelto.etappli.domain.Stay
+import com.nuelto.etappli.ui.formatArrived
 import com.nuelto.etappli.ui.formatDate
+import com.nuelto.etappli.ui.formatStay
 import com.nuelto.etappli.ui.formatDriveFromHere
 import java.time.LocalDateTime
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -1012,9 +1016,124 @@ class TripDetailScreenTest {
         }
         setContent("a1", locatingViewModel(LatLng(46.9, 8.5), RoutedLeg("", 47_000, 3_300)))
         compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
-        compose.onNodeWithText("Checked in", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("CHECKED IN", useUnmergedTree = true).assertIsDisplayed()
         compose.onAllNodesWithText("from here", substring = true).assertCountEquals(0)
-        compose.onAllNodesWithText("arrive", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("arrive ", substring = true).assertCountEquals(0)
+    }
+
+    // --- checked in ------------------------------------------------------------------
+
+    /** Tonight's stop arrived at [daysAgo], with or without the time of day; the plan behind it follows. */
+    private fun checkIn(daysAgo: Long, time: LocalTime? = LocalTime.of(16, 42)) = runBlocking {
+        val stops = tripRepository.stops("a1").first()
+        val cur = stops.first { it.id == "cur" }.copy(state = StopState.DONE, arrivalDate = LocalDate.now().minusDays(daysAgo), arrivalTime = time)
+        val up = stops.first { it.id == "up" }.copy(arrivalDate = cur.arrivalDate.plusDays(cur.nights.toLong()))
+        tripRepository.upsertStops(listOf(cur, up))
+        cur
+    }
+
+    @Test
+    fun `the checked-in card says when you arrived, which night it is, and when you leave`() {
+        seedActive()
+        val cur = checkIn(daysAgo = 1)
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("CHECKED IN").assertIsDisplayed()
+        compose.onNodeWithText(formatArrived(cur.arrivalDate, LocalTime.of(16, 42))).assertIsDisplayed()
+        compose.onNodeWithText("Night 2 of 3 · leaving ${formatDate(cur.arrivalDate.plusDays(3))}").assertIsDisplayed()
+        compose.onNodeWithText("Check out").assertIsDisplayed()
+        compose.onNodeWithText("Undo check-in").assertIsDisplayed()
+        compose.onAllNodesWithText("✓ Arrived").assertCountEquals(0)
+        compose.onAllNodesWithText("TONIGHT").assertCountEquals(0)
+        // The date is on the arrival line, not in front of the stepper.
+        compose.onAllNodesWithText("${formatDate(cur.arrivalDate)} ·").assertCountEquals(0)
+        compose.onNodeWithContentDescription("One night more").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a stop checked in before the time was recorded shows the day`() {
+        seedActive()
+        val cur = checkIn(daysAgo = 0, time = null)
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Camp Current"))
+        compose.onNodeWithText("Arrived ${formatDate(cur.arrivalDate)}").assertIsDisplayed()
+        compose.onNodeWithText(formatStay(Stay.progress(cur, LocalDate.now()))).assertIsDisplayed()
+    }
+
+    @Test
+    fun `check out moves on to the next stop`() {
+        seedActive()
+        checkIn(daysAgo = 1)
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Check out"))
+        compose.onNodeWithText("Check out").performClick()
+        compose.onNodeWithText("TONIGHT").assertIsDisplayed()
+        compose.onNodeWithText("✓ Arrived").assertIsDisplayed()
+        runBlocking {
+            val stops = tripRepository.stops("a1").first()
+            assertEquals(1, stops.single { it.id == "cur" }.nights)
+            assertEquals(LocalDate.now(), stops.single { it.id == "up" }.arrivalDate)
+        }
+        // A stay checked out is history, not a check-in to take back.
+        compose.onAllNodesWithContentDescription("Undo check-in").assertCountEquals(0)
+    }
+
+    @Test
+    fun `undo check-in makes it tonight's stop to arrive at again`() {
+        seedActive()
+        checkIn(daysAgo = 0)
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Undo check-in"))
+        compose.onNodeWithText("Undo check-in").performClick()
+        compose.onNodeWithText("TONIGHT").assertIsDisplayed()
+        compose.onNodeWithText("✓ Arrived").assertIsDisplayed()
+        runBlocking {
+            val cur = tripRepository.stops("a1").first().single { it.id == "cur" }
+            assertEquals(StopState.PLANNED, cur.state)
+            assertEquals(null, cur.arrivalTime)
+        }
+    }
+
+    @Test
+    fun `a visit the tracker checked in can be taken back from its row`() {
+        runBlocking {
+            tripRepository.upsertTrip(Trip(id = "a2", name = "Loop", startDate = LocalDate.now(), status = TripStatus.ACTIVE))
+            tripRepository.upsertStop(
+                Stop(id = "out", tripId = "a2", name = "Luzern", orderIndex = 0, nights = 0, kind = StopKind.HOME, state = StopState.DONE, arrivalDate = LocalDate.now()),
+            )
+            tripRepository.upsertStop(
+                Stop(
+                    id = "v", tripId = "a2", name = "Rütli", orderIndex = 1, nights = 0, kind = StopKind.VISIT,
+                    state = StopState.DONE, arrivalDate = LocalDate.now(), arrivalTime = LocalTime.of(12, 10),
+                ),
+            )
+            tripRepository.upsertStop(Stop(id = "up", tripId = "a2", name = "Brunnen", orderIndex = 2, nights = 1, arrivalDate = LocalDate.now()))
+        }
+        setContent("a2")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasContentDescription("Undo check-in"))
+        compose.onNodeWithContentDescription("Undo check-in").performClick()
+        runBlocking {
+            val v = tripRepository.stops("a2").first().single { it.id == "v" }
+            assertEquals(StopState.PLANNED, v.state)
+            assertEquals(null, v.arrivalTime)
+        }
+        // Planned again it is the card, and the home it set out from has no arrival to take back.
+        compose.onNodeWithText("NEXT").assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Undo check-in").assertCountEquals(0)
+    }
+
+    @Test
+    fun `an estimated price on the checked-in card opens the price prompt, a known one does not`() {
+        seedActive()
+        checkIn(daysAgo = 0)
+        setContent("a1")
+        compose.onNodeWithTag("timeline").performScrollToNode(hasText("Check out"))
+        compose.onNodeWithText("≈ CHF135.00").performClick()
+        compose.onNodeWithText("Arrived at Camp Current").assertIsDisplayed()
+        compose.onNodeWithText("Price for the stay").performTextInput("120")
+        compose.onNodeWithText("Save price").performClick()
+        compose.onNodeWithText("CHF120.00").performClick()
+        compose.onAllNodesWithText("Arrived at Camp Current").assertCountEquals(0)
     }
 
     @Test
@@ -1103,6 +1222,6 @@ class TripDetailScreenTest {
         compose.onNodeWithText("TONIGHT").assertIsDisplayed()
         compose.onNodeWithText("Navigate").assertIsDisplayed()
         compose.onNodeWithText("Track this drive", useUnmergedTree = true).assertIsDisplayed()
-        compose.onAllNodesWithText("Checked in", useUnmergedTree = true).assertCountEquals(0)
+        compose.onAllNodesWithText("CHECKED IN", useUnmergedTree = true).assertCountEquals(0)
     }
 }

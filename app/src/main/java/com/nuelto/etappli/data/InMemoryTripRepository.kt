@@ -14,6 +14,7 @@ import com.nuelto.etappli.domain.DateCascade
 import com.nuelto.etappli.domain.Tracks
 import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -238,6 +239,7 @@ class InMemoryTripRepository(seed: Boolean = true) : TripRepository {
                 id = "demo-v1", tripId = vierwald.id, name = "Camping Seefeld Sarnen",
                 location = LatLng(46.8709, 8.2492), arrivalDate = LocalDate.now().minusDays(1),
                 nights = 2, campingCostTotal = 84.0, orderIndex = 0, state = StopState.DONE,
+                arrivalTime = LocalTime.of(16, 40),
                 elevation = StopElevation(LatLng(46.8709, 8.2492), 473),
             ),
             Stop(

@@ -7,6 +7,7 @@ import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.DriveFromHere
+import com.nuelto.etappli.domain.Stay
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -213,6 +214,24 @@ class FormatTest {
             "arrive ${at(22, 30)} on ${formatDate(LocalDate.of(2026, 9, 3))}",
             formatArrival(2 * 24 * 3_600, evening),
         )
+    }
+
+    @Test
+    fun `the arrival is the day, with the time of day once recorded`() {
+        val day = LocalDate.of(2026, 9, 4)
+        assertEquals("Arrived ${formatDate(day)}", formatArrived(day, null))
+        val stamped = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).format(day.atTime(16, 42))
+        assertEquals("Arrived $stamped", formatArrived(day, LocalTime.of(16, 42)))
+        assertTrue(stamped.contains("Sep 4, 2026"))
+    }
+
+    @Test
+    fun `the stay reads as the night ahead of you, and on the last morning as the leaving`() {
+        val leaving = LocalDate.of(2026, 9, 7)
+        assertEquals("Night 1 of 3 · leaving ${formatDate(leaving)}", formatStay(Stay.Progress(0, 3, leaving)))
+        assertEquals("Night 2 of 3 · leaving ${formatDate(leaving)}", formatStay(Stay.Progress(1, 2, leaving)))
+        assertEquals("Night 1 of 1 · leaving ${formatDate(leaving)}", formatStay(Stay.Progress(0, 1, leaving)))
+        assertEquals("Leaving ${formatDate(leaving)}", formatStay(Stay.Progress(3, 0, leaving)))
     }
 
     @Test

@@ -13,9 +13,11 @@ import com.nuelto.etappli.data.model.StopState
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
+import com.nuelto.etappli.domain.Stay
 import com.nuelto.etappli.testutil.FakePlaceNameResolver
 import com.nuelto.etappli.testutil.MainDispatcherRule
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -609,6 +611,36 @@ class StopEditViewModelTest {
         val stops = tripRepository.stops("t1").first()
         assertEquals(track, stops.single { it.name == "Spontan" }.track)
         assertTrue(stops.single { it.id == "up" }.track.isEmpty())
+    }
+
+    @Test
+    fun `a check-in landing while the editor is open survives a save that left the date alone`() = runTest {
+        val today = LocalDate.now()
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Trip", startDate = today.minusDays(1), status = TripStatus.ACTIVE))
+        tripRepository.upsertStop(
+            Stop(id = "a", tripId = "t1", name = "A", orderIndex = 0, arrivalDate = today.minusDays(1), nights = 1, location = LatLng(46.0, 7.0)),
+        )
+        tripRepository.upsertStop(Stop(id = "b", tripId = "t1", name = "B", orderIndex = 1, arrivalDate = today))
+        val vm = StopEditViewModel(
+            SavedStateHandle(mapOf("tripId" to "t1", "stopId" to "a")), tripRepository, settingsRepository, resolver,
+        )
+        // A day late, and checked in by the tracker while the notes were being typed.
+        tripRepository.upsertStops(Stay.checkIn(tripRepository.stops("t1").first(), "a", today.atTime(16, 5)))
+        vm.setNotes("Quiet")
+        vm.save {}
+        var stops = tripRepository.stops("t1").first()
+        val a = stops.single { it.id == "a" }
+        assertEquals(StopState.DONE, a.state)
+        assertEquals(today, a.arrivalDate)
+        assertEquals(LocalTime.of(16, 5), a.arrivalTime)
+        assertEquals("Quiet", a.notes)
+        assertEquals(today.plusDays(1), stops.single { it.id == "b" }.arrivalDate)
+        // A date the user did set still wins.
+        vm.setArrivalDate(today.plusDays(2))
+        vm.save {}
+        stops = tripRepository.stops("t1").first()
+        assertEquals(today.plusDays(2), stops.single { it.id == "a" }.arrivalDate)
+        assertEquals(today.plusDays(3), stops.single { it.id == "b" }.arrivalDate)
     }
 
     @Test

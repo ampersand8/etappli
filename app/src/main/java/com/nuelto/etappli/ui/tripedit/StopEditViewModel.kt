@@ -284,6 +284,9 @@ class StopEditViewModel(
                 )
                 val parsed = parseDecimal(state.campingCost)
                 val nights = if (state.isStay) state.nights else 0
+                // The date as the user set it — or, left alone, the stop's own: the tracker
+                // may have checked it in meanwhile, on another day than the one loaded.
+                val arrivalDate = if (old != null && state.arrivalDate == existing?.arrivalDate) old.arrivalDate else state.arrivalDate
                 // No parseable price means "estimate at the kind's default rate" —
                 // except kinds free by nature, and unchanged legacy known-zero stops.
                 val costKnown = parsed != null ||
@@ -291,7 +294,7 @@ class StopEditViewModel(
                     (old != null && old.costKnown && old.campingCostTotal == 0.0 && old.kind == state.kind)
                 val saved = base.copy(
                     name = state.savedName(),
-                    arrivalDate = state.arrivalDate,
+                    arrivalDate = arrivalDate,
                     nights = nights,
                     campingCostTotal = if (state.isStay) parsed ?: 0.0 else 0.0,
                     location = state.location,
@@ -313,7 +316,7 @@ class StopEditViewModel(
                     // A moved departure shifts the downstream planned schedule along.
                     val days = ChronoUnit.DAYS.between(
                         old.arrivalDate.plusDays(old.nights.toLong()),
-                        state.arrivalDate.plusDays(nights.toLong()),
+                        arrivalDate.plusDays(nights.toLong()),
                     )
                     listOf(saved) + DateCascade.shift(stops, old.orderIndex, days)
                 }

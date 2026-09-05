@@ -21,6 +21,9 @@ object Tracks {
     /** A fix closer than this to the last one recorded is the same place — parked, at the lights, at lunch. */
     const val MIN_MOVE_METERS = 30.0
 
+    /** A fix less sure than this is a cell tower, not GPS: the service drops it (see CLAUDE.md, arriving). */
+    const val MAX_ACCURACY_METERS = 250.0
+
     fun accepts(track: List<LatLng>, fix: LatLng): Boolean {
         val last = track.lastOrNull() ?: return true
         return GeoUtils.haversineKm(last, fix) * 1000 >= MIN_MOVE_METERS
