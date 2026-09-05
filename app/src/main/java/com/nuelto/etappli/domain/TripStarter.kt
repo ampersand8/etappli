@@ -66,6 +66,7 @@ object TripStarter {
                     tripId = newId,
                     state = if (it.id == departed) StopState.DONE else StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
+                    arrivalTime = null,
                 )
             },
         )
@@ -108,6 +109,7 @@ object TripStarter {
                     tripId = newId,
                     state = StopState.PLANNED,
                     arrivalDate = it.arrivalDate.plusDays(shift),
+                    arrivalTime = null,
                     track = emptyList(),
                 )
             },

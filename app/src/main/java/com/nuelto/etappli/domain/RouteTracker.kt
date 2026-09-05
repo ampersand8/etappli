@@ -4,8 +4,9 @@ import com.nuelto.etappli.data.TripRepository
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.data.model.Stop
 import com.nuelto.etappli.data.model.TripStatus
-import java.time.LocalDate
+import java.time.ZonedDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * The stop an active trip is driving to: which trip, where the vehicle is actually driven
@@ -30,14 +32,15 @@ data class Heading(val tripId: String, val stop: Stop, val target: LatLng?, val 
 /**
  * Follows the drive underway on the active trip: every GPS fix goes onto the track of the
  * stop being headed for and, throttled by [LiveDrive], buys a route from there to it —
- * what the NowCard and the tracking notification both show. One per app (AppContainer):
- * the foreground service feeds it fixes in the background, the timeline feeds it one when
- * it opens, and both read the same answer.
+ * what the NowCard and the tracking notification both show. Standing at the stop for
+ * [Stay.CHECK_IN_AFTER] checks you in. One per app (AppContainer): the foreground service
+ * feeds it fixes in the background, the timeline feeds it one when it opens, and both read
+ * the same answer.
  */
 class RouteTracker(
     private val tripRepository: TripRepository,
     private val drive: suspend (from: LatLng, to: LatLng) -> RoutedLeg? = { _, _ -> null },
-    private val today: () -> LocalDate = { LocalDate.now() },
+    private val now: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
     data class State(
         // How far the target is from the last fix; null until routed, and again once
@@ -65,6 +68,13 @@ class RouteTracker(
     // parking spot, the run to the shop from the campsite — is not the drive.
     private var arrivedFor: String? = null
 
+    // The fixes at the stop being headed for so far: Stay.CHECK_IN_AFTER of them is arriving.
+    private var dwell: Stay.Dwell? = null
+
+    // A stop not to check in at until a fix has left it: the one just checked in, so that
+    // taking that back is not undone by the next fix, or the one the user took back.
+    private var heldOff: String? = null
+
     /**
      * Where the active trip is heading, re-evaluated as trips and stops change: null
      * between check-in and check-out and with no active trip. Two active trips: the one
@@ -78,20 +88,22 @@ class RouteTracker(
         .flatMapLatest { trip ->
             if (trip == null) return@flatMapLatest flowOf(null)
             tripRepository.stops(trip.id).map { stops ->
-                CurrentStop.heading(stops, today())?.let {
-                    Heading(trip.id, it, Tracks.target(stops, it), underway = !today().isBefore(trip.startDate))
+                val today = now().toLocalDate()
+                CurrentStop.heading(stops, today)?.let {
+                    Heading(trip.id, it, Tracks.target(stops, it), underway = !today.isBefore(trip.startDate))
                 }
             }
         }
 
     /**
      * One fix from the phone. Onto the track (only while underway, and nothing from the
-     * arrival fix on), then how far the target still is. [tripId] from a screen keeps a fix off another
-     * active trip's drive; the service passes none. Serialized: the service and a screen
-     * can both deliver one.
+     * arrival fix on), then whether you have arrived for good, then how far the target
+     * still is. [tripId] from a screen keeps a fix off another active trip's drive; the
+     * service passes none. Serialized: the service and a screen can both deliver one.
      */
     suspend fun fix(point: LatLng, tripId: String? = null) {
         lock.withLock {
+            val at = now()
             val heading = heading().first()
             if (heading == null) {
                 _state.update { it.copy(drive = null, lastFix = point) }
@@ -105,6 +117,11 @@ class RouteTracker(
                 tripRepository.appendTrack(heading.tripId, heading.stop.id, point)
             }
             _state.update { it.copy(lastFix = point) }
+            // Before the arrival return below: the fixes that check you in are the ones inside it.
+            if (stay(heading, point, at)) {
+                _state.update { it.copy(drive = null) }
+                return
+            }
             if (target == null || arrived) {
                 _state.update { it.copy(drive = null) }
                 return
@@ -119,6 +136,40 @@ class RouteTracker(
                 state.copy(drive = leg?.let { DriveFromHere(point, target, it.distanceMeters, it.durationSeconds) })
             }
         }
+    }
+
+    /**
+     * The dwell that checks you in: [Stay.CHECK_IN_AFTER] of fixes at the stop being headed
+     * for (Stay.near), on a drive underway — stamped with the first of them, which is when
+     * you got there. True once the check-in is written.
+     */
+    private suspend fun stay(heading: Heading, point: LatLng, at: ZonedDateTime): Boolean {
+        val stop = heading.stop
+        val left = Stay.left(point, stop)
+        if (heldOff == stop.id && left) heldOff = null
+        if (!heading.underway || heldOff == stop.id || left) {
+            dwell = null
+            return false
+        }
+        // Between near and left, or not yet the stop's day: neither at it nor away from it.
+        if (!Stay.near(point, stop, at.toLocalDate())) return false
+        val here = Stay.dwell(dwell, stop.id, at).also { dwell = it }
+        if (!here.checksIn) return false
+        val stops = tripRepository.stops(heading.tripId).first()
+        // The write ends the drive, which stops the service, which cancels the coroutine
+        // this runs in: the repository must still get to settle the plan behind the write.
+        withContext(NonCancellable) {
+            tripRepository.upsertStops(Stay.checkIn(stops, stop.id, here.since.toLocalDateTime()))
+        }
+        // The next fix starts over by itself: no heading, or this stop held off.
+        heldOff = stop.id
+        return true
+    }
+
+    /** You are not at [stopId] after all: no check-in there until a fix has left it, and the drive to it is on again. */
+    suspend fun holdOff(stopId: String) = lock.withLock {
+        heldOff = stopId
+        arrivedFor = null
     }
 
     /** The service reports itself. */

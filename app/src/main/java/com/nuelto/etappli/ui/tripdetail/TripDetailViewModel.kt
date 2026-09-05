@@ -32,6 +32,7 @@ import com.nuelto.etappli.domain.RegionResolver
 import com.nuelto.etappli.domain.RouteCache
 import com.nuelto.etappli.domain.RouteRefresher
 import com.nuelto.etappli.domain.RouteTracker
+import com.nuelto.etappli.domain.Stay
 import com.nuelto.etappli.domain.Timeline
 import com.nuelto.etappli.domain.TimelineRow
 import com.nuelto.etappli.domain.Tracks
@@ -41,7 +42,7 @@ import com.nuelto.etappli.domain.VignetteTable
 import com.nuelto.etappli.location.PlaceNameResolver
 import com.nuelto.etappli.ui.nav.TripDetailRoute
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import java.time.LocalDateTime
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -247,17 +248,30 @@ class TripDetailViewModel(
         }
     }
 
-    /** Check-in: stamps today as the actual arrival; a late arrival shifts what follows. */
+    /** Check-in: stamps now as the arrival; a late arrival shifts what follows (Stay.checkIn). */
     fun arrived(stopId: String) {
         viewModelScope.launch {
             writeLock.withLock {
-                val stops = tripRepository.stops(tripId).first()
-                val stop = stops.find { it.id == stopId } ?: return@withLock
-                val today = LocalDate.now()
-                tripRepository.upsertStops(
-                    listOf(stop.copy(state = StopState.DONE, arrivalDate = today)) +
-                        DateCascade.shift(stops, stop.orderIndex, ChronoUnit.DAYS.between(stop.arrivalDate, today)),
-                )
+                tripRepository.upsertStops(Stay.checkIn(tripRepository.stops(tripId).first(), stopId, LocalDateTime.now()))
+            }
+        }
+    }
+
+    /** Check-out: the stay ends today, and the plan behind it moves up (Stay.checkOut). */
+    fun checkOut(stopId: String) {
+        viewModelScope.launch {
+            writeLock.withLock {
+                tripRepository.upsertStops(Stay.checkOut(tripRepository.stops(tripId).first(), stopId, LocalDate.now()))
+            }
+        }
+    }
+
+    /** Takes a check-in back, and keeps the tracker from making it again while you are still there. */
+    fun undoArrival(stopId: String) {
+        viewModelScope.launch {
+            writeLock.withLock {
+                tracker.holdOff(stopId)
+                tripRepository.upsertStops(Stay.undoCheckIn(tripRepository.stops(tripId).first(), stopId))
             }
         }
     }
@@ -284,7 +298,8 @@ class TripDetailViewModel(
         viewModelScope.launch {
             writeLock.withLock {
                 val stop = freshStop(stopId) ?: return@withLock
-                tripRepository.upsertStop(stop.copy(state = state))
+                // Skipped, or planned again: not arrived at.
+                tripRepository.upsertStop(stop.copy(state = state, arrivalTime = null))
             }
         }
     }

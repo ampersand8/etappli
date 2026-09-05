@@ -21,7 +21,10 @@ import com.nuelto.etappli.domain.RoutedLeg
 import com.nuelto.etappli.domain.RouteRefresher
 import com.nuelto.etappli.domain.RouteTracker
 import com.nuelto.etappli.testutil.MainDispatcherRule
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZonedDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -235,8 +238,60 @@ class TripDetailViewModelTest {
         val s1 = stops().first { it.id == "s1" }
         assertEquals(StopState.DONE, s1.state)
         assertEquals(today, s1.arrivalDate)
+        assertNotNull(s1.arrivalTime)
         // One day late -> tomorrow instead of today.
         assertEquals(today.plusDays(1), stops().first { it.id == "s2" }.arrivalDate)
+    }
+
+    @Test
+    fun `check-out ends the stay today and pulls the plan forward`() = runTest {
+        val today = LocalDate.now()
+        tripRepository.upsertTrip(
+            Trip(id = "t1", name = "Now", startDate = today.minusDays(1), status = TripStatus.ACTIVE),
+        )
+        tripRepository.upsertStop(
+            Stop(
+                id = "s1", tripId = "t1", name = "A", nights = 3, arrivalDate = today.minusDays(1), orderIndex = 0,
+                state = StopState.DONE, arrivalTime = LocalTime.of(16, 0),
+            ),
+        )
+        tripRepository.upsertStop(
+            Stop(id = "s2", tripId = "t1", name = "B", nights = 1, arrivalDate = today.plusDays(2), orderIndex = 1),
+        )
+        val vm = hotViewModel()
+        assertEquals("s1", vm.uiState.value.currentStopId)
+        vm.checkOut("s1")
+        assertEquals(1, stops().first { it.id == "s1" }.nights)
+        assertEquals(today, stops().first { it.id == "s2" }.arrivalDate)
+        assertEquals("s2", vm.uiState.value.currentStopId)
+    }
+
+    @Test
+    fun `undoing a check-in plans the stop again and holds the tracker off it`() = runTest {
+        val today = LocalDate.now()
+        tripRepository.upsertTrip(Trip(id = "t1", name = "Now", startDate = today, status = TripStatus.ACTIVE))
+        tripRepository.upsertStop(
+            Stop(
+                id = "s1", tripId = "t1", name = "A", nights = 2, arrivalDate = today, orderIndex = 0,
+                location = hereFix, state = StopState.DONE, arrivalTime = LocalTime.of(16, 0),
+            ),
+        )
+        var clock = ZonedDateTime.now()
+        val tracker = RouteTracker(tripRepository, now = { clock })
+        val vm = locatingViewModel({ hereFix }, tracker = tracker) { _, _ -> null }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        vm.undoArrival("s1")
+        val s1 = stops().single()
+        assertEquals(StopState.PLANNED, s1.state)
+        assertNull(s1.arrivalTime)
+        assertEquals(today, s1.arrivalDate)
+        // Standing there for as long as you like changes nothing now — without the hold-off,
+        // these fixes would check the stop in again.
+        repeat(4) {
+            vm.refreshDriveFromHere()
+            clock += Duration.ofMinutes(4)
+        }
+        assertEquals(StopState.PLANNED, stops().single().state)
     }
 
     @Test
@@ -247,6 +302,15 @@ class TripDetailViewModelTest {
         val s1 = stops().first { it.id == "s1" }
         assertEquals(96.0, s1.campingCostTotal, 1e-9)
         assertTrue(s1.costKnown)
+    }
+
+    @Test
+    fun `a stop skipped is not arrived at`() = runTest {
+        seedTrip(status = TripStatus.ACTIVE)
+        tripRepository.upsertStop(stops().first { it.id == "s1" }.copy(state = StopState.DONE, arrivalTime = LocalTime.of(16, 0)))
+        val vm = hotViewModel()
+        vm.skip("s1")
+        assertNull(stops().first { it.id == "s1" }.arrivalTime)
     }
 
     @Test

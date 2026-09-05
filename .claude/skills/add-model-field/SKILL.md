@@ -15,8 +15,8 @@ every read must tolerate its absence.
 2. **Firestore mapping is manual — two places or the field silently doesn't persist:**
    - Trip/Stop/Expense: `toMap()` **and** the `DocumentSnapshot.toX()` reader in
      `FirestoreTripRepository`, null-safe (`getX(...) ?: default`). Types: `LocalDate`
-     → `toEpochDay()` Long; `LatLng` → `GeoPoint`; enums → `name` string with
-     `runCatching { valueOf }` fallback on read.
+     → `toEpochDay()` Long; `LocalTime` → `toSecondOfDay()` Long; `LatLng` → `GeoPoint`;
+     enums → `name` string with `runCatching { valueOf }` fallback on read.
    - UserSettings: `update()` map **and** the snapshot reader in
      `FirestoreSettingsRepository` (defaults come from `UserSettings()`).
 3. **`InMemoryTripRepository`** usually needs no mapping change, but keep behavior in

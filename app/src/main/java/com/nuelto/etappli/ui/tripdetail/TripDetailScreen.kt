@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -115,6 +116,7 @@ import com.nuelto.etappli.domain.TripMapData
 import com.nuelto.etappli.domain.Elevation
 import com.nuelto.etappli.domain.GapRow
 import com.nuelto.etappli.domain.HomeStop
+import com.nuelto.etappli.domain.Stay
 import com.nuelto.etappli.domain.StopRow
 import com.nuelto.etappli.domain.TripEstimator
 import com.nuelto.etappli.domain.title
@@ -124,8 +126,10 @@ import com.nuelto.etappli.ui.components.StatusBadge
 import com.nuelto.etappli.ui.components.parseDecimal
 import com.nuelto.etappli.ui.components.rememberReorderState
 import com.nuelto.etappli.ui.components.reorderable
+import com.nuelto.etappli.ui.formatArrived
 import com.nuelto.etappli.ui.formatCurrency
 import com.nuelto.etappli.ui.formatDate
+import com.nuelto.etappli.ui.formatStay
 import com.nuelto.etappli.ui.driveParts
 import com.nuelto.etappli.ui.components.modeIcon
 import com.nuelto.etappli.ui.tripedit.displayName
@@ -173,6 +177,10 @@ fun TripDetailScreen(
     // rows — and the current stop, which is simply where you are — are anchors.
     // The home the plan sets out from reads as its start; any other home is the way back.
     val departureId = HomeStop.departure(state.stops)?.id
+    // A zero-night stop the tracker checked in never had a card to take it back from: its
+    // row keeps the undo while it is the stop checked in last.
+    val lastArrivedId = state.stops.filter { it.state == StopState.DONE }.maxByOrNull { it.orderIndex }
+        ?.takeIf { it.nights == 0 && it.arrivalTime != null && trip?.status == TripStatus.ACTIVE }?.id
     val movableKeys = state.rows
         .filter {
             trip?.status != TripStatus.DONE &&
@@ -476,6 +484,9 @@ fun TripDetailScreen(
                                 viewModel.arrived(row.stop.id)
                                 if (row.stop.kind.isStay) arrivalPromptStop = row.stop
                             },
+                            onCheckOut = { viewModel.checkOut(row.stop.id) },
+                            onUndoArrival = { viewModel.undoArrival(row.stop.id) },
+                            onPrice = { arrivalPromptStop = row.stop },
                             onSkip = { skipWithUndo(row.stop) },
                         )
                     } else {
@@ -489,6 +500,7 @@ fun TripDetailScreen(
                             onClick = { onEditStop(trip.id, row.stop.id) },
                             onSkip = { skipWithUndo(row.stop) },
                             onRestore = { viewModel.restore(row.stop.id) },
+                            onUndoArrival = if (row.stop.id == lastArrivedId) { { viewModel.undoArrival(row.stop.id) } } else null,
                             modifier = rowModifier,
                         )
                     }
@@ -613,7 +625,7 @@ private fun TimelineBottomBar(
     }
 }
 
-/** Tonight's stop on an active trip: check in, adjust the stay, hand off navigation. */
+/** Tonight's stop on an active trip: check in and out, adjust the stay, hand off navigation. */
 @Composable
 private fun NowCard(
     stop: Stop,
@@ -631,6 +643,10 @@ private fun NowCard(
     onClick: () -> Unit,
     onChangeNights: (Int) -> Unit,
     onArrived: () -> Unit,
+    onCheckOut: () -> Unit,
+    onUndoArrival: () -> Unit,
+    // Opens the price prompt from a checked-in card whose price is still an estimate.
+    onPrice: () -> Unit,
     onSkip: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -640,7 +656,11 @@ private fun NowCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                if (stop.kind.isStay) "TONIGHT" else "NEXT",
+                when {
+                    stop.state == StopState.DONE -> "CHECKED IN"
+                    stop.kind.isStay -> "TONIGHT"
+                    else -> "NEXT"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = ActiveGreen,
                 fontWeight = FontWeight.Bold,
@@ -709,16 +729,22 @@ private fun NowCard(
                     Text(
                         stopPriceText(stop, TripStatus.ACTIVE, settings),
                         style = MaterialTheme.typography.titleSmall,
+                        // Checked in by the tracker, the price prompt never came: the
+                        // estimate stays tappable until it is the price.
+                        modifier = if (stop.state == StopState.DONE && !stop.costKnown) Modifier.clickable(onClick = onPrice) else Modifier,
                     )
                 }
             }
             if (stop.kind.isStay) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        "${formatDate(stop.arrivalDate)} ·",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // Checked in, the arrival line below carries the date.
+                    if (stop.state != StopState.DONE) {
+                        Text(
+                            "${formatDate(stop.arrivalDate)} ·",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = { onChangeNights(-1) }) {
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = "One night less")
                     }
@@ -732,12 +758,18 @@ private fun NowCard(
                 }
             }
             if (stop.state == StopState.DONE) {
-                // Mid-stay: checked in, staying — only the stepper above matters.
+                // Mid-stay: when you got here, where the stay stands, and the way out — the
+                // stepper above is still how you stay longer.
                 Text(
-                    "Checked in",
+                    formatArrived(stop.arrivalDate, stop.arrivalTime),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = ActiveGreen,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(formatStay(Stay.progress(stop, LocalDate.now())), style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onCheckOut) { Text("Check out") }
+                    TextButton(onClick = onUndoArrival) { Text("Undo check-in") }
+                }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onArrived) { Text("✓ Arrived") }
@@ -861,6 +893,8 @@ private fun TimelineStopRow(
     onClick: () -> Unit,
     onSkip: () -> Unit,
     onRestore: () -> Unit,
+    // Set on a zero-night stop checked in last: a check-in with no card to take it back from.
+    onUndoArrival: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
@@ -908,6 +942,11 @@ private fun TimelineStopRow(
             if (tripStatus == TripStatus.ACTIVE && stop.state == StopState.SKIPPED) {
                 IconButton(onClick = onRestore) {
                     Icon(Icons.Default.Refresh, contentDescription = "Restore stop")
+                }
+            }
+            if (onUndoArrival != null) {
+                IconButton(onClick = onUndoArrival) {
+                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo check-in")
                 }
             }
         }

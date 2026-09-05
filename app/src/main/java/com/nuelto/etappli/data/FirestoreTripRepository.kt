@@ -27,6 +27,7 @@ import com.nuelto.etappli.domain.DateCascade
 import com.nuelto.etappli.domain.Tracks
 import com.nuelto.etappli.domain.TripName
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -92,6 +93,7 @@ class FirestoreTripRepository(
         "name" to name,
         "location" to location?.let { GeoPoint(it.latitude, it.longitude) },
         "arrivalDate" to arrivalDate.toEpochDay(),
+        "arrivalTime" to arrivalTime?.toSecondOfDay(),
         "nights" to nights,
         "campingCostTotal" to campingCostTotal,
         "orderIndex" to orderIndex,
@@ -171,6 +173,7 @@ class FirestoreTripRepository(
         name = getString("name") ?: "",
         location = getGeoPoint("location")?.let { LatLng(it.latitude, it.longitude) },
         arrivalDate = LocalDate.ofEpochDay(getLong("arrivalDate") ?: 0L),
+        arrivalTime = getLong("arrivalTime")?.let { runCatching { LocalTime.ofSecondOfDay(it) }.getOrNull() },
         nights = (getLong("nights") ?: 1L).toInt(),
         campingCostTotal = getDouble("campingCostTotal") ?: 0.0,
         orderIndex = (getLong("orderIndex") ?: 0L).toInt(),

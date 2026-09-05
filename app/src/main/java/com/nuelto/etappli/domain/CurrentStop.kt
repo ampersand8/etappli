@@ -28,8 +28,8 @@ object CurrentStop {
 
     /**
      * The stop you are driving to: [next] unless you are mid-stay. Null with nothing
-     * planned. Check-out is implicit — a stay is over the morning after its last night,
-     * and the nights stepper is how you leave early.
+     * planned. A stay is over the morning after its last night; the Check out button
+     * (Stay.checkOut) and the nights stepper are how you leave early.
      */
     fun heading(stops: List<Stop>, today: LocalDate): Stop? =
         if (staying(stops, today) != null) null else next(stops)

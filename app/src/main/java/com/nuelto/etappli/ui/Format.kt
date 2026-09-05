@@ -6,9 +6,11 @@ import com.nuelto.etappli.data.model.TravelMode
 import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.domain.DriveFromHere
+import com.nuelto.etappli.domain.Stay
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
@@ -74,6 +76,23 @@ private fun ridePart(ride: TransitRide) =
     DrivePart(ride.modes.ifEmpty { listOf(TravelMode.TRANSIT) }, formatDuration(ride.durationSeconds))
 
 private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+private val dateTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+
+/** When you got to the stop: the day, and the time of day once one was recorded. */
+fun formatArrived(date: LocalDate, time: LocalTime?): String =
+    "Arrived " + (time?.let { date.atTime(it).format(dateTimeFormatter) } ?: formatDate(date))
+
+/**
+ * Where the stay stands: "Night 2 of 3 · leaving Sep 7, 2026" — the night ahead of you
+ * counted, so it reads the same on every day of the stay. Only the leaving on a card left
+ * open past the last morning.
+ */
+fun formatStay(progress: Stay.Progress): String {
+    val leaving = formatDate(progress.departure)
+    if (progress.ahead == 0) return "Leaving $leaving"
+    return "Night ${progress.stayed + 1} of ${progress.stayed + progress.ahead} · leaving $leaving"
+}
 
 /**
  * When you get there if you set off now. Names the day too once the drive crosses

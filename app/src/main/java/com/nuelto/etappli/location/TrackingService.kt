@@ -59,7 +59,8 @@ class TrackingService : Service() {
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             // One coroutine per batch keeps the fixes in the order they were taken.
-            scope.launch { result.locations.forEach { runCatching { tracker.fix(LatLng(it.latitude, it.longitude)) } } }
+            val fixes = result.locations.filterNot { it.hasAccuracy() && it.accuracy > Tracks.MAX_ACCURACY_METERS }
+            scope.launch { fixes.forEach { runCatching { tracker.fix(LatLng(it.latitude, it.longitude)) } } }
         }
     }
 
@@ -86,9 +87,9 @@ class TrackingService : Service() {
         if (!started) {
             started = true
             client.requestLocationUpdates(
+                // No distance filter: a parked phone must keep delivering (CLAUDE.md, arriving).
                 LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, Tracks.FIX_INTERVAL_MS)
                     .setMinUpdateIntervalMillis(Tracks.FIX_INTERVAL_MS / 2)
-                    .setMinUpdateDistanceMeters(Tracks.MIN_MOVE_METERS.toFloat())
                     .build(),
                 callback,
                 Looper.getMainLooper(),

@@ -11,6 +11,7 @@ import com.nuelto.etappli.data.model.Trip
 import com.nuelto.etappli.data.model.TripStatus
 import com.nuelto.etappli.data.model.UserSettings
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -173,7 +174,7 @@ class TripStarterTest {
     }
 
     @Test
-    fun `plan again leaves the way driven behind`() = runTest {
+    fun `plan again leaves the way driven and the arrival behind`() = runTest {
         val driven = listOf(LatLng(46.0, 7.0), LatLng(46.5, 7.5))
         val doneId = repo.upsertTrip(
             Trip(id = "done", name = "Driven", startDate = LocalDate.of(2025, 9, 12), status = TripStatus.DONE),
@@ -181,12 +182,20 @@ class TripStarterTest {
         repo.upsertStop(
             Stop(
                 id = "d1", tripId = doneId, name = "Durance", arrivalDate = LocalDate.of(2025, 9, 12),
-                orderIndex = 0, state = StopState.DONE, track = driven,
+                orderIndex = 0, state = StopState.DONE, track = driven, arrivalTime = LocalTime.of(16, 0),
             ),
         )
         val newId = TripStarter.planAgain(repo, doneId, LocalDate.of(2026, 9, 12))
-        assertTrue(repo.stops(newId).first().single().track.isEmpty())
+        val copy = repo.stops(newId).first().single()
+        assertTrue(copy.track.isEmpty())
+        assertNull(copy.arrivalTime)
         assertEquals(driven, repo.stops(doneId).first().single().track)
+        // The same for a tour started as a copy of a plan that was once driven.
+        val startedId = TripStarter.start(repo, newId, LocalDate.of(2026, 9, 12), keepPlanAsTemplate = true, settings = settings)
+        repo.upsertStop(repo.stops(newId).first().single().copy(arrivalTime = LocalTime.of(9, 0)))
+        val again = TripStarter.start(repo, newId, LocalDate.of(2026, 9, 12), keepPlanAsTemplate = true, settings = settings)
+        assertNotEquals(startedId, again)
+        assertNull(repo.stops(again).first().single().arrivalTime)
     }
 
     @Test

@@ -100,24 +100,44 @@ There is no lint/format tooling configured.
 - **Tracking the way driven** (`domain/RouteTracker`, `domain/Tracks`,
   `location/TrackingService`): the *heading* is the stop an ACTIVE trip is driving to
   (`CurrentStop.heading` — `CurrentStop.of` while it is still PLANNED; mid-stay there is
-  none, and the −1 on the nights stepper is the check-out), *underway* only from the tour's
-  start date on. While one is underway a foreground service takes a fix every
-  `Tracks.FIX_INTERVAL_MS` (2 min, HIGH_ACCURACY — deliberate: a road trace needs GPS and
-  the cadence duty-cycles it), appends it atomically to `Stop.track`
-  (`TripRepository.appendTrack`), and keeps an ongoing notification saying how far the
-  heading still is — about one Routes call per fix on the road, ~30/h, well inside the
-  Essentials free tier for one user. The service starts when the app is open with a heading
-  underway (`MainActivity.TrackingTrigger`, and the NowCard when the permission lands) and
-  stops itself when nothing is underway. Android 12+ refuses a location FGS started from
-  the background, so there is no `ACCESS_BACKGROUND_LOCATION`, no WorkManager, no boot
-  receiver and `START_NOT_STICKY`: **a drive on a day the app is never opened is not
-  recorded.** Both repositories run `Tracks.settle` after every stop write — fixes belong
-  to the drive underway, whichever stop it now arrives at. A track of two or more points is
-  drawn instead of the leg (`MapOverlay`: the drive underway is the track so far plus the
-  rest of the road from the last fix, dashed); an arrival fix (within 150 m) is never
-  recorded, or the evening fix at the campsite would turn the routed road into a straight
-  line. **Never write a `Stop` you did not just read**: a whole-stop write carries the
-  track it loaded, so every writer re-reads first (a second device would lose fixes).
+  none, and **Check out** on the NowCard or the −1 on the nights stepper ends a stay
+  early), *underway* only from the tour's start date on. While one is underway a
+  foreground service takes a fix every `Tracks.FIX_INTERVAL_MS` (2 min, HIGH_ACCURACY —
+  deliberate: a road trace needs GPS and the cadence duty-cycles it), appends it
+  atomically to `Stop.track` (`TripRepository.appendTrack`), and keeps an ongoing
+  notification saying how far the heading still is — about one Routes call per fix on the
+  road, ~30/h, well inside the Essentials free tier for one user. The service starts when
+  the app is open with a heading underway (`MainActivity.TrackingTrigger`, and the NowCard
+  when the permission lands) and stops itself when nothing is underway. Android 12+
+  refuses a location FGS started from the background, so there is no
+  `ACCESS_BACKGROUND_LOCATION`, no WorkManager, no boot receiver and `START_NOT_STICKY`:
+  **a drive on a day the app is never opened is not recorded.** Both repositories run
+  `Tracks.settle` after every stop write — fixes belong to the drive underway, whichever
+  stop it now arrives at. A track of two or more points is drawn instead of the leg
+  (`MapOverlay`: the drive underway is the track so far plus the rest of the road from the
+  last fix, dashed); an arrival fix (within 150 m) is never recorded, or the evening fix
+  at the campsite would turn the routed road into a straight line. **Never write a `Stop`
+  you did not just read**: a whole-stop write carries the track it loaded, so every writer
+  re-reads first (a second device would lose fixes).
+- **Arriving is automatic** (`domain/Stay`, run from `RouteTracker.fix`): ten minutes
+  (`Stay.CHECK_IN_AFTER`) of fixes within 500 m of the heading stop's own pin — none more
+  than `Stay.FIX_GAP` apart, so a drive-by and a drive-back are not a stay, and only a fix
+  `Stay.LEFT_BEYOND_METERS` away resets the clock, so a pitch on the edge of the site does
+  not — underway, on or after the day it is planned for, check it in: stamped with the
+  *first* of those fixes (`Stop.arrivalTime`, the time of day; `arrivalDate` is the day,
+  so editing the date keeps them together), the plan behind shifted by the lateness —
+  `Stay.checkIn`, the same write as ✓ Arrived, PLANNED stops only, so a tap and the
+  tracker cannot stamp twice. Hence the service's location request has **no distance
+  filter** (a parked phone must keep delivering) and drops fixes worse than
+  `Tracks.MAX_ACCURACY_METERS` (a cell fix would reset the dwell). A stay's check-in
+  leaves no heading, so the service stops; a zero-night stop hands the heading on and the
+  dwell starts over. **Undo check-in** (`Stay.undoCheckIn`; on the card, and on the row of
+  a zero-night stop checked in last, which had no card) holds the tracker off that stop
+  until a fix has left it (`RouteTracker.holdOff` — in memory, so a restart at the same
+  spot checks you in again). A day early is not an arrival: tap ✓ Arrived, or the service
+  keeps fixing all night and checks you in just after midnight. The checked-in card shows
+  the arrival, "Night 2 of 3 · leaving …", Check out, and the ≈ price tappable until it is
+  typed (no price prompt in the background).
 - **Elevation is not Google**: its Elevation API forbids storing results, so height comes
   from Open-Meteo (Copernicus DEM) via `domain/Elevation`. Two different numbers:
   `Stop.elevation` is **how high the stop is**, one point, stable, and the only one shown
