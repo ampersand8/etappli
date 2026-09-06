@@ -9,6 +9,10 @@ per-stop nights/camping costs, trip-level expenses (fuel, road tax, other), a fu
 estimator, and Google Maps views of all trips. Kotlin + Jetpack Compose,
 single `:app` module. Default currency is CHF (user preference).
 
+Long-form developer docs (business, domain model, architecture, costing, location and
+routing, build, testing, conventions) live in `docs/` — keep them in step with any rule
+changed here.
+
 **Keep code and docs short and concise.** This matters a lot: minimal prose, no
 boilerplate, no restating what the code already says. Prefer editing existing docs over
 adding new ones.

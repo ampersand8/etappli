@@ -27,6 +27,11 @@ trips visible on a map.
   Until Firebase is configured the app runs in local demo mode — see
   [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
 
+## Developer docs
+
+Business context, domain model, architecture, costing rules, location/routing, build,
+testing and conventions: [docs/README.md](docs/README.md).
+
 ## Stack
 
 Kotlin · Jetpack Compose (Material 3) · MVVM + repository, hand-rolled DI ·
