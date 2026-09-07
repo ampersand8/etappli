@@ -19,6 +19,7 @@ import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.ComposeMapColorScheme
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
@@ -91,6 +92,7 @@ object GoogleMapProvider : MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         contentPadding: PaddingValues,
+        zoomControls: Boolean,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
         onPoiClick: ((PlaceSuggestion) -> Unit)?,
@@ -99,6 +101,7 @@ object GoogleMapProvider : MapProvider {
             modifier = modifier,
             cameraPositionState = (camera as GoogleCamera).state,
             contentPadding = contentPadding,
+            uiSettings = MapUiSettings(zoomControlsEnabled = zoomControls),
             mapColorScheme = ComposeMapColorScheme.FOLLOW_SYSTEM,
             onMapLongClick = { at -> onLongPress?.invoke(LatLng(at.latitude, at.longitude)) },
             // The aires, campsites and huts Google already draws are choosable directly.

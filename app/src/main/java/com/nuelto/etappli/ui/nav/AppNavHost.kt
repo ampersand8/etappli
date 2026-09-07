@@ -94,7 +94,7 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
                 .collectAsStateWithLifecycle()
             LaunchedEffect(picked) {
                 picked?.let { (lat, lon) ->
-                    // A place searched on the map comes back named; a crosshair pick doesn't.
+                    // A place searched on the map comes back named; a pin or a GPS fix doesn't.
                     val place = backStackEntry.savedStateHandle.get<Array<String>>(PICKED_PLACE_KEY)
                     viewModel.setPickedLocation(
                         LatLng(lat, lon),
@@ -112,8 +112,7 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
                 viewModel = viewModel,
                 locationSection = {
                     LocationSection(
-                        onLocationChange = viewModel::setLocation,
-                        onPickOnMap = {
+                        onPick = {
                             // Opens on this stop, or failing that near the one before it.
                             val start = viewModel.uiState.value.pickerStart
                             navController.navigate(
@@ -124,9 +123,6 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
                                 ),
                             )
                         },
-                        autoLocate = stopEditState.autoLocatePending,
-                        onAutoLocateHandled = viewModel::autoLocateHandled,
-                        onAutoLocated = viewModel::setAutoLocation,
                         shareUrl = stopEditState.shareUrl,
                     )
                 },
@@ -178,8 +174,7 @@ fun AppNavHost(pending: SharedPlace? = null, onPendingConsumed: () -> Unit = {})
                 viewModel = viewModel,
                 locationSection = {
                     LocationSection(
-                        onLocationChange = { viewModel.setHome(it) },
-                        onPickOnMap = {
+                        onPick = {
                             val start = settings?.homeLocation
                             navController.navigate(
                                 LocationPickerRoute(
@@ -206,7 +201,6 @@ private fun NavController.addToTrip(tripId: String, place: SharedPlace) {
             lon = place.location?.longitude,
             placeName = place.name.ifBlank { null },
             placeId = place.placeId.ifBlank { null },
-            fromShare = true,
             fromPlaces = place.fromPlaces,
         ),
     )

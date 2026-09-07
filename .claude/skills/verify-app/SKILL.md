@@ -38,7 +38,7 @@ under the image before use in `adb shell input tap`.
    ```bash
    ~/Android/Sdk/platform-tools/adb emu geo fix 7.4474 46.9480   # lon FIRST, then lat
    ```
-   Tap "I'm here", grant the permission dialog ("While using the app"), send the geo fix again, wait ~10 s → lat/lng fields fill. Also test "Pick on map" → pan → "Use this spot" → fields fill.
+   Tap "Pick spot", then the my-location button on the map, grant the permission dialog ("While using the app"), send the geo fix again, wait ~10 s → a "Your location" card; "Use this place" → the editor shows the reverse-geocoded name. Also test press-and-hold → "Use this place".
 
 ## 4. Crash scan
 

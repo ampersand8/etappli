@@ -202,9 +202,12 @@ There is no lint/format tooling configured.
   **Use the documented `maps/search/?api=1&query=…&query_place_id=…` form**: `query` is
   required, and the shorter `maps/place/?q=place_id:` form does not reliably open.
 - The picker is **search-and-choose, not aim**: hits come back as a tappable list (and as
-  markers), press-and-hold drops a pin, and there is no crosshair. Nothing shows the user
-  a coordinate — `StopEditUiState.locationLabel` says "Pin on map" rather than lat/lng
-  when there is no name yet.
+  markers), press-and-hold drops a pin, the my-location button pins the GPS fix
+  (`LocationPickerViewModel.locate`: permission asked on tap, a fix lands only while still
+  awaited), and there is no crosshair. It is the one way to a stop's location — the
+  editor and Settings have a single "Pick spot" button (`LocationSection`), no GPS of
+  their own. Nothing shows the user a coordinate — `StopEditUiState.locationLabel` says
+  "Pin on map" rather than lat/lng when there is no name yet.
 - Firebase is **conditionally applied**: the google-services plugin only activates if
   `app/google-services.json` exists (it's gitignored). Without it the app builds in
   local-only mode with seeded in-memory data. `webClientId` (Google Sign-In) is read from

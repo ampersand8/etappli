@@ -1,7 +1,11 @@
 package com.nuelto.etappli.ui.map
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -36,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -55,6 +61,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -62,6 +69,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nuelto.etappli.data.model.LatLng
@@ -78,7 +86,8 @@ import com.nuelto.etappli.domain.PlaceSuggestion
  * Typing offers predictions; the search as submitted drops pins for everything it
  * matches ("camping" for what is around here); a pin, a prediction or a POI opens a card
  * that shrinks to a strip so the map around the place can be looked at. For somewhere
- * with no name, press and hold the map to drop a pin.
+ * with no name, press and hold the map to drop a pin; the my-location button pins
+ * where you are — the app's one GPS entry point for a stop.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +119,18 @@ fun LocationPickerScreen(
     // Back peels the picker's own layers off before it closes the picker.
     BackHandler(enabled = state.canGoBack) { viewModel.back() }
 
+    // The permission is asked for on tap, never on opening the map.
+    val context = LocalContext.current
+    val permission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> viewModel.locate(granted) }
+    fun locate() {
+        keyboard?.hide()
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) viewModel.locate() else permission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -130,6 +151,8 @@ fun LocationPickerScreen(
                 routes = emptyList(),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomInset),
+                // The my-location button takes the zoom buttons' corner; pinch zooms.
+                zoomControls = false,
                 onMarkerClick = { _, id -> state.hit(id)?.also(viewModel::select) != null },
                 onLongPress = viewModel::dropPin,
                 onPoiClick = viewModel::select,
@@ -148,6 +171,15 @@ fun LocationPickerScreen(
                 },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
+            // Rides above whatever the strip is showing.
+            SmallFloatingActionButton(
+                onClick = ::locate,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = bottomInset + 16.dp),
+            ) {
+                Icon(Icons.Default.MyLocation, contentDescription = "My location")
+            }
             BottomStrip(
                 state = state,
                 photo = rememberDecoded(state.photo),
@@ -240,7 +272,7 @@ private fun SearchOverlay(
                 modifier = Modifier.fillMaxWidth().testTag("place-search"),
             )
         }
-        searchStatusText(state)?.let {
+        statusText(state)?.let {
             Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 2.dp) {
                 Text(
                     it,
@@ -354,9 +386,9 @@ private fun ChosenPlaceCard(
     modifier: Modifier = Modifier,
 ) {
     val details = place.details
-    // A dropped pin has no name yet; the editor geocodes one.
-    val name = place.name.ifBlank { "Dropped pin" }
-    val label = place.label.takeIf { it.isNotBlank() }
+    // A pin has no name yet; the editor geocodes one. A GPS fix is labelled as such.
+    val name = place.name.ifBlank { place.label.ifBlank { "Dropped pin" } }
+    val label = place.label.takeIf { it.isNotBlank() && it != name }
     Card(modifier.fillMaxWidth().heightIn(max = maxHeight)) {
         Column(
             Modifier
@@ -465,13 +497,15 @@ private fun ratingLine(details: PlaceDetails?): String? {
 }
 
 /** The list and the pins speak for themselves, so a hit needs no status line. */
-private fun searchStatusText(state: LocationPickerUiState): String? = when (state.status) {
-    PlaceSearchStatus.IDLE -> HINT.takeIf {
-        state.predictions.isEmpty() && state.results.isEmpty() && state.selected == null
-    }
-    PlaceSearchStatus.SEARCHING -> "Searching…"
-    PlaceSearchStatus.EMPTY -> "Nothing found."
-    PlaceSearchStatus.UNAVAILABLE -> "Search unavailable — press and hold the map instead."
+private fun statusText(state: LocationPickerUiState): String? = when {
+    state.fix == FixStatus.LOCATING -> "Getting GPS fix…"
+    state.fix == FixStatus.NO_FIX -> "No GPS fix — search, or press and hold the map instead."
+    state.fix == FixStatus.DENIED -> "Location permission denied — search, or press and hold the map instead."
+    state.status == PlaceSearchStatus.SEARCHING -> "Searching…"
+    state.status == PlaceSearchStatus.EMPTY -> "Nothing found."
+    state.status == PlaceSearchStatus.UNAVAILABLE -> "Search unavailable — press and hold the map instead."
+    state.predictions.isEmpty() && state.results.isEmpty() && state.selected == null -> HINT
+    else -> null
 }
 
 private const val HINT =

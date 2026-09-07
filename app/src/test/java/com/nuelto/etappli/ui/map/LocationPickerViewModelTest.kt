@@ -489,4 +489,69 @@ class LocationPickerViewModelTest {
         vm.select(manorFarm)
         assertTrue(vm.uiState.value.expanded)
     }
+
+    @Test
+    fun `the my-location button pins where you are, cancelling the typing lookup`() = runTest {
+        val fix = CompletableDeferred<LatLng?>()
+        val vm = LocationPickerViewModel(search, currentLocation = { fix.await() })
+        vm.setQuery("Lau", bern)
+        vm.setExpanded(false)
+        vm.locate()
+        assertEquals(FixStatus.LOCATING, vm.uiState.value.fix)
+        advanceTimeBy(301)
+        assertTrue(search.requests.isEmpty())
+
+        fix.complete(bern)
+        val state = vm.uiState.value
+        assertEquals(FixStatus.IDLE, state.fix)
+        // No name: the stop editor reverse-geocodes one, as for a dropped pin.
+        assertEquals(PlaceSuggestion("", "Your location", bern), state.selected)
+        assertTrue(state.expanded)
+        assertEquals(PlaceSearchStatus.IDLE, state.status)
+    }
+
+    @Test
+    fun `no fix says so, and a refused permission says why without asking for one`() {
+        var asked = 0
+        val vm = LocationPickerViewModel(search, currentLocation = { asked++; null })
+        vm.locate()
+        assertEquals(FixStatus.NO_FIX, vm.uiState.value.fix)
+        assertNull(vm.uiState.value.selected)
+        assertEquals(1, asked)
+
+        vm.locate(granted = false)
+        assertEquals(FixStatus.DENIED, vm.uiState.value.fix)
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `a fix lands only while still awaited`() {
+        val fix = CompletableDeferred<LatLng?>()
+        val vm = LocationPickerViewModel(search, currentLocation = { fix.await() })
+        vm.locate()
+        // Pressing the map meanwhile has moved on from it.
+        vm.dropPin(LatLng(46.5, 7.9))
+        assertEquals(FixStatus.IDLE, vm.uiState.value.fix)
+        fix.complete(bern)
+        assertEquals(LatLng(46.5, 7.9), vm.uiState.value.selected?.location)
+    }
+
+    @Test
+    fun `typing, choosing or submitting clears a fix notice, and locating clears the search's`() = runTest {
+        val vm = LocationPickerViewModel(search, currentLocation = { null })
+        vm.locate()
+        vm.setQuery("Lau", bern)
+        assertEquals(FixStatus.IDLE, vm.uiState.value.fix)
+        vm.locate()
+        vm.select(alpenblick)
+        assertEquals(FixStatus.IDLE, vm.uiState.value.fix)
+        vm.locate(granted = false)
+        vm.search(bern)
+        assertEquals(FixStatus.IDLE, vm.uiState.value.fix)
+
+        // The other way round: "nothing found" gives way to the fix on its way.
+        assertEquals(PlaceSearchStatus.EMPTY, vm.uiState.value.status)
+        vm.locate()
+        assertEquals(PlaceSearchStatus.IDLE, vm.uiState.value.status)
+    }
 }

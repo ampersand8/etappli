@@ -114,7 +114,7 @@ class AppNavHostTest {
         compose.onNodeWithContentDescription("Add").performClick()
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
         compose.onNodeWithText("New stop").assertIsDisplayed()
-        compose.onNodeWithText("  Pick on map").assertIsDisplayed()
+        compose.onNodeWithText("  Pick spot").assertIsDisplayed()
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Camping Kirnbergsee").assertIsDisplayed()
     }
@@ -125,7 +125,7 @@ class AppNavHostTest {
         compose.onNodeWithText("Schwarzwald").performClick()
         compose.onNodeWithContentDescription("Add").performClick()
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("  Pick on map").performClick()
+        compose.onNodeWithText("  Pick spot").performClick()
         compose.onNodeWithText("Pick location").assertIsDisplayed()
         // Search is wired by the real factory; typing into it would hit the network.
         compose.onNodeWithText("Search a place").assertIsDisplayed()
@@ -144,7 +144,7 @@ class AppNavHostTest {
         compose.onNodeWithText("Schwarzwald").performClick()
         compose.onNodeWithContentDescription("Add").performClick()
         compose.onNodeWithText("Stop", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("  Pick on map").performClick()
+        compose.onNodeWithText("  Pick spot").performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("New stop").assertIsDisplayed()
         compose.onNodeWithText("Not set").assertIsDisplayed()
@@ -181,7 +181,7 @@ class AppNavHostTest {
         setContent()
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("Home").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("  Pick on map").performScrollTo().performClick()
+        compose.onNodeWithText("  Pick spot").performScrollTo().performClick()
 
         compose.onNodeWithText("Pick location").assertIsDisplayed()
         compose.onNodeWithTag("map-placeholder").performClick()
@@ -195,7 +195,7 @@ class AppNavHostTest {
     fun `picking home can be cancelled`() {
         setContent()
         compose.onNodeWithContentDescription("Settings").performClick()
-        compose.onNodeWithText("  Pick on map").performScrollTo().performClick()
+        compose.onNodeWithText("  Pick spot").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Not set. Pick it below and new plans will start and end there.")
             .performScrollTo().assertIsDisplayed()

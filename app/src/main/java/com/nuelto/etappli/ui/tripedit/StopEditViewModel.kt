@@ -44,7 +44,6 @@ data class StopEditUiState(
     val isNew: Boolean = true,
     val tripStatus: TripStatus? = null,
     val settings: UserSettings = UserSettings(),
-    val autoLocatePending: Boolean = false,
     // Nearest located stop — where the picker opens when this stop has no spot yet.
     val nearbyLocation: LatLng? = null,
     // Set only for a Google Places hit; its coordinate expires (domain/PlaceCache).
@@ -111,15 +110,11 @@ class StopEditViewModel(
                     it.copy(nearbyLocation = nearestLocated(stops, at?.orderIndex ?: home?.orderIndex ?: Int.MAX_VALUE))
                 }
                 if (at != null) {
-                    // The slot says which day this starts on; no GPS fix improves on that.
+                    // The slot says which day this starts on.
                     _uiState.update { it.copy(arrivalDate = at.date) }
-                } else if (trip == null || trip.status == TripStatus.ACTIVE) {
-                    // Logging where you are: immediately try a GPS fix — unless a share
-                    // already said where, in which case your own position is beside the point.
-                    if (!route.fromShare) _uiState.update { it.copy(autoLocatePending = true) }
-                } else {
-                    // Planning ahead or back-filling a finished trip: no GPS fix
-                    // (your couch is not the campsite), arrival chains from the last stop.
+                } else if (trip != null && trip.status != TripStatus.ACTIVE) {
+                    // Planning ahead or back-filling a finished trip: arrival chains from
+                    // the last stop. On a tour underway it stays today — you are there.
                     val last = stops
                         .filterNot { it.state == StopState.SKIPPED || it.id == home?.id }
                         .maxByOrNull { it.orderIndex }
@@ -165,8 +160,6 @@ class StopEditViewModel(
         _uiState.update { it.copy(name = name.ifBlank { it.name }, placeId = route.placeId) }
     }
 
-    fun autoLocateHandled() = _uiState.update { it.copy(autoLocatePending = false) }
-
     fun setName(value: String) = _uiState.update { it.copy(name = value) }
     fun setArrivalDate(value: LocalDate) = _uiState.update { it.copy(arrivalDate = value) }
     fun setNights(value: Int) = _uiState.update { it.copy(nights = value.coerceIn(0, 365)) }
@@ -190,18 +183,11 @@ class StopEditViewModel(
 
     fun setLocation(location: LatLng?) {
         val rounded = location?.let(::round)
-        // A GPS fix or crosshair pick is ours to keep — no place id, no expiry.
+        // A GPS fix or dropped pin is ours to keep — no place id, no expiry.
         _uiState.update {
             it.copy(location = rounded, locationName = null, placeId = null, locationCachedAt = null)
         }
         rounded?.let { resolvePlaceName(it, autoFillName = true) }
-    }
-
-    /** The opportunistic GPS fix for a new stop is advisory: it never displaces a
-     *  location the user already searched for or picked while it was in flight. */
-    fun setAutoLocation(location: LatLng) {
-        if (_uiState.value.location != null) return
-        setLocation(location)
     }
 
     // ~1 m precision is plenty for a campsite; keeps the label readable.
