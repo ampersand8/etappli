@@ -73,7 +73,8 @@ interface MapProvider {
      * else covers, so the camera centres and frames within what can actually be seen.
      * [onMarkerClick] gets (tripId, stopId) and returns true when it consumed the tap;
      * [onLongPress] gets the point pressed and held, which is how a spot with no name
-     * gets chosen.
+     * gets chosen. [zoomControls] false hides the provider's own zoom buttons, for a
+     * screen that puts a control of its own in their corner.
      */
     @Composable
     fun Canvas(
@@ -82,6 +83,7 @@ interface MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         contentPadding: PaddingValues = PaddingValues(),
+        zoomControls: Boolean = true,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)? = null,
         onLongPress: ((LatLng) -> Unit)? = null,
         onPoiClick: ((PlaceSuggestion) -> Unit)? = null,
@@ -111,6 +113,7 @@ object PlaceholderMapProvider : MapProvider {
         routes: List<MapRoute>,
         modifier: Modifier,
         contentPadding: PaddingValues,
+        zoomControls: Boolean,
         onMarkerClick: ((tripId: String, stopId: String) -> Boolean)?,
         onLongPress: ((LatLng) -> Unit)?,
         onPoiClick: ((PlaceSuggestion) -> Unit)?,

@@ -59,7 +59,6 @@ class StopEditViewModelTest {
                 "lon" to lon,
                 "placeName" to placeName,
                 "placeId" to placeId,
-                "fromShare" to true,
                 "fromPlaces" to fromPlaces,
             ),
         ),
@@ -76,12 +75,8 @@ class StopEditViewModelTest {
     )
 
     @Test
-    fun `new stop wants an immediate GPS fix exactly once`() {
-        val vm = newStopViewModel()
-        assertTrue(vm.uiState.value.autoLocatePending)
-        vm.autoLocateHandled()
-        assertFalse(vm.uiState.value.autoLocatePending)
-        assertEquals("t1", vm.tripId)
+    fun `a new stop belongs to the trip it was opened for`() {
+        assertEquals("t1", newStopViewModel().tripId)
     }
 
     @Test
@@ -245,9 +240,8 @@ class StopEditViewModelTest {
             Stop(id = "b", tripId = "t1", name = "B", orderIndex = 1, nights = 1, arrivalDate = LocalDate.of(2027, 6, 12)),
         )
         val vm = insertViewModel("b")
-        // It arrives the day A leaves, and no GPS fix is asked for.
+        // It arrives the day A leaves.
         assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate)
-        assertFalse(vm.uiState.value.autoLocatePending)
         vm.setName("Between")
         vm.setNights(2)
         vm.save {}
@@ -334,7 +328,7 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `back-filling a done trip skips the GPS fix and chains the arrival`() = runTest {
+    fun `back-filling a done trip chains the arrival`() = runTest {
         tripRepository.upsertTrip(
             Trip(
                 id = "t1", name = "Done", startDate = LocalDate.of(2026, 5, 14),
@@ -345,7 +339,6 @@ class StopEditViewModelTest {
             Stop(id = "s0", tripId = "t1", arrivalDate = LocalDate.of(2026, 5, 14), nights = 2, orderIndex = 0),
         )
         val vm = newStopViewModel()
-        assertFalse(vm.uiState.value.autoLocatePending)
         assertEquals(LocalDate.of(2026, 5, 16), vm.uiState.value.arrivalDate)
     }
 
@@ -472,17 +465,6 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `an unasked-for GPS fix never displaces a location already chosen`() {
-        val vm = newStopViewModel()
-        vm.setAutoLocation(LatLng(46.0, 7.0))
-        assertEquals(LatLng(46.0, 7.0), vm.uiState.value.location)
-
-        vm.setPickedLocation(LatLng(46.6, 7.9), "Lauterbrunnen", "Bern")
-        vm.setAutoLocation(LatLng(48.0, 9.0))
-        assertEquals(LatLng(46.6, 7.9), vm.uiState.value.location)
-    }
-
-    @Test
     fun `the picker opens on the stop, else near the one before it, else nowhere`() = runTest {
         assertNull(newStopViewModel().uiState.value.pickerStart)
 
@@ -497,7 +479,7 @@ class StopEditViewModelTest {
     }
 
     @Test
-    fun `on a planned tour there is no auto GPS and arrival chains from the last stop`() = runTest {
+    fun `on a planned tour arrival chains from the last stop`() = runTest {
         tripRepository.upsertTrip(
             Trip(id = "t1", name = "Plan", startDate = LocalDate.of(2027, 6, 10), status = TripStatus.PLANNED),
         )
@@ -505,7 +487,6 @@ class StopEditViewModelTest {
             Stop(id = "s0", tripId = "t1", arrivalDate = LocalDate.of(2027, 6, 10), nights = 2, orderIndex = 0),
         )
         val vm = newStopViewModel()
-        assertFalse(vm.uiState.value.autoLocatePending)
         assertEquals(TripStatus.PLANNED, vm.uiState.value.tripStatus)
         assertEquals(LocalDate.of(2027, 6, 12), vm.uiState.value.arrivalDate)
     }
@@ -663,8 +644,6 @@ class StopEditViewModelTest {
         assertEquals("ChIJCyinolJ-hUcR", state.placeId)
         // The coordinate came out of a link, not out of the Places API: it never expires.
         assertNull(state.locationCachedAt)
-        // Somewhere to be already: no unasked-for GPS fix on top of it.
-        assertFalse(state.autoLocatePending)
     }
 
     @Test
@@ -690,7 +669,6 @@ class StopEditViewModelTest {
         assertEquals("Camping Grimselblick", state.name)
         assertNull(state.location)
         assertTrue(state.canSave)
-        assertFalse(state.autoLocatePending)
 
         vm.save {}
         assertEquals("Camping Grimselblick", tripRepository.stops("t1").first().single().name)
@@ -701,17 +679,6 @@ class StopEditViewModelTest {
         val vm = newStopViewModel()
         vm.setPickedLocation(LatLng(46.72, 8.22), "Camping Grimselblick", "Innertkirchen", "ChIJ1")
         assertEquals(LocalDate.now(), vm.uiState.value.locationCachedAt)
-    }
-
-    @Test
-    fun `a share with nothing in it still keeps your own position out of the stop`() {
-        // The link could not be followed: no name, no coordinate — and no GPS fix either,
-        // because sharing a place says you are not standing at it.
-        val state = sharedViewModel(lat = null, lon = null, placeName = null, placeId = null)
-            .uiState.value
-        assertFalse(state.autoLocatePending)
-        assertEquals("", state.name)
-        assertNull(state.location)
     }
 
     @Test

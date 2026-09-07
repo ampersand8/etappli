@@ -13,7 +13,7 @@ falls back to straight lines, factors and names it already has.
 | Routes API `computeRoutes`, web service | Road legs between stops, transit routes for park and ride, live drive from here | same key; Essentials SKU by design | routed coordinates 30 days (SST §19.3) |
 | Open-Meteo elevation (Copernicus DEM GLO-90) | Stop height and per-leg climb | no key; licence asks for attribution (Settings footer) | stored, open data |
 | Platform `Geocoder` (Play services) | Naming a pin, and the region of each stop | none; silently null without Play services | stored |
-| Fused location | One-shot "I'm here" fix, and the tracking service's fixes | none; needs `ACCESS_FINE_LOCATION` | fixes stored as the track |
+| Fused location | The picker's my-location fix, and the tracking service's fixes | none; needs `ACCESS_FINE_LOCATION` | fixes stored as the track |
 
 Places and Routes are called as plain web services over `HttpURLConnection` (no
 Places SDK: 30-odd transitive dependencies for View widgets the app does not use, and
@@ -46,8 +46,13 @@ The picker works like a maps app: **typing predicts, submitting drops pins.**
   billable autocomplete session; the token is retired once Details has been fetched.
 - **Back** peels the picker's layers innermost first: full card → strip → pins → search
   → close.
+- **My location** pins the GPS fix, labelled "Your location". The permission is asked
+  for on tap; a fix lands only while still awaited — typing, choosing or pressing the
+  map meanwhile has moved on from it. This is the one GPS entry point for a stop: the
+  editor and Settings offer just "Pick spot" (`LocationSection`). The button takes the
+  corner of Google's zoom buttons, so the picker turns those off (`Canvas(zoomControls)`).
 
-A chosen place names the stop. A dropped pin has no name, so the editor reverse-geocodes
+A chosen place names the stop. A dropped pin or a fix has no name, so the editor reverse-geocodes
 one (`PlaceNameResolver.placeName`), which only ever fills a blank or previously
 auto-filled name.
 

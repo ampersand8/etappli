@@ -1,5 +1,7 @@
 package com.nuelto.etappli.ui.map
 
+import android.Manifest
+import android.app.Application
 import android.os.Looper
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -10,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nuelto.etappli.data.model.LatLng
 import com.nuelto.etappli.domain.PlaceDetails
@@ -41,14 +44,14 @@ class LocationPickerScreenTest {
     private val manorFarm =
         PlaceSuggestion("Camping Manor Farm", "Unterseen", LatLng(46.69, 7.82), "ChIJb")
 
-    private fun setContent() {
+    private fun setContent(currentLocation: suspend () -> LatLng? = { null }) {
         compose.setContent {
             back = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
             LocationPickerScreen(
                 initial = null,
                 onPicked = { at, place -> picked += at to place },
                 onCancel = { cancelled++ },
-                viewModel = LocationPickerViewModel(search),
+                viewModel = LocationPickerViewModel(search, currentLocation = currentLocation),
             )
         }
     }
@@ -159,5 +162,16 @@ class LocationPickerScreenTest {
         compose.onNodeWithText("Dropped pin").assertIsDisplayed()
         compose.onNodeWithContentDescription("Show less").performClick()
         compose.onNodeWithText("Dropped pin").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the my-location button pins where you are, used unnamed like a dropped pin`() {
+        shadowOf(ApplicationProvider.getApplicationContext<Application>())
+            .grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        setContent(currentLocation = { LatLng(46.95, 7.45) })
+        compose.onNodeWithContentDescription("My location").performClick()
+        compose.onNodeWithText("Your location").assertIsDisplayed()
+        compose.onNodeWithText("Use this place").performClick()
+        assertEquals(listOf(LatLng(46.95, 7.45) to null), picked)
     }
 }

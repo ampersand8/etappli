@@ -27,11 +27,15 @@ data class LocationPickerUiState(
     // The chosen place's card shows everything, or shrinks to a strip so the map around
     // the place can be looked at.
     val expanded: Boolean = true,
+    // The my-location button's fix: on its way, or why there is none.
+    val fix: FixStatus = FixStatus.IDLE,
 ) {
     /** Whether back has something of the picker's own to undo before it closes it. */
     val canGoBack: Boolean
         get() = selected != null || query.isNotEmpty() || results.isNotEmpty()
 }
+
+enum class FixStatus { IDLE, LOCATING, NO_FIX, DENIED }
 
 /**
  * The picker map's search, the way a maps app works: typing offers predictions, the
@@ -40,6 +44,8 @@ data class LocationPickerUiState(
  */
 class LocationPickerViewModel(
     private val placeSearch: PlaceSearch? = null,
+    // One-shot GPS fix; null without the permission, which the screen asks for first.
+    private val currentLocation: suspend () -> LatLng? = { null },
     private val loadPhoto: (suspend (String) -> ByteArray?)? = null,
 ) : ViewModel() {
 
@@ -52,7 +58,7 @@ class LocationPickerViewModel(
      *  hits rank around what you are looking at. The pins stay: they are behind the list. */
     fun setQuery(value: String, near: LatLng?, prefer: StopKind? = null) {
         searchJob?.cancel()
-        _uiState.update { it.copy(query = value) }
+        _uiState.update { it.copy(query = value, fix = FixStatus.IDLE) }
         val query = value.trim()
         if (query.length < MIN_QUERY_LENGTH) {
             _uiState.update {
@@ -102,6 +108,7 @@ class LocationPickerViewModel(
                     selected = null,
                     photo = null,
                     status = PlaceSearchStatus.SEARCHING,
+                    fix = FixStatus.IDLE,
                 )
             }
             val found = search.find(query, near)
@@ -162,6 +169,7 @@ class LocationPickerViewModel(
                 photo = null,
                 expanded = true,
                 status = if (place.location == null) PlaceSearchStatus.SEARCHING else PlaceSearchStatus.IDLE,
+                fix = FixStatus.IDLE,
             )
         }
         if (place.location != null && place.details != null) return fetchPhoto(place)
@@ -197,23 +205,51 @@ class LocationPickerViewModel(
     /** Press and hold on the map. No name — the editor reverse-geocodes one. */
     fun dropPin(at: LatLng) {
         searchJob?.cancel()
+        _uiState.update { it.pinned(at, label = "") }
+    }
+
+    /**
+     * The my-location button: where you are, pinned. Only a fix still awaited lands —
+     * typing, choosing or pressing the map meanwhile has moved on from it. [granted]
+     * false is the permission refused, which is worth saying instead of "no fix".
+     */
+    fun locate(granted: Boolean = true) {
+        searchJob?.cancel()
         _uiState.update {
-            it.copy(
-                selected = PlaceSuggestion(name = "", label = "", location = at),
-                photo = null,
-                expanded = true,
-            )
+            it.copy(fix = if (granted) FixStatus.LOCATING else FixStatus.DENIED, status = PlaceSearchStatus.IDLE)
+        }
+        if (!granted) return
+        viewModelScope.launch {
+            val at = currentLocation()
+            _uiState.update { state ->
+                when {
+                    state.fix != FixStatus.LOCATING -> state
+                    at == null -> state.copy(fix = FixStatus.NO_FIX)
+                    else -> state.pinned(at, YOUR_LOCATION)
+                }
+            }
         }
     }
+
+    /** A pin with no name; its label says how it was placed. */
+    private fun LocationPickerUiState.pinned(at: LatLng, label: String) = copy(
+        selected = PlaceSuggestion(name = "", label = label, location = at),
+        photo = null,
+        expanded = true,
+        status = PlaceSearchStatus.IDLE,
+        fix = FixStatus.IDLE,
+    )
 
     companion object {
         private const val DEBOUNCE_MS = 300L
         private const val MIN_QUERY_LENGTH = 3
+        private const val YOUR_LOCATION = "Your location"
 
         // Search must match the map: Google Places may not be shown on a non-Google map.
         val Factory = containerViewModelFactory { container ->
             LocationPickerViewModel(
                 container.mapProvider.placeSearch(),
+                container.currentLocation,
                 container.mapProvider::photo,
             )
         }

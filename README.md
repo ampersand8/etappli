@@ -18,9 +18,10 @@ trips visible on a map.
   [GOOGLE_MAPS_SETUP.md](GOOGLE_MAPS_SETUP.md)) — all-trips overview with per-trip
   colors and route lines, per-trip map on the detail screen, tap a marker for
   trip/stop info.
-- **Locations** via one-shot GPS fix ("I'm here") or the map picker — search a place
-  by name and choose from the results, tap a POI Google already shows, or press and
-  hold to drop a pin. Results favour whatever kind of stop you're adding.
+- **Locations** via the map picker — search a place by name and choose from the
+  results, tap a POI Google already shows, press and hold to drop a pin, or take your
+  GPS position with the my-location button. Results favour whatever kind of stop
+  you're adding.
 - **Share a place into the app** — Google Maps (or anything sending a `geo:` link) →
   Share → Etappli: pick the trip and the stop editor opens on that place.
 - **Cloud sync** via Firebase (Google Sign-In + Firestore with offline persistence).

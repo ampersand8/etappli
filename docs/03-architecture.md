@@ -153,7 +153,7 @@ screen. Notable mechanics:
 - The location picker returns its result through the **previous** back-stack entry's
   `SavedStateHandle` (`PICKED_LOCATION_KEY` as a `DoubleArray`, `PICKED_PLACE_KEY` as
   name/label/id). Both the stop editor and Settings (home) consume it the same way.
-- The stop editor's GPS and map-picker buttons are injected by the nav layer as the
+- The stop editor's "Pick spot" button is injected by the nav layer as the
   `locationSection` slot composable, so the editor itself has no navigation dependency.
 - A shared place is routed into `AddToTripRoute` exactly once (`LaunchedEffect` on the
   pending value, then consume); from there it rides the back stack as route arguments
