@@ -34,8 +34,8 @@ On pushes to main it also uploads `app/build/screenshots/` (main screens light+d
 written by `ScreenshotsTest` during the normal test run) as a versioned artifact.
 
 **Releasing to Play**: PLAY_STORE_SETUP.md — the console steps, the data-safety
-answers, and the two things that break after the first upload (Firebase needs the Play
-app-signing SHA-1; the Maps key ships unrestricted). Listing copy and graphics live in
+answers, and the two things that break after the first upload (Firebase and the Maps key's
+app restriction both need the Play app-signing SHA-1). Listing copy and graphics live in
 `play/listing/`, the policy in PRIVACY.md.
 
 **Versioning**: `versionName` = `appVersionBase` (gradle.properties, major.minor) +
@@ -73,9 +73,10 @@ There is no lint/format tooling configured.
   from TripDetailViewModel. Stay off the Pro SKU: ≤10 intermediates per call
   (`GoogleRoutes.windows` splits longer trips), `TRAFFIC_UNAWARE`, no waypoint
   optimisation. Same `mapsApiKey` as the map — Routes API just has to be enabled and in the
-  key's API restrictions. Note Places and Routes are called as plain web services, so an
-  Android *application* restriction would break both unless `X-Android-Package`/
-  `X-Android-Cert` headers are added. Everything degrades to straight lines without a key.
+  key's API restrictions. Places and Routes are called as plain web services through
+  `location/Http`, which sends `X-Android-Package`/`X-Android-Cert` (so the key can be
+  app-restricted) and logs every failed call under the `Http` tag — `adb logcat -s Http`
+  is the first stop for "Search unavailable". Everything degrades to straight lines without a key.
   A stop Google cannot drive to (Riederalp is car-free) empties the whole `computeRoutes`
   answer, so `RouteRefresher` then asks that window drive by drive, and a drive that still
   has no road goes **park-and-ride** (`domain/ParkAndRide`): a TRANSIT route to the stop

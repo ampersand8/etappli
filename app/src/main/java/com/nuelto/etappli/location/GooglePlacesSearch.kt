@@ -42,15 +42,15 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
     }
 
     private fun autocomplete(query: String, near: LatLng?, types: List<String>) =
-        post(
+        Http.post(
             GooglePlaces.AUTOCOMPLETE_URL,
             GooglePlaces.autocompleteBody(query, near, sessionToken, types),
-            null,
+            headers(),
         )?.let(GooglePlaces::parseAutocomplete)
 
     override suspend fun find(query: String, near: LatLng?): List<PlaceSuggestion>? =
         withContext(Dispatchers.IO) {
-            post(GooglePlaces.SEARCH_URL, GooglePlaces.searchBody(query, near), GooglePlaces.SEARCH_FIELD_MASK)
+            Http.post(GooglePlaces.SEARCH_URL, GooglePlaces.searchBody(query, near), headers(GooglePlaces.SEARCH_FIELD_MASK))
                 ?.let(GooglePlaces::parseSearch)
         }
 
@@ -67,7 +67,7 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
     /** Fetches one place, to fill in or renew a coordinate. */
     suspend fun details(placeId: String, token: String? = null): PlaceSuggestion? =
         withContext(Dispatchers.IO) {
-            get(GooglePlaces.detailsUrl(placeId, token), GooglePlaces.DETAILS_FIELD_MASK)
+            Http.get(GooglePlaces.detailsUrl(placeId, token), headers(GooglePlaces.DETAILS_FIELD_MASK))
                 ?.let(GooglePlaces::parseDetails)
         }
 
@@ -79,6 +79,7 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
                 connectTimeout = 5_000
                 readTimeout = 10_000
                 instanceFollowRedirects = true
+                AppIdentity.headers.forEach { (name, value) -> setRequestProperty(name, value) }
                 try {
                     if (responseCode != HttpURLConnection.HTTP_OK) return@run null
                     inputStream.use { it.readBytes() }
@@ -89,39 +90,7 @@ class GooglePlacesSearch(private val apiKey: String = BuildConfig.MAPS_API_KEY) 
         }.getOrNull()
     }
 
-    private fun post(url: String, body: String, fieldMask: String?): String? = runCatching {
-        val connection = open(url, fieldMask).apply {
-            requestMethod = "POST"
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
-        }
-        try {
-            connection.outputStream.use { it.write(body.toByteArray()) }
-            connection.readBodyIfOk()
-        } finally {
-            connection.disconnect()
-        }
-    }.getOrNull()
-
-    private fun get(url: String, fieldMask: String): String? = runCatching {
-        val connection = open(url, fieldMask)
-        try {
-            connection.readBodyIfOk()
-        } finally {
-            connection.disconnect()
-        }
-    }.getOrNull()
-
-    private fun open(url: String, fieldMask: String?) =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 5_000
-            readTimeout = 5_000
-            setRequestProperty("X-Goog-Api-Key", apiKey)
-            fieldMask?.let { setRequestProperty("X-Goog-FieldMask", it) }
-            setRequestProperty("User-Agent", "Etappli/${BuildConfig.VERSION_NAME}")
-        }
-
-    private fun HttpURLConnection.readBodyIfOk(): String? =
-        if (responseCode != HttpURLConnection.HTTP_OK) null
-        else inputStream.bufferedReader().use { it.readText() }
+    private fun headers(fieldMask: String? = null): Map<String, String> =
+        mapOf("X-Goog-Api-Key" to apiKey) + AppIdentity.headers +
+            listOfNotNull(fieldMask?.let { "X-Goog-FieldMask" to it })
 }

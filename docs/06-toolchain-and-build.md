@@ -87,8 +87,8 @@ no-key mode.
 ## Release and Play
 
 Release signing, the Play Console steps, the data-safety answers and the three things
-that break after the first upload (Firebase needs the Play app-signing SHA-1; the Maps
-key ships unrestricted; the foreground-service declaration) are in
+that break after the first upload (Firebase and the Maps key's app restriction both need the
+Play app-signing SHA-1; the foreground-service declaration) are in
 [PLAY_STORE_SETUP.md](../PLAY_STORE_SETUP.md). Listing copy and graphics are in
 `play/listing/`, the policy in [PRIVACY.md](../PRIVACY.md). `isMinifyEnabled` is off.
 

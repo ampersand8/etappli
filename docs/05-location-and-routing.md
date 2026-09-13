@@ -15,10 +15,12 @@ falls back to straight lines, factors and names it already has.
 | Platform `Geocoder` (Play services) | Naming a pin, and the region of each stop | none; silently null without Play services | stored |
 | Fused location | The picker's my-location fix, and the tracking service's fixes | none; needs `ACCESS_FINE_LOCATION` | fixes stored as the track |
 
-Places and Routes are called as plain web services over `HttpURLConnection` (no
+Places and Routes are called as plain web services through `location/Http` (no
 Places SDK: 30-odd transitive dependencies for View widgets the app does not use, and
-parsing hidden from tests). Consequence: an Android *application* restriction on the
-key breaks both, because the app does not send `X-Android-Package`/`X-Android-Cert`.
+parsing hidden from tests). It sends `X-Android-Package`/`X-Android-Cert`, read from
+the app's own signature at startup (`AppIdentity`, from MapsBackend), so the key can
+carry an Android *application* restriction — and it logs every failed call under the
+`Http` tag, so "Search unavailable" has a reason in `adb logcat -s Http`.
 Request building and parsing are pure and mutation-tested in `domain/GooglePlaces`,
 `domain/GoogleRoutes`, `domain/Elevation`; the transport in `location/` is fail-soft
 and coverage-excluded.

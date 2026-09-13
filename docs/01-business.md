@@ -108,5 +108,6 @@ Full rules in [Costing](04-costing.md).
   misses transit-only countries.
 - Currency conversion exists only for vignette prices; everything else is entered in
   the app currency.
-- The Maps API key ships in the APK unrestricted (see PLAY_STORE_SETUP.md).
+- The Maps API key ships in the APK; restrict it to the app's certificates and APIs
+  (GOOGLE_MAPS_SETUP.md).
 - Google's logo attribution requirement is met with text only (see GOOGLE_MAPS_SETUP.md).
