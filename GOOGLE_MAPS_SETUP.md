@@ -28,16 +28,15 @@ The app needs a Google Maps Platform key. Without one it still builds, installs 
 One key covers all three APIs — verified against a live `computeRoutes` call. Enabling
 Routes API and listing it under *API restrictions* is the whole requirement.
 
-The catch is the **application** restriction in step 4. Maps SDK for Android is an SDK and
-proves its identity by itself, but Places API (New) and Routes API are called here as
-plain web services over `HttpURLConnection`. Google's rule for those is that an
-Android-restricted key requires `X-Android-Package` and `X-Android-Cert` (SHA-1 as
-undelimited hex) headers on every request — which this app does not send, for either API.
-
-So the key currently works because it carries no Android application restriction. Add one
-and **both** place search and routing stop working, not just routing. If you want that
-restriction, the fix is those two headers in `location/GooglePlacesSearch` and
-`location/RouteServices`, not a second key.
+Maps SDK for Android proves the app's identity by itself; Places API (New) and Routes
+API are called here as plain web services, and for those Google's rule is that an
+Android-restricted key needs `X-Android-Package` and `X-Android-Cert` (the signing
+certificate's SHA-1) on every request. `location/Http.kt` sends both, read from the
+running app's own signature at startup — so the application restriction in step 4 is
+safe, provided **every certificate the app is signed with** is on the key: the debug one
+(`signingReport`), the upload key, and Play's app-signing certificate
+(PLAY_STORE_SETUP.md). The app logs the fingerprint it runs with at startup under the
+`Http` tag, so a mismatch is one `adb logcat -s Http` away.
 
 Either way, cap the spend: APIs & Services → Quotas → Routes API, and set a daily ceiling
 you would not mind paying. Compute Routes Essentials gives 10,000 free requests a month
@@ -45,6 +44,25 @@ and this app spends roughly one per trip edit.
 
 **Without the Routes API enabled** the app still runs: routes fall back to straight lines
 between stops, and distance to straight line × the road factor in Settings.
+
+## "Search unavailable", straight lines, or a blank map
+
+Every failed Places/Routes call logs its reason: `adb logcat -s Http`. Or ask Google from
+the laptop with the key in local.properties:
+
+```bash
+curl -sS -X POST https://places.googleapis.com/v1/places:autocomplete -H 'Content-Type: application/json' -H "X-Goog-Api-Key: $(grep ^mapsApiKey= local.properties | cut -d= -f2)" -d '{"input":"grimsel"}'
+```
+
+| `reason` in the answer | Meaning | Fix |
+|---|---|---|
+| `API_KEY_INVALID` | The key no longer exists — deleted, or regenerated (the old string dies 24 h later) | Paste the current key into `local.properties`, rebuild, reinstall |
+| `API_KEY_ANDROID_APP_BLOCKED` | App-restricted key, and this certificate is not on it (from the laptop: expected) | Add the SHA-1 the app logs at startup |
+| `API_KEY_SERVICE_BLOCKED` | The API is missing from the key's API restrictions | Add it (step 4) |
+| `SERVICE_DISABLED` | The API is not enabled in the project | Step 3 |
+
+A blank map with the same key is the Maps SDK saying the same thing: `adb logcat -s
+"Google Maps Android API"`.
 
 ## Elevation is not Google
 

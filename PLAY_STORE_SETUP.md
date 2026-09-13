@@ -130,12 +130,13 @@ review that can take days.
    **SHA-1 of the app signing certificate** from Play Console → Test and release → Setup
    → App signing, add it in Firebase Console → Project settings → Your apps →
    *Add fingerprint*, then re-download `app/google-services.json`.
-2. **The Maps API key ships inside the bundle.** It is unrestricted, because Places and
-   Routes are called as plain web services and an Android app restriction would break
-   them. Anyone can extract it from a public download and spend your quota. Before going
-   to production, at minimum restrict the key to the four APIs it needs (Maps SDK for
-   Android, Places API (New), Routes API) and set a billing budget alert and per-API
-   quota caps in Google Cloud Console.
+2. **The Maps API key ships inside the bundle.** Anyone can extract it from a public
+   download and spend your quota, so restrict it (GOOGLE_MAPS_SETUP.md): to the three
+   APIs it needs, and to the Android app — package `com.nuelto.etappli` with the SHA-1
+   of the app signing certificate from the same Play Console page as in item 1, plus
+   the debug and upload certificates. The app sends `X-Android-Package`/`X-Android-Cert`
+   on its web-service calls, so the restriction breaks nothing. Set a billing budget
+   alert and per-API quota caps in Google Cloud Console.
 3. **The release waits for the foreground-service declaration.** The bundle declares the
    `location` foreground-service type, so once it is uploaded Policy → App content grows a
    *Foreground service permissions* item that has to be completed before the release rolls
